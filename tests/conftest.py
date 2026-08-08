@@ -63,3 +63,15 @@ def mock_redis():
 
     with patch("backend.services.auth_svc._get_redis", return_value=mock_redis_client):
         yield mock_redis_client
+
+
+# ── westock client fixture ──
+
+from backend.data.westock_client import WestockClient
+
+
+@pytest_asyncio.fixture
+async def westock_client():
+    client = WestockClient()  # 使用模拟数据模式
+    yield client
+    await client.close()
