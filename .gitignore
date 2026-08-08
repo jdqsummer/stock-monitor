@@ -1,0 +1,16 @@
+# stock-monitor/.gitignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.venv/
+venv/
+*.db
+*.sqlite3
+.DS_Store
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+node_modules/
