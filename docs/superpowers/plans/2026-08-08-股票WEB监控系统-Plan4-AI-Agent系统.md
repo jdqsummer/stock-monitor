@@ -1,10 +1,10 @@
-# Plan-4: AI Agent 系统（LangGraph 编排 + 三大 Agent + 投资框架约束）
+# Plan-4: AI Agent 系统（LangGraph 编排 + 分析 Agent + 数据采集 Agent + 投资框架约束）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**目标:** 实现三大 AI Agent（分析/聊天/日记）的 LangGraph StateGraph 工作流，集成 OpenHarness 投资框架约束层，支持多 LLM Provider 切换和 SSE 流式输出。
+**目标:** 实现分析 Agent（LangGraph StateGraph 9 步分析链）和数据采集 Agent（westock-mcp 集成 + 定时调度），集成 OpenHarness 投资框架约束层，支持多 LLM Provider 切换。
 
-**架构:** LangGraph StateGraph 定义 Agent 工作流 → OpenHarness 约束层（Hook + 权限 + 上下文压缩）→ 多 LLM Provider 适配层 → SSE 流式输出 → 前端消费。
+**架构:** LangGraph StateGraph 定义 Agent 工作流 → OpenHarness 约束层（Hook + 权限 + 上下文压缩）→ 多 LLM Provider 适配层 → FastAPI 端点。
 
 **技术栈:** Python 3.11+, LangGraph 0.2+, OpenHarness (latest), litellm, FastAPI SSE, Pydantic v2
 
@@ -20,8 +20,8 @@
 
 - 分析 Agent 必须经过完整的 9 步分析链，不得跳过（Harness 强制约束）
 - 分析报告输出只保留结论，不保留推理过程（投资框架原则八）
-- 聊天 Agent 必须基于价值投资角色和体系（投资分析框架约束）
-- SSE 流式输出 60s 超时，客户端断连自动清理
+- 数据采集 Agent 支持定时调度（交易时段每 5min，非交易时段按需）
+- 分析进度通过 SSE 推送，60s 超时，客户端断连自动清理
 - 多 LLM Provider 支持 litellm 统一适配，分析 Agent 固定使用最强模型
 - LLM API Key 从用户配置中读取，加密传输
 
@@ -49,22 +49,20 @@ stock-monitor/backend/
 │   ├── graph.py                  # 创建（LangGraph StateGraph 定义为 StateGraph builder）
 │   ├── state.py                  # 创建（Agent 状态定义）
 │   ├── analysis_workflow.py      # 创建（分析 Agent 9 步工作流）
-│   ├── chat_workflow.py          # 创建（聊天 Agent 对话工作流）
-│   └── diary_workflow.py         # 创建（日记 Agent 处理工作流）
+│   └── data_collection_workflow.py  # 创建（数据采集 Agent 工作流）
 ├── api/
 │   ├── agent.py                  # 创建（Agent API 端点 + SSE）
-│   └── diary.py                  # 创建（日记 API 端点）
+│   └── data.py                   # 创建（数据采集 API 端点）
 ├── schemas/
 │   └── agent.py                  # 创建（Agent 请求/响应 Schema）
 └── services/
     ├── agent_svc.py              # 创建（Agent 服务编排层）
-    └── diary_svc.py              # 创建（日记服务层）
+    └── data_collection_svc.py    # 创建（数据采集服务层）
 tests/
 ├── test_agents/
 │   ├── __init__.py               # 创建
 │   ├── test_analysis_workflow.py # 创建
-│   ├── test_chat_workflow.py     # 创建
-│   └── test_diary_workflow.py    # 创建
+│   └── test_data_collection_workflow.py  # 创建
 ├── test_api/
 │   └── test_agent_api.py         # 创建
 ├── test_harness/
@@ -611,7 +609,7 @@ class AgentState(TypedDict):
     """通用 Agent 状态（所有 Agent 共用）"""
     messages: Annotated[list, add_messages]     # 对话消息列表
     user_id: str                                 # 用户 ID
-    agent_type: str                              # analysis | chat | diary
+    agent_type: str                              # analysis | data_collection
 
 
 class AnalysisState(AgentState):
@@ -638,19 +636,14 @@ class AnalysisState(AgentState):
     errors: list[dict[str, Any]]                 # 错误记录
 
 
-class ChatState(AgentState):
-    """聊天 Agent 专用状态"""
-    conversation_id: str                         # 对话 ID
-    context_memories: list[str]                  # 检索到的记忆上下文
-
-
-class DiaryState(AgentState):
-    """日记 Agent 专用状态"""
-    diary_id: str                                # 日记 ID
-    raw_content: str                             # 原始日记内容
-    extracted_decisions: list[dict[str, Any]]    # 提取的决策
-    emotion_tags: list[str]                      # 情绪标签
-    ai_feedback: str                             # AI 点评
+class DataCollectionState(AgentState):
+    """数据采集 Agent 专用状态"""
+    task_id: str                                 # 采集任务 ID
+    stock_codes: list[str]                       # 待采集股票列表
+    schedule_type: str                           # scheduled | manual
+    quote_results: dict[str, dict[str, Any]]     # 行情结果
+    financial_results: dict[str, dict[str, Any]] # 财报结果
+    validation_errors: list[dict[str, Any]]      # 数据校验错误
 ```
 
 - [ ] **Step 2: 创建 Agent 请求/响应 Schema**
@@ -672,25 +665,26 @@ class AnalysisResponse(BaseModel):
     report: str | None = None
 
 
-class ChatRequest(BaseModel):
-    message: str
-    conversation_id: str | None = None           # 新对话为 None
+class BatchAnalysisRequest(BaseModel):
+    stock_codes: list[str] | None = None         # None = 分析所有自选股
 
 
-class ChatResponse(BaseModel):
-    conversation_id: str
-    message: str                                 # 完整回复（非流式时用）
+class BatchAnalysisResponse(BaseModel):
+    task_id: str
+    total: int                                   # 总分析数
+    completed: int                               # 已完成数
+    status: str                                  # pending | running | completed | failed
 
 
-class DiaryCreateRequest(BaseModel):
-    content: str
+class DataRefreshRequest(BaseModel):
+    stock_codes: list[str] | None = None         # None = 刷新所有自选股
+    refresh_type: str = "quote"                  # quote | financials | all
 
 
-class DiaryFeedbackResponse(BaseModel):
-    diary_id: str
-    decisions: list[dict]
-    emotion_tags: list[str]
-    ai_feedback: str
+class DataRefreshResponse(BaseModel):
+    task_id: str
+    status: str
+    updated_count: int
 ```
 
 - [ ] **Step 3: 创建 backend/agents/graph.py（StateGraph builder）**
@@ -699,7 +693,7 @@ class DiaryFeedbackResponse(BaseModel):
 # stock-monitor/backend/agents/graph.py
 from langgraph.graph import StateGraph, END
 
-from backend.agents.state import AnalysisState, ChatState, DiaryState
+from backend.agents.state import AnalysisState, DataCollectionState
 
 
 def build_analysis_graph() -> StateGraph:
@@ -717,7 +711,6 @@ def build_analysis_graph() -> StateGraph:
         step_cross_check,
         step_generate_report,
         step_write_memory,
-        should_continue,
     )
 
     workflow = StateGraph(AnalysisState)
@@ -754,50 +747,36 @@ def build_analysis_graph() -> StateGraph:
     return workflow.compile()
 
 
-def build_chat_graph() -> StateGraph:
-    """构建聊天 Agent 的 StateGraph"""
-    from backend.agents.chat_workflow import (
-        retrieve_memory,
-        build_context,
-        llm_generate,
-        end_of_turn,
+def build_data_collection_graph() -> StateGraph:
+    """构建数据采集 Agent 的 StateGraph"""
+    from backend.agents.data_collection_workflow import (
+        check_schedule,
+        fetch_quotes,
+        fetch_financials,
+        quality_validate,
+        cache_update,
+        trigger_analysis,
     )
 
-    workflow = StateGraph(ChatState)
-    workflow.add_node("retrieve_memory", retrieve_memory)
-    workflow.add_node("build_context", build_context)
-    workflow.add_node("llm_generate", llm_generate)  # SSE 流式节点
-    workflow.add_node("end_of_turn", end_of_turn)
+    workflow = StateGraph(DataCollectionState)
+    workflow.add_node("check_schedule", check_schedule)
+    workflow.add_node("fetch_quotes", fetch_quotes)
+    workflow.add_node("fetch_financials", fetch_financials)
+    workflow.add_node("quality_validate", quality_validate)
+    workflow.add_node("cache_update", cache_update)
+    workflow.add_node("trigger_analysis", trigger_analysis)
 
-    workflow.set_entry_point("retrieve_memory")
-    workflow.add_edge("retrieve_memory", "build_context")
-    workflow.add_edge("build_context", "llm_generate")
-    workflow.add_edge("llm_generate", "end_of_turn")
-    workflow.add_edge("end_of_turn", END)
-
-    return workflow.compile()
-
-
-def build_diary_graph() -> StateGraph:
-    """构建日记 Agent 的 StateGraph"""
-    from backend.agents.diary_workflow import (
-        parse_diary,
-        structure_data,
-        save_l0,
-        generate_feedback,
+    workflow.set_entry_point("check_schedule")
+    workflow.add_edge("check_schedule", "fetch_quotes")
+    workflow.add_edge("fetch_quotes", "fetch_financials")
+    workflow.add_edge("fetch_financials", "quality_validate")
+    workflow.add_edge("quality_validate", "cache_update")
+    workflow.add_conditional_edges(
+        "cache_update",
+        trigger_analysis,
+        {True: "trigger_analysis", False: END},
     )
-
-    workflow = StateGraph(DiaryState)
-    workflow.add_node("parse_diary", parse_diary)
-    workflow.add_node("structure_data", structure_data)
-    workflow.add_node("save_l0", save_l0)
-    workflow.add_node("generate_feedback", generate_feedback)
-
-    workflow.set_entry_point("parse_diary")
-    workflow.add_edge("parse_diary", "structure_data")
-    workflow.add_edge("structure_data", "save_l0")
-    workflow.add_edge("save_l0", "generate_feedback")
-    workflow.add_edge("generate_feedback", END)
+    workflow.add_edge("trigger_analysis", END)
 
     return workflow.compile()
 ```
@@ -806,13 +785,12 @@ def build_diary_graph() -> StateGraph:
 
 ```bash
 git add -A
-git commit -m "feat: LangGraph StateGraph — 三大 Agent 工作流定义
+git commit -m "feat: LangGraph StateGraph — 分析 Agent + 数据采集 Agent 工作流定义
 
-- AgentState/AnalysisState/ChatState/DiaryState 状态定义
+- AgentState/AnalysisState/DataCollectionState 状态定义
 - Agent 请求/响应 Pydantic Schema
 - build_analysis_graph: 9 步分析链 StateGraph
-- build_chat_graph: 4 步对话工作流
-- build_diary_graph: 4 步日记处理工作流
+- build_data_collection_graph: 6 步数据采集工作流
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
@@ -1090,136 +1068,97 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ---
 
-### Task 5: 聊天 Agent + 日记 Agent + API 端点 + SSE
+### Task 5: 数据采集 Agent + 分析 Agent API 端点 + SSE 进度推送
 
 **Files:**
-- Create: `stock-monitor/backend/agents/chat_workflow.py`
-- Create: `stock-monitor/backend/agents/diary_workflow.py`
+- Create: `stock-monitor/backend/agents/data_collection_workflow.py`
 - Create: `stock-monitor/backend/services/agent_svc.py`
-- Create: `stock-monitor/backend/services/diary_svc.py`
+- Create: `stock-monitor/backend/services/data_collection_svc.py`
 - Create: `stock-monitor/backend/api/agent.py`
-- Create: `stock-monitor/backend/api/diary.py`
+- Create: `stock-monitor/backend/api/data.py`
 - Modify: `stock-monitor/backend/api/__init__.py`
 
-- [ ] **Step 1: 创建聊天 Agent 工作流**
+- [ ] **Step 1: 创建数据采集 Agent 工作流**
 
 ```python
-# stock-monitor/backend/agents/chat_workflow.py
-from backend.agents.state import ChatState
-from backend.llm.provider import LLMFactory
+# stock-monitor/backend/agents/data_collection_workflow.py
+import logging
+from datetime import datetime
 
-VALUE_INVESTOR_SYSTEM_PROMPT = """你是一名资深的价值投资者，遵循以下投资框架：
+from backend.agents.state import DataCollectionState
 
-**投资理念**：
-- 安全边际 = 当前价格与合理价值之间的缓冲空间
-- 好公司 + 好价格 = 好投资；好公司 + 疯狂价格 = 坏投资
-- 分析的目标不是找"最好的公司"，而是"好价格下的好公司"
+logger = logging.getLogger(__name__)
 
-**核心原则**：
-1. 利润质量优先：以扣非净利润为准
-2. 保守年化：H1×2 优先
-3. 行业合理 PE 锚定：重资产低PE，高壁垒高PE
-4. 多元估值校验：击球区+乐观/悲观+SOTP
-5. 证伪优先：找反面证据，不是自我确认
-6. 纪律：不追高、不分批追涨、单一标的≤10%
-
-**你绝不会**：
-- 推荐任何距击球区 >50% 的股票
-- 鼓励追涨杀跌行为
-- 忽视利润质量去讲动听的故事
-- 给出具体买卖操作指令（你只提供框架性分析）
-
-请基于以上角色和框架，理性、冷静、基于数据地回答用户问题。"""
+# 交易时段定义
+TRADING_HOURS_MORNING = ("09:30", "11:30")
+TRADING_HOURS_AFTERNOON = ("13:00", "15:00")
 
 
-async def retrieve_memory(state: ChatState) -> ChatState:
-    """检索全层级记忆（L1/L2/L3）"""
-    # TODO: Plan-5 实现
-    state["context_memories"] = []
+async def check_schedule(state: DataCollectionState) -> DataCollectionState:
+    """检查当前时段，决定采集频率"""
+    now = datetime.now()
+    is_trading = (
+        (TRADING_HOURS_MORNING[0] <= now.strftime("%H:%M") <= TRADING_HOURS_MORNING[1])
+        or (TRADING_HOURS_AFTERNOON[0] <= now.strftime("%H:%M") <= TRADING_HOURS_AFTERNOON[1])
+    )
+    state["schedule_type"] = state.get("schedule_type", "scheduled")
+    logger.info(f"数据采集: schedule={state['schedule_type']}, trading={is_trading}")
     return state
 
 
-async def build_context(state: ChatState) -> ChatState:
-    """组合系统提示 + 记忆上下文"""
-    context = VALUE_INVESTOR_SYSTEM_PROMPT
-    if state["context_memories"]:
-        context += "\n\n## 用户背景\n" + "\n".join(state["context_memories"])
-    state["messages"].insert(0, {"role": "system", "content": context})
+async def fetch_quotes(state: DataCollectionState) -> DataCollectionState:
+    """调用 westock-mcp 获取实时行情"""
+    # 在完整实现中调用 WestockClient
+    state["quote_results"] = {}
+    for code in state.get("stock_codes", []):
+        state["quote_results"][code] = {
+            "code": code, "price": None, "change_pct": None,
+            "status": "pending",  # 待 Plan-2 实现
+        }
+    logger.info(f"行情获取完成: {len(state['quote_results'])} 只股票")
     return state
 
 
-async def llm_generate(state: ChatState) -> ChatState:
-    """LLM 生成回复（流式输出在 API 层处理）"""
-    # 实际流式在 API 层通过 SSE 推送
-    llm = LLMFactory.create("deepseek-chat")
-    response = await llm.chat(state["messages"])
-    state["messages"].append({"role": "assistant", "content": response})
+async def fetch_financials(state: DataCollectionState) -> DataCollectionState:
+    """获取最新财报数据"""
+    state["financial_results"] = {}
+    for code in state.get("stock_codes", []):
+        state["financial_results"][code] = {
+            "code": code, "net_profit_deducted": None,
+            "net_profit_parent": None, "report_period": None,
+            "status": "pending",
+        }
     return state
 
 
-async def end_of_turn(state: ChatState) -> ChatState:
-    """对话轮次结束标记"""
+async def quality_validate(state: DataCollectionState) -> DataCollectionState:
+    """数据质量校验（扣非口径/年化估算/PE 对照）"""
+    from backend.harness.validators import StepValidator
+
+    state["validation_errors"] = []
+    for code, data in state.get("financial_results", {}).items():
+        ok, msg = StepValidator.validate_profit_quality(data)
+        if not ok:
+            state["validation_errors"].append({"code": code, "error": msg})
+    logger.info(f"数据质量校验: {len(state['validation_errors'])} 个异常")
     return state
+
+
+async def cache_update(state: DataCollectionState) -> DataCollectionState:
+    """更新 Redis 缓存"""
+    # TODO: Plan-2 Redis 缓存层实现后接入
+    return state
+
+
+async def trigger_analysis(state: DataCollectionState) -> bool:
+    """判断是否需要触发全量分析（仅在开盘/收盘时段）"""
+    now = datetime.now()
+    # 全量分析时段：9:30 或 15:30
+    is_analysis_time = now.strftime("%H:%M") in ("09:30", "15:30")
+    return is_analysis_time or state.get("schedule_type") == "manual"
 ```
 
-- [ ] **Step 2: 创建日记 Agent 工作流**
-
-```python
-# stock-monitor/backend/agents/diary_workflow.py
-import json
-from backend.agents.state import DiaryState
-from backend.llm.provider import LLMFactory
-
-DIARY_ANALYSIS_PROMPT = """你是一名投资行为分析师。请分析以下投资日记：
-
-{diary_content}
-
-请完成以下任务：
-1. 提取投资决策（买入/卖出/观察），每项包含：type, stock(标的), price(价格), reason(理由)
-2. 识别情绪标签（fomo/恐慌/贪婪/理性/犹豫/自信）
-3. 给予理性反馈：
-   - 决策是否符合价值投资框架？
-   - 是否存在情绪驱动行为？
-   - 与投资框架的纪律红线是否有冲突？
-
-按 JSON 格式返回：
-{{"decisions": [...], "emotion_tags": [...], "feedback": "..."}}"""
-
-
-async def parse_diary(state: DiaryState) -> DiaryState:
-    """解析日记内容，提取决策和情绪"""
-    llm = LLMFactory.create("deepseek-chat")
-    prompt = DIARY_ANALYSIS_PROMPT.format(diary_content=state["raw_content"])
-    response = await llm.chat([{"role": "user", "content": prompt}])
-
-    try:
-        result = json.loads(response)
-    except json.JSONDecodeError:
-        result = {"decisions": [], "emotion_tags": [], "feedback": response}
-
-    state["extracted_decisions"] = result.get("decisions", [])
-    state["emotion_tags"] = result.get("emotion_tags", [])
-    state["ai_feedback"] = result.get("feedback", "")
-    return state
-
-
-async def structure_data(state: DiaryState) -> DiaryState:
-    """结构化存储决策数据"""
-    return state
-
-
-async def save_l0(state: DiaryState) -> DiaryState:
-    """写入 L0 对话记录"""
-    # TODO: Plan-5 实现
-    return state
-
-
-async def generate_feedback(state: DiaryState) -> DiaryState:
-    """Agent 点评（已在 parse_diary 中完成，此处仅标记）"""
-    return state
-```
-
-- [ ] **Step 3: 创建 backend/services/agent_svc.py**
+- [ ] **Step 2: 创建 backend/services/agent_svc.py**
 
 ```python
 # stock-monitor/backend/services/agent_svc.py
@@ -1228,8 +1167,8 @@ import asyncio
 import logging
 from typing import AsyncIterator
 
-from backend.agents.graph import build_analysis_graph, build_chat_graph, build_diary_graph
-from backend.agents.state import AnalysisState, ChatState, DiaryState
+from backend.agents.graph import build_analysis_graph
+from backend.agents.state import AnalysisState
 
 logger = logging.getLogger(__name__)
 
@@ -1239,7 +1178,7 @@ class AgentService:
 
     @staticmethod
     async def run_analysis(stock_code: str, stock_name: str, user_id: str) -> str:
-        """运行分析 Agent，返回最终报告"""
+        """运行单个股票分析 Agent，返回最终报告"""
         graph = build_analysis_graph()
         initial_state: AnalysisState = {
             "messages": [], "user_id": user_id, "agent_type": "analysis",
@@ -1254,63 +1193,81 @@ class AgentService:
         return result.get("final_report", "")
 
     @staticmethod
-    async def run_chat_stream(
-        message: str, user_id: str, conversation_id: str | None = None
-    ) -> AsyncIterator[str]:
-        """运行聊天 Agent，返回 SSE 流"""
-        conv_id = conversation_id or str(uuid.uuid4())
+    async def run_batch_analysis(
+        stock_list: list[tuple[str, str]], user_id: str
+    ) -> AsyncIterator[dict]:
+        """批量分析多只股票（用于定时/手动触发），SSE 推送每只完成状态"""
+        task_id = str(uuid.uuid4())
+        total = len(stock_list)
 
-        # 构建初始状态
-        state: ChatState = {
-            "messages": [{"role": "user", "content": message}],
-            "user_id": user_id, "agent_type": "chat",
-            "conversation_id": conv_id, "context_memories": [],
-        }
+        for i, (code, name) in enumerate(stock_list):
+            try:
+                report = await AgentService.run_analysis(code, name, user_id)
+                yield {
+                    "task_id": task_id, "stock_code": code, "stock_name": name,
+                    "status": "completed", "completed": i + 1, "total": total,
+                    "report_summary": report[:200],
+                }
+            except Exception as e:
+                logger.error(f"分析失败 {code}: {e}")
+                yield {
+                    "task_id": task_id, "stock_code": code, "stock_name": name,
+                    "status": "failed", "completed": i + 1, "total": total,
+                    "error": str(e),
+                }
 
-        from backend.agents.chat_workflow import retrieve_memory, build_context, VALUE_INVESTOR_SYSTEM_PROMPT
-        await retrieve_memory(state)
-        await build_context(state)
+        yield {"task_id": task_id, "status": "all_completed", "completed": total, "total": total}
+```
 
-        # 流式调用 LLM
-        from backend.llm.provider import LLMFactory
-        llm = LLMFactory.create("deepseek-chat")
-        full_response = ""
-        async for chunk in llm.chat_stream(state["messages"]):
-            full_response += chunk
-            yield f"data: {chunk}\n\n"
+- [ ] **Step 3: 创建 backend/services/data_collection_svc.py**
 
-        yield f"data: [CONV_ID:{conv_id}]\n\n"
-        yield "data: [DONE]\n\n"
+```python
+# stock-monitor/backend/services/data_collection_svc.py
+import uuid
+import logging
+
+from backend.agents.graph import build_data_collection_graph
+from backend.agents.state import DataCollectionState
+
+logger = logging.getLogger(__name__)
+
+
+class DataCollectionService:
+    """数据采集服务编排层"""
 
     @staticmethod
-    async def run_diary_analysis(content: str, user_id: str) -> dict:
-        """运行日记 Agent"""
-        graph = build_diary_graph()
-        state: DiaryState = {
-            "messages": [], "user_id": user_id, "agent_type": "diary",
-            "diary_id": str(uuid.uuid4()),
-            "raw_content": content,
-            "extracted_decisions": [], "emotion_tags": [], "ai_feedback": "",
+    async def run_collection(
+        stock_codes: list[str], user_id: str, schedule_type: str = "scheduled"
+    ) -> dict:
+        """运行数据采集 Agent"""
+        graph = build_data_collection_graph()
+        state: DataCollectionState = {
+            "messages": [], "user_id": user_id, "agent_type": "data_collection",
+            "task_id": str(uuid.uuid4()),
+            "stock_codes": stock_codes,
+            "schedule_type": schedule_type,
+            "quote_results": {}, "financial_results": {},
+            "validation_errors": [],
         }
         result = await graph.ainvoke(state)
         return {
-            "decisions": result.get("extracted_decisions", []),
-            "emotion_tags": result.get("emotion_tags", []),
-            "ai_feedback": result.get("ai_feedback", ""),
+            "task_id": result["task_id"],
+            "quotes_updated": len(result.get("quote_results", {})),
+            "financials_updated": len(result.get("financial_results", {})),
+            "validation_errors": len(result.get("validation_errors", [])),
         }
 ```
 
-- [ ] **Step 4: 创建 Agent API 端点 + SSE**
+- [ ] **Step 4: 创建 Agent API 端点 + SSE 进度推送**
 
 ```python
 # stock-monitor/backend/api/agent.py
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_current_user, get_db
+from backend.api.deps import get_current_user
 from backend.models.user import User
-from backend.schemas.agent import AnalysisRequest, AnalysisResponse, ChatRequest
+from backend.schemas.agent import AnalysisRequest, AnalysisResponse, BatchAnalysisRequest
 from backend.schemas.common import ApiResponse
 from backend.services.agent_svc import AgentService
 
@@ -1322,26 +1279,29 @@ async def start_analysis(
     req: AnalysisRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """发起安全边际分析（异步执行）"""
+    """发起单个股票安全边际分析"""
+    report = await AgentService.run_analysis(req.stock_code, req.stock_name, current_user.id)
     task_id = f"analysis_{current_user.id}_{req.stock_code}"
-    # 同步返回 task_id，实际分析异步执行
     return ApiResponse(
-        data=AnalysisResponse(task_id=task_id, status="running"),
-        message="分析任务已启动",
+        data=AnalysisResponse(task_id=task_id, status="completed", report=report),
+        message="分析完成",
     )
 
 
-@router.post("/chat")
-async def chat_stream(
-    req: ChatRequest,
+@router.post("/analysis/batch")
+async def batch_analysis(
+    req: BatchAnalysisRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """价值投资聊天（SSE 流式输出）"""
+    """批量分析自选股（定时触发/手动触发），SSE 推送进度"""
     async def event_stream():
-        async for chunk in AgentService.run_chat_stream(
-            req.message, current_user.id, req.conversation_id
+        async for progress in AgentService.run_batch_analysis(
+            stock_list=[("000001", "示例股")],  # 实际从 watchlist 获取
+            user_id=current_user.id,
         ):
-            yield chunk
+            import json
+            yield f"data: {json.dumps(progress, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -1355,45 +1315,37 @@ async def chat_stream(
 ```
 
 ```python
-# stock-monitor/backend/api/diary.py
+# stock-monitor/backend/api/data.py
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_current_user, get_db
+from backend.api.deps import get_current_user
 from backend.models.user import User
-from backend.schemas.agent import DiaryCreateRequest, DiaryFeedbackResponse
+from backend.schemas.agent import DataRefreshRequest, DataRefreshResponse
 from backend.schemas.common import ApiResponse
-from backend.services.agent_svc import AgentService
+from backend.services.data_collection_svc import DataCollectionService
 
-router = APIRouter(prefix="/api/diaries", tags=["日记"])
+router = APIRouter(prefix="/api/data", tags=["数据采集"])
 
 
-@router.post("", response_model=ApiResponse[DiaryFeedbackResponse])
-async def create_diary(
-    req: DiaryCreateRequest,
+@router.post("/refresh", response_model=ApiResponse[DataRefreshResponse])
+async def refresh_data(
+    req: DataRefreshRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
-    """创建投资日记并获取 AI 点评"""
-    result = await AgentService.run_diary_analysis(req.content, current_user.id)
-    return ApiResponse(
-        data=DiaryFeedbackResponse(
-            diary_id=result.get("diary_id", ""),
-            decisions=result["decisions"],
-            emotion_tags=result["emotion_tags"],
-            ai_feedback=result["ai_feedback"],
-        ),
-        message="日记已保存，AI 分析完成",
+    """手动触发数据刷新"""
+    result = await DataCollectionService.run_collection(
+        stock_codes=req.stock_codes or [],
+        user_id=current_user.id,
+        schedule_type="manual",
     )
-
-
-@router.get("", response_model=ApiResponse[list])
-async def list_diaries(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """获取日记列表"""
-    return ApiResponse(data=[])
+    return ApiResponse(
+        data=DataRefreshResponse(
+            task_id=result["task_id"],
+            status="completed",
+            updated_count=result["quotes_updated"],
+        ),
+        message=f"数据刷新完成，更新 {result['quotes_updated']} 条行情",
+    )
 ```
 
 - [ ] **Step 5: 更新 backend/api/__init__.py**
@@ -1404,21 +1356,20 @@ api_router = APIRouter()
 api_router.include_router(auth_router)
 api_router.include_router(config_router)
 api_router.include_router(agent_router)
-api_router.include_router(diary_router)
+api_router.include_router(data_router)
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: 三大 Agent 完整实现 — 分析/聊天/日记 + SSE 流式
+git commit -m "feat: 分析 Agent + 数据采集 Agent + SSE 进度推送
 
 - AnalysisWorkflow: 9 步完整分析链（含 LLM 逆向清单）
-- ChatWorkflow: 价值投资者角色 + 记忆检索
-- DiaryWorkflow: 决策提取 + 情绪识别 + 框架点评
-- AgentService: 编排层（同步分析/SSE 流式聊天/日记分析）
-- API 端点: POST /agent/analysis, POST /agent/chat(SSE), POST /diaries
-- 前端 Chat 页面可消费 SSE 流
+- DataCollectionWorkflow: 行情/财报采集 + 质量校验 + 缓存更新
+- AgentService: 单股分析 + 批量分析 SSE 进度推送
+- DataCollectionService: 定时/手动数据采集编排
+- API 端点: POST /agent/analysis, POST /agent/analysis/batch(SSE), POST /data/refresh
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
@@ -1432,9 +1383,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - [ ] `LLMFactory.create("deepseek-chat")` → DeepSeekProvider
 - [ ] `LLMFactory.create("qwen-max")` → QwenProvider
 - [ ] `build_analysis_graph()` 返回 compiled StateGraph
+- [ ] `build_data_collection_graph()` 返回 compiled StateGraph
 - [ ] 分析 Agent 9 步全部执行（StateGraph 包含 12 个节点）
 - [ ] `StepValidator.validate_profit_quality()` 正确检测扣非缺失
 - [ ] `ReverseChecklist.build_prompt()` 生成 14 问 Prompt
 - [ ] `StepValidator.validate_output_no_reasoning()` 检测到推理过程残留
-- [ ] SSE 端点可被前端 `EventSource` 消费
-- [ ] 日记 Agent 返回结构化 JSON（decisions/emotion_tags/feedback）
+- [ ] SSE 端点可被前端 `EventSource` 消费（批量分析进度）
+- [ ] 数据采集 Agent 质量校验正确标记异常数据
