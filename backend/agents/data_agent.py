@@ -159,6 +159,7 @@ class DataAgent:
 
     MAX_TOOL_ROUNDS = 5    # 最大工具调用轮次
     DEFAULT_INCLUDE = ["quote", "financials", "news"]
+    VALID_INCLUDE_FIELDS = {"quote", "financials", "news"}
 
     def __init__(
         self,
@@ -195,6 +196,11 @@ class DataAgent:
             }
         """
         include = include or self.DEFAULT_INCLUDE
+        # 校验 include 字段合法性
+        unknown = [f for f in include if f not in self.VALID_INCLUDE_FIELDS]
+        if unknown:
+            logger.warning(f"未知的 include 字段被忽略: {unknown}")
+            include = [f for f in include if f in self.VALID_INCLUDE_FIELDS]
         today = date.today().isoformat()
 
         # 缓存检查
@@ -315,7 +321,7 @@ class DataAgent:
         for round_num in range(self.MAX_TOOL_ROUNDS):
             resp = await llm.chat(messages, tools=DATA_TOOLS, tool_choice="auto")
 
-            if not resp.content or "mark_complete" in resp.content:
+            if not getattr(resp, "content", None) or "mark_complete" in (resp.content if hasattr(resp, "content") else ""):
                 break
 
             # 解析工具调用
@@ -433,14 +439,27 @@ class DataAgent:
                         for tc in msg.tool_calls
                     ]
 
+        # Anthropic 格式：content 列表中包含 type="tool_use" 的 block
+        if hasattr(raw, "content") and isinstance(raw.content, list):
+            tool_calls = []
+            for block in raw.content:
+                if hasattr(block, "type") and block.type == "tool_use":
+                    tool_calls.append({
+                        "id": getattr(block, "id", ""),
+                        "name": block.name,
+                        "arguments": block.input if hasattr(block, "input") else {},
+                    })
+            if tool_calls:
+                return tool_calls
+
         # 从 content 中尝试解析
-        content = resp.content
+        content = resp.content if hasattr(resp, "content") else str(resp)
         if "fetch_quote" in content or "fetch_financials" in content:
             try:
                 data = json.loads(content)
                 if "tool" in data:
                     return [{"name": data["tool"], "arguments": data.get("args", {})}]
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError):
                 pass
 
         return []

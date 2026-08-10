@@ -405,6 +405,9 @@ class AnalysisChain:
                 state = await self._enhance_with_llm(state)
             except Exception as e:
                 logger.error(f"LLM 增强失败: {e}")
+                warnings = state.get("warnings", [])
+                warnings.append(f"LLM 增强失败: {str(e)}")
+                state["warnings"] = warnings
 
         return AnalysisReport.from_state(state)
 
@@ -574,12 +577,12 @@ class AnalysisChain:
             )
 
             # 安全更新 state
-            if isinstance(resp, dict):
-                if "error" not in resp.get("industry_category", ""):
-                    pass  # 正常
+            if not isinstance(resp, dict):
+                logger.warning(f"LLM 返回非 dict 响应，跳过增强: {type(resp)}")
+                return state
 
-                if not state.get("industry_category") and resp.get("industry_category"):
-                    state["industry_category"] = resp["industry_category"]
+            if not state.get("industry_category") and resp.get("industry_category"):
+                state["industry_category"] = resp["industry_category"]
 
                 if not state.get("moat_assessment"):
                     state["moat_assessment"] = resp.get("moat_assessment", "")

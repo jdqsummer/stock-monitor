@@ -87,17 +87,19 @@ class LLMProvider(ABC):
         schema: Optional[dict] = None,
     ) -> dict:
         """请求 JSON 结构化输出"""
-        system_msg = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
+        # 复制 messages 避免修改调用者的原始列表
+        msgs = [dict(m) for m in messages]
+
         json_instruction = "\n\n请以 JSON 格式返回结果，不要包含其他文字。"
         if schema:
             json_instruction += f"\nJSON Schema:\n```json\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n```"
 
-        if messages and messages[0]["role"] == "system":
-            messages[0]["content"] += json_instruction
+        if msgs and msgs[0]["role"] == "system":
+            msgs[0]["content"] += json_instruction
         else:
-            messages.insert(0, {"role": "system", "content": json_instruction})
+            msgs.insert(0, {"role": "system", "content": json_instruction})
 
-        resp = await self.chat(messages)
+        resp = await self.chat(msgs)
         return self._parse_json(resp.content)
 
     async def chat_with_tools(
@@ -117,14 +119,17 @@ class LLMProvider(ABC):
         except json.JSONDecodeError:
             pass
         # 尝试提取 ```json ... ``` 块
-        if "```json" in content:
-            start = content.index("```json") + 7
-            end = content.index("```", start)
-            return json.loads(content[start:end].strip())
-        if "```" in content:
-            start = content.index("```") + 3
-            end = content.index("```", start)
-            return json.loads(content[start:end].strip())
+        try:
+            if "```json" in content:
+                start = content.index("```json") + 7
+                end = content.index("```", start)
+                return json.loads(content[start:end].strip())
+            if "```" in content:
+                start = content.index("```") + 3
+                end = content.index("```", start)
+                return json.loads(content[start:end].strip())
+        except (ValueError, json.JSONDecodeError):
+            pass
         # 返回原始内容
         return {"raw_output": content}
 

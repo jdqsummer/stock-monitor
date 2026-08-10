@@ -31,11 +31,11 @@ from typing import Any, AsyncIterator, Callable, Literal, Optional
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from backend.agents.constraints import ConstraintEngine
+from backend.agents.constraints import ConstraintEngine, IndustryPEAnchorConstraint
 from backend.agents.data_agent import DataAgent, data_to_state
 from backend.agents.state import AnalysisState, DataCollectionState
 from backend.data.westock_client import WestockClient
-from backend.llm.provider import LLMProvider, MockLLMProvider
+from backend.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -89,27 +89,25 @@ def should_continue_after_parse(state: AnalysisState) -> Literal["check_profit_q
     return "check_profit_quality"
 
 
-def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimate_annual_profit", "handle_error"]:
-    """利润质量检查后的路由决策"""
-    annual_profit_low = state.get("annual_profit_low", 0)
+def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimate_annual_profit", "mechanical_rating"]:
+    """利润质量检查后的路由决策
+
+    注意：此处检查 net_profit_deducted（Step 3 已设置），
+    而非 annual_profit_low（Step 4 才会设置）。
+    """
+    net_profit_deducted = state.get("net_profit_deducted", 0)
     # 亏损直接跳到评级
-    if annual_profit_low <= 0:
+    if net_profit_deducted <= 0:
         return "mechanical_rating"
     return "estimate_annual_profit"
 
 
-def should_continue_at_rating(state: AnalysisState) -> Literal["manual_adjust", "cross_check_and_output", "handle_error"]:
-    """评级阶段的路由决策"""
+def should_continue_at_rating(state: AnalysisState) -> Literal["manual_adjust", "cross_check_and_output"]:
+    """评级阶段的路由决策：🔴 跳过人工调整直达输出"""
     signal = state.get("signal", "")
     if signal == "red":
-        # 🔴 → 跳到最终输出
         return "cross_check_and_output"
-    elif signal == "green":
-        # 🟢 → 完整清单
-        return "manual_adjust"
-    else:
-        # 🟡 → 完整清单
-        return "manual_adjust"
+    return "manual_adjust"
 
 
 # ═══════════════════════════════════════════
@@ -294,51 +292,8 @@ async def determine_pe_range_node(state: AnalysisState) -> dict:
     industry = state.get("industry_category", "")
     pe_dynamic = state.get("pe_dynamic")
 
-    # PE 参考表（与 constraints.py 保持同步）
-    pe_reference = {
-        "白酒": (20, 35),
-        "啤酒": (18, 30),
-        "乳制品": (18, 30),
-        "调味品": (25, 40),
-        "食品饮料": (20, 35),
-        "医药生物": (25, 45),
-        "医疗器械": (25, 40),
-        "半导体设备": (35, 55),
-        "半导体设计": (30, 50),
-        "半导体材料": (25, 45),
-        "CPU/GPU": (60, 120),
-        "消费电子": (15, 25),
-        "面板": (10, 18),
-        "PCB": (15, 25),
-        "光纤": (10, 18),
-        "通信设备": (15, 25),
-        "软件": (25, 50),
-        "SaaS": (30, 60),
-        "新能源": (15, 30),
-        "光伏": (12, 22),
-        "风电": (12, 20),
-        "锂电池": (15, 28),
-        "汽车": (10, 20),
-        "新能源汽车": (15, 30),
-        "家电": (12, 20),
-        "银行": (5, 10),
-        "保险": (8, 15),
-        "证券": (10, 20),
-        "房地产": (6, 12),
-        "钢铁": (8, 15),
-        "煤炭": (8, 15),
-        "石油石化": (8, 15),
-        "电力": (12, 20),
-        "建筑材料": (10, 18),
-        "建筑装饰": (8, 15),
-        "交通运输": (10, 18),
-        "航空": (10, 20),
-        "军工": (25, 45),
-        "游戏": (15, 25),
-        "影视": (12, 20),
-        "教育": (10, 20),
-        "医疗健康": (20, 40),
-    }
+    # PE 参考表（从 constraints.py 导入，单一权威来源）
+    pe_reference = IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE
 
     pe_low, pe_high = 15.0, 25.0  # 默认范围
     rationale = f"未识别行业 '{industry}'，使用默认 PE 区间"
@@ -715,7 +670,15 @@ def create_analysis_workflow(
     workflow.add_edge(NodeName.DETERMINE_PE_RANGE, NodeName.CALCULATE_SWING_ZONE)
     workflow.add_edge(NodeName.CALCULATE_SWING_ZONE, NodeName.QUANTIFY_SAFETY_MARGIN)
     workflow.add_edge(NodeName.QUANTIFY_SAFETY_MARGIN, NodeName.MECHANICAL_RATING)
-    workflow.add_edge(NodeName.MECHANICAL_RATING, NodeName.MANUAL_ADJUST)
+    # 条件边：机械评级 → 人工调整 或 跳过直达输出（🔴）
+    workflow.add_conditional_edges(
+        NodeName.MECHANICAL_RATING,
+        should_continue_at_rating,
+        {
+            "manual_adjust": NodeName.MANUAL_ADJUST,
+            "cross_check_and_output": NodeName.CROSS_CHECK_AND_OUTPUT,
+        },
+    )
     workflow.add_edge(NodeName.MANUAL_ADJUST, NodeName.VALIDATE_CONSTRAINTS)
     workflow.add_edge(NodeName.VALIDATE_CONSTRAINTS, NodeName.CROSS_CHECK_AND_OUTPUT)
 
