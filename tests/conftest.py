@@ -75,3 +75,12 @@ async def westock_client():
     client = WestockClient()  # 使用模拟数据模式
     yield client
     await client.close()
+
+
+# ── 数据库 session fixture ──
+
+@pytest_asyncio.fixture
+async def db_session():
+    """提供独立的测试数据库 session"""
+    async with test_async_session_factory() as session:
+        yield session
