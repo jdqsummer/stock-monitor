@@ -17,7 +17,12 @@ apscheduler==3.10.4
 
 # LLM providers
 openai==1.35.3
+anthropic==0.34.1
 litellm==1.40.7
+
+# Agent framework
+langgraph==0.6.7
+langgraph-checkpoint==2.1.1
 
 # dev
 pytest==8.2.2
