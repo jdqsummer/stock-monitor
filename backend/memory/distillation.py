@@ -82,11 +82,12 @@ class DistillationPipeline:
 
         # ── 提取 L1 事实/偏好 ──
         try:
-            l1_response = await llm.chat([
+            l1_resp = await llm.chat([
                 {"role": "user", "content": L1_EXTRACTION_PROMPT.format(conversation_text=conversation_text[:4000])}
             ])
+            l1_text = l1_resp.content if hasattr(l1_resp, 'content') else str(l1_resp)
 
-            for line in l1_response.strip().split("\n"):
+            for line in l1_text.strip().split("\n"):
                 line = line.strip()
                 if "|" in line and line != "无":
                     category, content = line.split("|", 1)
@@ -103,18 +104,19 @@ class DistillationPipeline:
 
         # ── 提取 L2 策略模式 ──
         try:
-            l2_response = await llm.chat([
+            l2_resp = await llm.chat([
                 {"role": "user", "content": L2_STRATEGY_PROMPT.format(conversation_text=conversation_text[:4000])}
             ])
+            l2_text = l2_resp.content if hasattr(l2_resp, 'content') else str(l2_resp)
 
             memory = await MemoryStore.upsert_memory_by_category(
                 db, user_id, "L2",
                 category="投资策略",
-                content=l2_response.strip(),
+                content=l2_text.strip(),
                 source="distillation",
                 confidence=0.6,
             )
-            result["L2"].append({"id": memory.id, "content": l2_response.strip()[:200]})
+            result["L2"].append({"id": memory.id, "content": l2_text.strip()[:200]})
         except Exception as e:
             logger.error(f"L2 蒸馏失败: {e}")
 
@@ -138,16 +140,17 @@ class DistillationPipeline:
         prompt = L3_PROFILE_PROMPT.format(l1_memories=l1_text, l2_memories=l2_text)
 
         try:
-            profile = await llm.chat([{"role": "user", "content": prompt}])
+            profile_resp = await llm.chat([{"role": "user", "content": prompt}])
+            profile_text = profile_resp.content if hasattr(profile_resp, 'content') else str(profile_resp)
             await MemoryStore.upsert_memory_by_category(
                 db, user_id, "L3",
                 category="投资画像",
-                content=profile.strip(),
+                content=profile_text.strip(),
                 source="L3_pipeline",
                 confidence=0.8,
             )
             logger.info(f"用户 {user_id} 的 L3 画像已更新")
-            return profile.strip()
+            return profile_text.strip()
         except Exception as e:
             logger.error(f"L3 画像生成失败: {e}")
             return ""
