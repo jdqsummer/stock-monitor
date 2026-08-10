@@ -122,6 +122,26 @@ export interface LLMModelInfo {
   description: string;
 }
 
+// ── 聊天 ──
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+export interface ConversationItem {
+  id: string;
+  agent_type: string;
+  messages: ChatMessage[];
+  summary: string | null;
+  created_at: string;
+}
+
+export interface ChatResponse {
+  content: string;
+  conversation_id: string;
+  model: string;
+}
+
 // ── 日记 ──
 export interface DiaryEntry {
   id: string;

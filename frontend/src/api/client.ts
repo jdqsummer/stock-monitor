@@ -57,6 +57,21 @@ export const watchlistApi = {
   autoClassify: () => client.post<ApiResponse>('/watchlist/auto-classify'),
 };
 
+// 聊天
+export const chatApi = {
+  send: (message: string, conversationId?: string) =>
+    client.post<ApiResponse<{ content: string; conversation_id: string; model: string }>>('/chat/send', { message, conversation_id: conversationId }),
+  getHistory: (limit = 20) =>
+    client.get<ApiResponse<{ id: string; agent_type: string; messages: { role: string; content: string }[]; summary: string | null; created_at: string }[]>>('/chat/history', { params: { limit } }),
+  deleteConversation: (conversationId: string) =>
+    client.delete<ApiResponse>(`/chat/history/${conversationId}`),
+  getStreamUrl: (message: string, conversationId?: string) => {
+    const params = new URLSearchParams({ message });
+    if (conversationId) params.set('conversation_id', conversationId);
+    return `/api/chat/stream?${params.toString()}`;
+  },
+};
+
 // 配置
 export const configApi = {
   get: () => client.get<ApiResponse<UserConfig>>('/config'),

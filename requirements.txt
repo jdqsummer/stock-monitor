@@ -24,6 +24,9 @@ litellm==1.40.7
 langgraph==0.6.7
 langgraph-checkpoint==2.1.1
 
+# SSE streaming
+sse-starlette==2.2.1
+
 # dev
 pytest==8.2.2
 pytest-asyncio==0.23.7
