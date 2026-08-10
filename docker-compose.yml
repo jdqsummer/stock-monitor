@@ -1,18 +1,29 @@
-# stock-monitor/docker-compose.yml
 version: "3.8"
 
 services:
   app:
     build: .
+    env_file: .env
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+  nginx:
+    image: nginx:alpine
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "80:80"
     volumes:
-      - ./stock_monitor.db:/app/stock_monitor.db
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - frontend_dist:/app/frontend/dist
+    depends_on:
+      - app
+      - frontend
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+
+volumes:
+  frontend_dist:
