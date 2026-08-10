@@ -1,27 +1,39 @@
 version: "3.8"
 
 services:
+  # 后端 API
   app:
     build: .
     env_file: .env
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - redis
 
+  # 前端构建服务：构建产物写入共享卷后退出
+  # (不直接暴露端口，由主 nginx 服务静态文件)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    volumes:
+      - frontend_dist:/app/dist
+    command: sh -c "cp -r /usr/share/nginx/html/. /app/dist/ && echo 'frontend dist copied to shared volume'"
 
+  # 反向代理 + 静态文件服务
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - frontend_dist:/app/frontend/dist
+      - frontend_dist:/usr/share/nginx/html
     depends_on:
-      - app
-      - frontend
+      app:
+        condition: service_started
+      frontend:
+        condition: service_completed_successfully
 
+  # 缓存
   redis:
     image: redis:7-alpine
 

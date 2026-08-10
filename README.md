@@ -93,8 +93,16 @@ npm run dev          # http://localhost:5173
 ### Docker 部署
 
 ```bash
-docker-compose up -d
+# 1. 配置环境变量
+cp .env.example .env
+# 编辑 .env：设置 JWT_SECRET_KEY、LLM_MODEL、LLM_API_KEY
+
+# 2. 构建并启动
+docker compose up -d --build
 # 访问 http://localhost
+
+# 查看日志
+docker compose logs -f app
 ```
 
 ## 核心功能
