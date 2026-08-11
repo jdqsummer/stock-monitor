@@ -70,7 +70,6 @@ class StockDataService:
                 update_time=row.update_time,
             )
         try:
-            from backend.data.westock_client import WestockClient
             return await WestockClient().fetch_quote(code)
         except Exception:
             return None
@@ -83,10 +82,12 @@ class StockDataService:
         swing_high = snapshot.swing_price_high
         if swing_high and swing_high > 0:
             distance_frac = (quote.current_price - swing_high) / swing_high
+            distance_pct = round(distance_frac * 100, 1)
         else:
+            distance_pct = 999.9          # 哨兵：击球区无效 → 高估区
             distance_frac = 999.9
         signal, _, _ = MarginEngine.determine_signal(distance_frac, snapshot.annual_profit_low)
-        return round(distance_frac * 100, 1), signal
+        return distance_pct, signal
 
     @staticmethod
     async def get_board_rows(
