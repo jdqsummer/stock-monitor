@@ -20,7 +20,7 @@ class EmailService:
     @staticmethod
     async def send_verify_code(to_email: str, code: str, purpose: str) -> None:
         """发送验证码邮件。开发阶段同时打印到控制台。"""
-        purpose_text = "注册" if purpose == "register" else "登录"
+        purpose_text = {"register": "注册", "login": "登录", "reset_password": "重置密码"}.get(purpose, "操作")
 
         # 开发阶段：打印到控制台
         logger.info(f"[DEV] 验证码发送到 {to_email}: {code} (用途: {purpose_text})")

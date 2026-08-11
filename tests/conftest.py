@@ -18,6 +18,17 @@ test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 test_async_session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _dispose_test_engine():
+    """Dispose the in-memory engine after the session.
+
+    Without this, aiosqlite's non-daemon worker threads keep the interpreter
+    alive and `pytest` never exits after the suite finishes.
+    """
+    yield
+    asyncio.run(test_engine.dispose())
+
+
 async def override_get_db():
     async with test_async_session_factory() as session:
         try:

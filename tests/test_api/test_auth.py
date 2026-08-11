@@ -134,3 +134,68 @@ class TestAuth:
         data = resp.json()
         assert data["code"] == 0
         assert "access_token" in data["data"]
+
+    @pytest.mark.asyncio
+    async def test_send_reset_code(self, client, mock_redis):
+        """已注册邮箱发送重置验证码"""
+        await _register_user(client, "reset1@example.com", "oldpass123")
+        resp = await client.post("/api/auth/password/send-code", json={
+            "email": "reset1@example.com",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "验证码已发送"
+
+    @pytest.mark.asyncio
+    async def test_send_reset_code_unregistered(self, client, mock_redis):
+        """未注册邮箱发送重置验证码 → 409"""
+        resp = await client.post("/api/auth/password/send-code", json={
+            "email": "nobody@example.com",
+        })
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "该邮箱未注册，请先注册"
+
+    @pytest.mark.asyncio
+    async def test_reset_password(self, client, mock_redis):
+        """重置密码后旧密码失效、新密码可登录"""
+        await _register_user(client, "reset2@example.com", "oldpass123")
+        resp = await client.post("/api/auth/password/reset", json={
+            "email": "reset2@example.com",
+            "code": "000000",
+            "new_password": "newpass456",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "密码重置成功"
+        # 旧密码登录失败
+        old = await client.post("/api/auth/login", json={
+            "email": "reset2@example.com",
+            "password": "oldpass123",
+        })
+        assert old.status_code == 401
+        # 新密码登录成功
+        new = await client.post("/api/auth/login", json={
+            "email": "reset2@example.com",
+            "password": "newpass456",
+        })
+        assert new.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_reset_password_wrong_code(self, client, mock_redis):
+        """验证码错误 → 400"""
+        await _register_user(client, "reset3@example.com", "oldpass123")
+        resp = await client.post("/api/auth/password/reset", json={
+            "email": "reset3@example.com",
+            "code": "999999",
+            "new_password": "newpass456",
+        })
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_reset_send_code_rate_limit(self, client, mock_redis):
+        """重置验证码发送限频 → 429"""
+        from unittest.mock import AsyncMock
+        await _register_user(client, "reset4@example.com", "oldpass123")
+        mock_redis.exists = AsyncMock(return_value=1)  # 注册完成后再开限频
+        resp = await client.post("/api/auth/password/send-code", json={
+            "email": "reset4@example.com",
+        })
+        assert resp.status_code == 429

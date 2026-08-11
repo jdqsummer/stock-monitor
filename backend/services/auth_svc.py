@@ -121,3 +121,17 @@ class AuthService:
     async def get_user_by_id(db: AsyncSession, user_id: str) -> User | None:
         result = await db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def reset_password(db: AsyncSession, email: str, code: str, new_password: str) -> User | None:
+        """验证码 + 新密码重置。验证码不过或邮箱不存在返回 None。"""
+        if not await AuthService.verify_code(email, "reset_password", code):
+            return None
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if not user:
+            return None
+        user.password_hash = AuthService.hash_password(new_password)
+        await db.commit()
+        await db.refresh(user)
+        return user

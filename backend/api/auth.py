@@ -9,6 +9,8 @@ from backend.schemas.user import (
     LoginByCodeRequest,
     LoginRequest,
     RegisterRequest,
+    ResetPasswordRequest,
+    ResetSendCodeRequest,
     SendCodeRequest,
     TokenResponse,
     UserInfo,
@@ -89,6 +91,29 @@ async def login_by_code(req: LoginByCodeRequest, db: AsyncSession = Depends(get_
 
     token = AuthService.create_access_token(user.id)
     return ApiResponse(data=TokenResponse(access_token=token), message="登录成功")
+
+
+@router.post("/password/send-code")
+async def password_send_code(req: ResetSendCodeRequest, db: AsyncSession = Depends(get_db)):
+    """发送重置密码验证码"""
+    if not await AuthService.get_user_by_email(db, req.email):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱未注册，请先注册")
+    if not await AuthService.check_rate_limit(req.email, "reset_password"):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="发送过于频繁，请稍后再试")
+
+    code = EmailService.generate_code()
+    await AuthService.save_verify_code(req.email, "reset_password", code)
+    await EmailService.send_verify_code(req.email, code, "reset_password")
+    return ApiResponse(message="验证码已发送")
+
+
+@router.post("/password/reset", response_model=ApiResponse)
+async def password_reset(req: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """验证码 + 新密码重置密码"""
+    user = await AuthService.reset_password(db, req.email, req.code, req.new_password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
+    return ApiResponse(message="密码重置成功")
 
 
 @router.get("/me", response_model=ApiResponse[UserInfo])
