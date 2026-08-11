@@ -1,16 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Input, Space, Modal, Form, Select, message, Popconfirm } from 'antd';
+import { Table, Button, Space, Modal, Select, message, Popconfirm } from 'antd';
 import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { watchlistApi } from '@/api/client';
-
-interface WatchlistItem {
-  id: string;
-  stock_code: string;
-  stock_name: string;
-  industry: string | null;
-  added_at: string;
-}
+import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
+import type { StockQuote, WatchlistItem } from '@/types';
 
 const INDUSTRY_OPTIONS = [
   '半导体', '消费电子', '白酒', '医药生物', '新能源',
@@ -22,7 +16,7 @@ export function Watchlist() {
   const [data, setData] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [form] = Form.useForm();
+  const [selectedStock, setSelectedStock] = useState<StockQuote | null>(null);
 
   const fetchList = async () => {
     setLoading(true);
@@ -36,12 +30,23 @@ export function Watchlist() {
 
   useEffect(() => { fetchList(); }, []);
 
-  const handleAdd = async (values: { stock_code: string; stock_name: string }) => {
-    await watchlistApi.add(values.stock_code, values.stock_name);
-    message.success('添加成功');
+  const handleAdd = async () => {
+    if (!selectedStock) return;
+    try {
+      await watchlistApi.add(selectedStock.code, selectedStock.name);
+      message.success(`已添加 ${selectedStock.name}（${selectedStock.code}）`);
+      closeModal();
+      fetchList();
+    } catch (err) {
+      // 409「该股票已在自选股中」等后端 detail 直接提示
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail || '添加失败，请重试');
+    }
+  };
+
+  const closeModal = () => {
     setModalOpen(false);
-    form.resetFields();
-    fetchList();
+    setSelectedStock(null);
   };
 
   const handleRemove = async (id: string) => {
@@ -58,8 +63,8 @@ export function Watchlist() {
   const handleAutoClassify = async () => {
     setLoading(true);
     try {
-      await watchlistApi.autoClassify();
-      message.success('智能分类完成');
+      const res = await watchlistApi.autoClassify();
+      message.success(`智能分类完成，更新 ${res.data.data?.updated ?? 0} 只`);
       fetchList();
     } catch {
       message.error('分类失败');
@@ -98,15 +103,15 @@ export function Watchlist() {
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
         pagination={{ pageSize: 20 }} />
 
-      <Modal title="添加自选股" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()}>
-        <Form form={form} onFinish={handleAdd} layout="vertical">
-          <Form.Item name="stock_code" label="股票代码" rules={[{ required: true }]}>
-            <Input placeholder="如 600519" />
-          </Form.Item>
-          <Form.Item name="stock_name" label="股票名称" rules={[{ required: true }]}>
-            <Input placeholder="如 贵州茅台" />
-          </Form.Item>
-        </Form>
+      <Modal title="添加自选股" open={modalOpen}
+        onCancel={closeModal}
+        footer={[
+          <Button key="cancel" onClick={closeModal}>取消</Button>,
+          <Button key="ok" type="primary" disabled={!selectedStock} onClick={handleAdd}>
+            确认添加
+          </Button>,
+        ]}>
+        <StockSearchSelect onSelect={setSelectedStock} onClear={() => setSelectedStock(null)} />
       </Modal>
     </div>
   );
