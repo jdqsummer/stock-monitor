@@ -11,6 +11,7 @@ class Signal(str, Enum):
     GREEN = "green"    # 击球区内
     YELLOW = "yellow"  # 观察区
     RED = "red"        # 高估区
+    NONE = "none"      # 未分析
 
 
 # ── 行情数据 ──
@@ -99,9 +100,9 @@ class WatchlistBoardRow(BaseModel):
     swing_pe: str                          # "18-22倍"
     swing_market_cap: str                  # "576-770亿"
     swing_price: str                       # "38-51元"
-    current_market_cap: float              # 900（亿元）
-    current_price: float                   # 55.89
-    distance_pct: float                    # 15.3（%）
-    signal: Signal
+    current_market_cap: float = 0.0        # 900（亿元）
+    current_price: float = 0.0             # 55.89
+    distance_pct: float | None = None      # 15.3（%）；未分析为 None
+    signal: Signal = Signal.NONE
     industry: str | None = None
     analysis_date: date | None = None
