@@ -22,6 +22,15 @@ export interface TokenResponse {
 // ── 信号灯 ──
 export type Signal = 'green' | 'yellow' | 'red';
 
+// ── 自选股 ──
+export interface WatchlistItem {
+  id: string;
+  stock_code: string;
+  stock_name: string;
+  industry: string | null;
+  added_at: string;
+}
+
 // ── 股票行情 ──
 export interface StockQuote {
   code: string;

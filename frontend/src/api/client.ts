@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -58,13 +58,15 @@ export const dashboardApi = {
 
 // 自选股
 export const watchlistApi = {
-  list: () => client.get<ApiResponse>('/watchlist'),
+  list: () => client.get<ApiResponse<WatchlistItem[]>>('/watchlist'),
   add: (stockCode: string, stockName: string) =>
-    client.post<ApiResponse>('/watchlist', { stock_code: stockCode, stock_name: stockName }),
+    client.post<ApiResponse<WatchlistItem>>('/watchlist', { stock_code: stockCode, stock_name: stockName }),
   remove: (id: string) => client.delete<ApiResponse>(`/watchlist/${id}`),
   update: (id: string, data: Record<string, unknown>) =>
-    client.patch<ApiResponse>(`/watchlist/${id}`, data),
-  autoClassify: () => client.post<ApiResponse>('/watchlist/auto-classify'),
+    client.patch<ApiResponse<WatchlistItem>>(`/watchlist/${id}`, data),
+  autoClassify: () => client.post<ApiResponse<{ updated: number }>>('/watchlist/auto-classify'),
+  search: (keyword: string) =>
+    client.get<ApiResponse<StockQuote[]>>('/watchlist/search', { params: { keyword } }),
 };
 
 // 聊天
