@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AutoComplete, Card, Descriptions } from 'antd';
 import type { StockQuote } from '@/types';
 import { watchlistApi } from '@/api/client';
@@ -19,15 +19,19 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
   const [selected, setSelected] = useState<StockQuote | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const seqRef = useRef(0);
+
   const doSearch = useCallback(async (kw: string) => {
+    const seq = ++seqRef.current;
     setLoading(true);
     try {
       const res = await watchlistApi.search(kw);
+      if (seq !== seqRef.current) return; // 丢弃过期响应
       setOptions(res.data.data || []);
     } catch {
-      setOptions([]);
+      if (seq === seqRef.current) setOptions([]);
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   }, []);
 
@@ -61,8 +65,8 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
   const handleClear = () => {
     setKeyword('');
     setOptions([]);
+    if (selected) onClear?.();
     setSelected(null);
-    onClear?.();
   };
 
   return (
