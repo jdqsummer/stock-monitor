@@ -20,7 +20,7 @@ export interface TokenResponse {
 }
 
 // ── 信号灯 ──
-export type Signal = 'green' | 'yellow' | 'red';
+export type Signal = 'green' | 'yellow' | 'red' | 'none';
 
 // ── 自选股 ──
 export interface WatchlistItem {
@@ -54,7 +54,7 @@ export interface WatchlistBoardRow {
   swing_price: string;
   current_market_cap: number;
   current_price: number;
-  distance_pct: number;
+  distance_pct: number | null;
   signal: Signal;
   industry: string | null;
   analysis_date: string | null;
