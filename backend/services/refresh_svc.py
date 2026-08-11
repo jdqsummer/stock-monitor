@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.data.westock_client import WestockClient
+from backend.db.database import async_session_factory
 from backend.models.stock import StockSnapshot, WatchlistItem
 from backend.schemas.stock import StockQuote
 
@@ -135,3 +136,21 @@ class RefreshService:
             count += 1
         await db.commit()
         return count
+
+
+async def run_quote_refresh() -> int:
+    """定时任务入口：独立 session 刷新行情"""
+    async with async_session_factory() as session:
+        try:
+            return await RefreshService.refresh_quotes(session)
+        finally:
+            await session.close()
+
+
+async def run_recompute_analysis() -> int:
+    """定时任务入口：独立 session 收盘重算 B 表"""
+    async with async_session_factory() as session:
+        try:
+            return await RefreshService.recompute_analysis(session)
+        finally:
+            await session.close()

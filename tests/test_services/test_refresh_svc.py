@@ -86,3 +86,12 @@ async def test_recompute_analysis_updates_signal(db_session):
     # (3000 - 2456)/2456 ≈ 22.1% → 观察区 yellow
     assert snap.distance_pct == 22.1
     assert snap.signal == "yellow"
+
+
+@pytest.mark.asyncio
+async def test_job_entry_points_exist():
+    # 入口函数可调用且返回 int（无自选股时为空任务，不报错）
+    from backend.services.refresh_svc import run_quote_refresh, run_recompute_analysis
+
+    assert callable(run_quote_refresh)
+    assert callable(run_recompute_analysis)

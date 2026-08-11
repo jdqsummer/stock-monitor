@@ -1,13 +1,30 @@
 # stock-monitor/backend/main.py
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import api_router
+from backend.data.scheduler import TaskScheduler
+from backend.services.refresh_svc import run_quote_refresh, run_recompute_analysis
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = TaskScheduler()
+    # 行情 30min 刷新（交易时段由 MarketCalendar 判断）；收盘重算 B
+    scheduler.add_quote_refresh_job(run_quote_refresh, interval_minutes=30)
+    scheduler.add_analysis_job(run_recompute_analysis)
+    scheduler.start()
+    yield
+    scheduler.shutdown()
+
 
 app = FastAPI(
     title="股票监控系统",
     description="AI 企业价值与安全边际分析平台",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
