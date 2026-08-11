@@ -1,0 +1,74 @@
+import httpx
+import pytest
+
+from backend.data.providers.base import ProviderError
+from backend.data.providers.eastmoney import EastMoneyProvider
+from backend.schemas.stock import StockQuote
+
+
+def _quote_fixture() -> dict:
+    return {
+        "rc": 0, "data": {"total": 1, "diff": [
+            {"f2": 1720.0, "f3": 0.12, "f12": "600519", "f13": 1, "f14": "贵州茅台",
+             "f20": 2.16e12, "f21": 2.15e12, "f115": 25.3, "f167": 8.5, "f168": 0.2},
+        ]},
+    }
+
+
+def _search_fixture() -> dict:
+    return {"QuotationCodeTable": {"Data": [
+        {"Code": "600519", "Name": "贵州茅台", "MktNum": "1", "SecurityTypeName": "A股"},
+        {"Code": "000858", "Name": "五粮液", "MktNum": "0", "SecurityTypeName": "A股"},
+    ]}}
+
+
+def _financial_fixture() -> dict:
+    return {"result": {"data": [
+        {"SECUCODE": "600519.SH", "SECURITY_NAME_ABBR": "贵州茅台", "REPORT_DATE": "2026-06-30",
+         "TOTALOPERATEREVE": 1.2e11, "PARENTNETPROFIT": 3.5e10,
+         "DEDUCTPARENTNETPROFIT": 3.2e10, "WEIGHTAVG_ROE": 15.5},
+    ], "pages": 1}}
+
+
+def _handler_factory(payload: dict):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_quote():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_quote_fixture())))
+    quote = await provider.fetch_quote("600519")
+    assert isinstance(quote, StockQuote)
+    assert quote.code == "600519"
+    assert quote.name == "贵州茅台"
+    assert quote.current_price == 1720.0
+    assert quote.change_pct == 0.12
+    assert quote.total_market_cap == pytest.approx(2.16e12 / 1e8)  # 元 → 亿
+    assert quote.pe_dynamic == 25.3
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_quote_no_data():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory({"data": {"diff": []}})))
+    with pytest.raises(ProviderError):
+        await provider.fetch_quote("600519")
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_search():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_search_fixture())))
+    results = await provider.search_stock("茅台")
+    assert {r.code for r in results} == {"600519", "000858"}
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_financials():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_financial_fixture())))
+    report = await provider.fetch_financials("600519")
+    assert report.report_period == "2026H1"
+    assert report.net_profit_parent == pytest.approx(3.5e10 / 1e8)
+    assert report.net_profit_deducted == pytest.approx(3.2e10 / 1e8)
+    assert report.roe == pytest.approx(15.5)
+    assert report.is_official is True
