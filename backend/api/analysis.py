@@ -4,13 +4,17 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from backend.agents.analysis_chain import AnalysisChain, AnalysisReport, create_analysis_chain
 from backend.agents.data_agent import DataAgent
 from backend.agents.workflow import WorkflowRunner
+from backend.api.deps import get_current_user, get_db
 from backend.llm.provider import get_llm
+from backend.models.user import User
+from backend.services.snapshot_svc import SnapshotService
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +67,11 @@ class QuoteResponse(BaseModel):
 # ── 路由 ──
 
 @router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_stock(req: AnalyzeRequest):
+async def analyze_stock(
+    req: AnalyzeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     执行完整 9 步分析。
 
@@ -78,6 +86,7 @@ async def analyze_stock(req: AnalyzeRequest):
             stock_name=req.name,
             industry=req.industry,
         )
+        await SnapshotService.save_snapshot(db, current_user.id, report)
         return {"code": 0, "data": report.to_dict(), "message": "ok"}
     except Exception as e:
         logger.error(f"分析失败 {req.code}: {e}")
@@ -85,7 +94,11 @@ async def analyze_stock(req: AnalyzeRequest):
 
 
 @router.post("/analyze/quick", response_model=AnalyzeResponse)
-async def analyze_quick(req: QuickAnalyzeRequest):
+async def analyze_quick(
+    req: QuickAnalyzeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     快速分析（跳过数据采集，直接计算）。
 
@@ -105,6 +118,7 @@ async def analyze_quick(req: QuickAnalyzeRequest):
             total_shares=req.total_shares,
             industry=req.industry,
         )
+        await SnapshotService.save_snapshot(db, current_user.id, report)
         return {"code": 0, "data": report.to_dict(), "message": "ok"}
     except Exception as e:
         logger.error(f"快速分析失败 {req.code}: {e}")
