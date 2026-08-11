@@ -30,6 +30,7 @@ class WestockClient:
             try:
                 return await p.fetch_quote(code)
             except ProviderError as e:
+                logger.warning(f"数据源 {type(p).__name__} 行情失败: {e}")
                 last_error = e
         raise WestockClientError(f"所有数据源均不可用: {code}: {last_error}")
 
@@ -39,6 +40,7 @@ class WestockClient:
             try:
                 return await p.fetch_financials(code)
             except ProviderError as e:
+                logger.warning(f"数据源 {type(p).__name__} 财报失败: {e}")
                 last_error = e
         raise WestockClientError(f"所有数据源财报均不可用: {code}: {last_error}")
 
@@ -48,7 +50,8 @@ class WestockClient:
                 news = await p.fetch_news(code, limit)
                 if news:
                     return news
-            except ProviderError:
+            except ProviderError as e:
+                logger.warning(f"数据源 {type(p).__name__} 新闻失败: {e}")
                 continue
         return []
 
@@ -58,7 +61,8 @@ class WestockClient:
                 results = await p.search_stock(keyword)
                 if results:
                     return results
-            except ProviderError:
+            except ProviderError as e:
+                logger.warning(f"数据源 {type(p).__name__} 搜索失败: {e}")
                 continue
         return []
 
