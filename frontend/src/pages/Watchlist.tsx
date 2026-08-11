@@ -4,6 +4,7 @@ import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { watchlistApi } from '@/api/client';
 import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
+import { getErrorMessage } from '@/utils/error';
 import type { StockQuote, WatchlistItem } from '@/types';
 
 const INDUSTRY_OPTIONS = [
@@ -17,6 +18,7 @@ export function Watchlist() {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockQuote | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchList = async () => {
     setLoading(true);
@@ -31,16 +33,17 @@ export function Watchlist() {
   useEffect(() => { fetchList(); }, []);
 
   const handleAdd = async () => {
-    if (!selectedStock) return;
+    if (!selectedStock || submitting) return;
+    setSubmitting(true);
     try {
       await watchlistApi.add(selectedStock.code, selectedStock.name);
       message.success(`已添加 ${selectedStock.name}（${selectedStock.code}）`);
       closeModal();
       fetchList();
     } catch (err) {
-      // 409「该股票已在自选股中」等后端 detail 直接提示
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail || '添加失败，请重试');
+      message.error(getErrorMessage(err, '添加失败，请重试'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -107,7 +110,7 @@ export function Watchlist() {
         onCancel={closeModal}
         footer={[
           <Button key="cancel" onClick={closeModal}>取消</Button>,
-          <Button key="ok" type="primary" disabled={!selectedStock} onClick={handleAdd}>
+          <Button key="ok" type="primary" disabled={!selectedStock} loading={submitting} onClick={handleAdd}>
             确认添加
           </Button>,
         ]}>
