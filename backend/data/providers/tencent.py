@@ -1,5 +1,6 @@
 # stock-monitor/backend/data/providers/tencent.py
 """腾讯自选股公开接口：qt.gtimg.cn 行情 + smartbox.gtimg.cn 搜索"""
+import json
 import logging
 import re
 from datetime import datetime
@@ -103,7 +104,6 @@ class TencentProvider(StockDataProvider):
         m = re.search(r"\((\{.*\})\)\s*;?\s*$", text, re.S)
         if not m:
             return []
-        import json
         # smartbox 返回 JS 对象字面量，键可能不带引号；统一补引号为合法 JSON
         obj = re.sub(r"([{,]\s*)([A-Za-z_]\w*)\s*:", r'\1"\2":', m.group(1))
         try:

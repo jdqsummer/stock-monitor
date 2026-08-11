@@ -13,11 +13,6 @@ from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 logger = logging.getLogger(__name__)
 
 
-class WestockClientError(Exception):
-    """市场数据客户端异常（所有 provider 均失败时）"""
-    pass
-
-
 class WestockClient:
     """按优先级链依次尝试各数据源，全部失败时回退 MockProvider"""
 
@@ -32,7 +27,7 @@ class WestockClient:
             except ProviderError as e:
                 logger.warning(f"数据源 {type(p).__name__} 行情失败: {e}")
                 last_error = e
-        raise WestockClientError(f"所有数据源均不可用: {code}: {last_error}")
+        raise ProviderError(f"所有数据源均不可用: {code}: {last_error}")
 
     async def fetch_financials(self, code: str) -> FinancialReport:
         last_error: Exception | None = None
@@ -42,7 +37,7 @@ class WestockClient:
             except ProviderError as e:
                 logger.warning(f"数据源 {type(p).__name__} 财报失败: {e}")
                 last_error = e
-        raise WestockClientError(f"所有数据源财报均不可用: {code}: {last_error}")
+        raise ProviderError(f"所有数据源财报均不可用: {code}: {last_error}")
 
     async def fetch_news(self, code: str, limit: int = 10) -> list[CompanyNews]:
         for p in self.providers:
