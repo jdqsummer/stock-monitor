@@ -14,7 +14,8 @@
 - `Signal` 枚举增加 `NONE = "none"`（无快照/未分析）。
 - 设计原则：纯函数优先 + 依赖注入 + 优雅降级（Redis/westock 不可用均不阻塞）。
 - TDD：每个任务先写失败测试（RED）→ 最小实现（GREEN）→ 提交。提交前 `pytest tests/ -v` 全绿。
-- **一次性迁移**：现有 dev 库 `stock_monitor.db` 的 `analysis_snapshots` 表是空壳旧结构，改模型后需 `DROP TABLE analysis_snapshots;`（或删除 db 文件重建）让 `create_all` 重建。测试用内存库自动 `create_all`，不受影响。
+- **迁移**：`analysis_snapshots` 表结构改造走 **Alembic 迁移**（项目已用 Alembic，见 `alembic/versions/`，最新 rev `a1b2c3d4e5f6`）。该表为空壳（从未写入），迁移直接 drop + create 重建。测试用内存库自动 `create_all`，不受影响。
+- **保留既有修复**：`WatchlistItem` 已有 `UniqueConstraint("user_id", "stock_code", name="uq_watchlist_user_stock")`（前次终审修复），Task 1 重写 `stock.py` 必须原样保留，不得回退。
 - 开发期 westock 未配置 → `WestockClient()` base_url 空 → 自动 mock，全链路可跑。
 
 ---
@@ -100,6 +101,9 @@ class WatchlistItem(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     added_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    # 既有修复，不得移除
+    __table_args__ = (UniqueConstraint("user_id", "stock_code", name="uq_watchlist_user_stock"),)
+
 
 class StockSnapshot(Base):
     """A 表：行情快照，按股票 code 一行（跨用户共享）"""
@@ -175,16 +179,95 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [ ] **Step 4: 创建 Alembic 迁移（analysis_snapshots 重建）**
+
+新建 `alembic/versions/b3e5f7a8c9d1_redesign_analysis_snapshots.py`（down_revision 为当前最新 `a1b2c3d4e5f6`）：
+
+```python
+"""redesign analysis_snapshots to numeric columns
+
+Revision ID: b3e5f7a8c9d1
+Revises: a1b2c3d4e5f6
+Create Date: 2026-08-11
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+revision: str = 'b3e5f7a8c9d1'
+down_revision: Union[str, None] = 'a1b2c3d4e5f6'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    # 表为空壳（从未写入），直接重建为数值化结构
+    op.drop_table('analysis_snapshots')
+    op.create_table(
+        'analysis_snapshots',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('stock_code', sa.String(20), nullable=False),
+        sa.Column('annual_profit_low', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('annual_profit_high', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('profit_method', sa.String(20), nullable=False, server_default=''),
+        sa.Column('pe_low', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('pe_high', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('swing_market_cap_low', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('swing_market_cap_high', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('swing_price_low', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('swing_price_high', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('current_market_cap', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('current_price', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('distance_pct', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('signal', sa.String(10), nullable=False, server_default='none'),
+        sa.Column('rating', sa.String(10), nullable=False, server_default=''),
+        sa.Column('data_date', sa.Date(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
+        sa.UniqueConstraint('user_id', 'stock_code', name='uq_snapshot_user_code'),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table('analysis_snapshots')
+    op.create_table(
+        'analysis_snapshots',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id'), nullable=False),
+        sa.Column('stock_code', sa.String(20), nullable=False),
+        sa.Column('annual_profit', sa.String(50), nullable=True),
+        sa.Column('profit_method', sa.String(20), nullable=True),
+        sa.Column('swing_pe', sa.String(50), nullable=True),
+        sa.Column('swing_market_cap', sa.String(50), nullable=True),
+        sa.Column('swing_price', sa.String(50), nullable=True),
+        sa.Column('current_market_cap', sa.Float(), nullable=True),
+        sa.Column('current_price', sa.Float(), nullable=True),
+        sa.Column('distance_pct', sa.Float(), nullable=True),
+        sa.Column('rating', sa.String(10), nullable=True),
+        sa.Column('data_date', sa.DateTime(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
+    )
+```
+
+应用迁移验证：
+
+```bash
+alembic upgrade head
+alembic downgrade b3e5f7a8c9d1  # 可选验证
+```
+
+- [ ] **Step 5: 运行测试验证通过**
 
 Run: `python -m pytest tests/test_models/test_models.py -q`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 6: 提交**
 
 ```bash
-git add backend/models/stock.py backend/models/__init__.py tests/test_models/test_models.py
-git commit -m "feat: 数据模型层 — 新增 stock_snapshots/financials，analysis_snapshots 数值化"
+git add backend/models/stock.py backend/models/__init__.py alembic/versions/b3e5f7a8c9d1_redesign_analysis_snapshots.py tests/test_models/test_models.py
+git commit -m "feat: 数据模型层 — 新增 stock_snapshots/financials，analysis_snapshots 数值化 + Alembic 迁移"
 ```
 
 ---
@@ -1512,15 +1595,8 @@ git commit -m "feat: 前端支持未分析行 — Signal 加 none，SignalBadge 
 python -m pytest tests/ -v
 ```
 
-Expected: 全部通过（既有 144 测试 + 本次新增测试）。
+Expected: 全部通过（既有 163 测试 + 本次新增测试）。
 
-- [ ] **一次性迁移提醒**
+- [ ] **迁移提醒**
 
-本地/生产已存在的 `stock_monitor.db` 需重建 `analysis_snapshots` 表：
-
-```bash
-# 仅当库里已存在旧结构 analysis_snapshots（空表）时执行
-sqlite3 stock_monitor.db "DROP TABLE IF EXISTS analysis_snapshots;"
-```
-
-应用下次启动 `create_all` 会重建数值化新结构。
+Task 1 的 Alembic 迁移 `b3e5f7a8c9d1` 已重建 `analysis_snapshots` 为数值化结构。本地/生产已有库执行 `alembic upgrade head` 即可；全新库由 `create_all` + 迁移共同保证结构一致。
