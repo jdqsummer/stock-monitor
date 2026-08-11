@@ -56,7 +56,8 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 |:--|:--|
 | Plan-1~5：平台/缓存/前端/Agent/记忆 | Diary Agent（后端 CRUD + 行为点评） |
 | Chat Agent：SSE 对话 + 记忆注入 + 前端聊天页 | 前端对接分析 API（Analysis 页为占位） |
-| 忘记密码/重置密码：邮箱验证码全链路 | 看板后端接口（前端已调用，后端未实现） |
+| 忘记密码/重置密码：邮箱验证码全链路 | 定时任务实盘数据源接入（westock-mcp 真实渠道配置） |
 | 自选股管理：搜索添加 + CRUD + 智能分类 | |
+| 仪表盘数据链路：A/B 双层（stock_snapshots/financials 原始数据 + analysis_snapshots 衍生数据）、定时刷新（30min 行情 + 收盘重算）、dashboard 三端点、分析落库、前端未分析显示 | |
 | 生产部署：腾讯云 Docker Compose（SMTP/westock/LLM 待配置） | |
-| 163 tests 全部通过 | |
+| 186 tests 全部通过 | |
