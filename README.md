@@ -1,6 +1,6 @@
 # Stock Monitor — AI 企业价值与安全边际分析平台
 
-基于 LangGraph + OpenHarness 的 A 股投资分析系统。自动采集实时行情与财报数据，执行 9 步安全边际分析，输出企业价值评估与投资建议。
+基于 LangGraph + OpenHarness 的 A 股投资分析系统。自动采集实时行情与财报数据，执行 9 步安全边际分析，输出企业价值评估与投资建议。内置 AI 聊天 Agent（SSE 对话 + 记忆注入）与 L0-L3 投资记忆系统。
 
 ## 技术栈
 
@@ -15,7 +15,8 @@
 | **部署** | Docker Compose + Nginx |
 | **数据源** | westock-mcp (腾讯自选股) |
 | **任务调度** | APScheduler + A 股交易日历 |
-| **认证** | JWT + 邮箱验证码 |
+| **认证** | JWT + 邮箱验证码（注册/登录/重置密码） |
+| **邮件** | aiosmtplib（验证码发送，开发期降级控制台打印） |
 
 ## 项目结构
 
@@ -28,7 +29,8 @@ stock-monitor/
 │   │   ├── analysis_chain.py # 9步分析链 Agent
 │   │   ├── constraints.py   # OpenHarness 约束引擎 (6约束)
 │   │   ├── data_agent.py    # 数据采集 Agent (ReAct)
-│   │   └── memory_workflow.py # 记忆蒸馏管道 (L1→L2→L3)
+│   │   ├── memory_workflow.py # 记忆蒸馏管道 (L1→L2→L3)
+│   │   └── chat_agent.py    # Chat Agent (SSE + 记忆注入)
 │   ├── llm/             # 多 LLM Provider 适配
 │   │   └── provider.py      # OpenAI/Anthropic/DeepSeek/Ollama/LiteLLM
 │   ├── memory/          # Plan-5: 记忆系统
@@ -37,6 +39,7 @@ stock-monitor/
 │   │   └── distillation.py  # 异步蒸馏管道
 │   ├── services/        # 业务逻辑
 │   │   ├── margin_engine.py # 安全边际计算引擎
+│   │   ├── email_svc.py     # 邮箱验证码服务
 │   │   ├── stock_data_svc.py
 │   │   ├── memory_svc.py
 │   │   ├── auth_svc.py
@@ -48,14 +51,16 @@ stock-monitor/
 │   │   └── scheduler.py     # APScheduler 调度
 │   ├── api/             # REST API
 │   │   ├── analysis.py      # Agent 分析接口 (7端点)
-│   │   ├── auth.py
-│   │   └── config.py
+│   │   ├── auth.py          # 认证/验证码/密码重置
+│   │   ├── chat.py          # Chat 对话接口 (SSE)
+│   │   ├── config.py
+│   │   └── deps.py          # 依赖注入 (get_db / get_current_user)
 │   ├── models/          # SQLAlchemy ORM
 │   ├── schemas/         # Pydantic Schema
 │   ├── db/              # 数据库配置
 │   └── main.py          # FastAPI 入口
 ├── frontend/            # React + TypeScript
-├── tests/               # pytest (45 tests)
+├── tests/               # pytest (163 tests)
 ├── docs/                # 需求文档 / 投资框架
 ├── docker-compose.yml
 └── requirements.txt
@@ -127,37 +132,52 @@ docker compose logs -f app
 - 🟢 击球区 / 🟡 观察区 / 🔴 高估区 三色信号
 - 关键指标：年化利润、PE区间、击球区股价、距击球区%
 
-### 3. AI 聊天 Agent（规划中）
+### 3. AI 聊天 Agent（已实现）
 
 - SSE 流式对话
 - 记忆检索注入 (L3画像 → L2策略 → L1事实)
 - 价值投资角色 System Prompt
+- 多轮会话 + 历史管理
 
-### 4. 投资日记（规划中）
+### 4. 投资日记（开发中）
 
 - 结构化投资决策记录
 - Agent 行为点评与反馈
+- 当前进度：模型 + 前端页面已建，后端 CRUD API 待实现
 
 ## API 概览
 
-| 端点 | 说明 |
-|:--|:---|
-| `POST /api/analysis/analyze` | 执行完整 9 步分析 |
-| `POST /api/analysis/analyze/quick` | 快速分析（跳过数据采集） |
-| `POST /api/analysis/analyze/batch` | 批量分析（最多 20 只） |
-| `GET /api/analysis/quote/{code}` | 获取实时行情 + 财报 |
-| `GET /api/analysis/search?keyword=` | 搜索股票 |
-| `GET /api/analysis/report/{code}` | 获取 Markdown 分析报告 |
-| `POST /api/auth/register` | 用户注册 |
-| `POST /api/auth/login` | 用户登录 |
-| `GET /api/config/` | 系统配置 |
+| 模块 | 端点 | 说明 |
+|:--|:--|:---|
+| 分析 | `POST /api/analysis/analyze` | 执行完整 9 步分析 |
+| | `POST /api/analysis/analyze/quick` | 快速分析（跳过数据采集） |
+| | `POST /api/analysis/analyze/batch` | 批量分析（最多 20 只） |
+| | `GET /api/analysis/quote/{code}` | 获取实时行情 + 财报 |
+| | `GET /api/analysis/search?keyword=` | 搜索股票 |
+| | `GET /api/analysis/report/{code}` | 获取 Markdown 分析报告 |
+| | `GET /api/analysis/health` | 健康检查 |
+| 认证 | `POST /api/auth/register/send-code` | 发送注册验证码 |
+| | `POST /api/auth/register` | 用户注册（邮箱验证码） |
+| | `POST /api/auth/login` | 用户登录 |
+| | `POST /api/auth/login/send-code` | 发送登录验证码 |
+| | `POST /api/auth/login/code` | 验证码登录 |
+| | `POST /api/auth/password/send-code` | 发送重置密码验证码 |
+| | `POST /api/auth/password/reset` | 验证码重置密码 |
+| | `GET /api/auth/me` | 当前用户信息 |
+| Chat | `POST /api/chat/send` | 发送消息（非流式） |
+| | `GET /api/chat/stream` | SSE 流式对话 |
+| | `GET /api/chat/history` | 历史会话列表 |
+| | `DELETE /api/chat/history/{id}` | 删除会话 |
+| 配置 | `GET /api/config/` | 获取系统配置 |
+| | `PUT /api/config/` | 更新系统配置 |
+| | `GET /api/config/llm-models` | LLM 模型列表 |
 
 ## 开发
 
 ### 运行测试
 
 ```bash
-pytest tests/ -v       # 45 tests
+pytest tests/ -v       # 163 tests
 ```
 
 ### LLM Provider 配置

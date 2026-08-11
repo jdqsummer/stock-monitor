@@ -12,14 +12,19 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 | `backend/agents/data_agent.py` | 数据采集 Agent：ReAct 模式 + 工具调用 + 并行采集 |
 | `backend/agents/state.py` | 共享 TypedDict：AnalysisState / DataCollectionState |
 | `backend/agents/memory_workflow.py` | 蒸馏管道：L1→L2→L3→冲突检测 |
+| `backend/agents/chat_agent.py` | Chat Agent：SSE 流式对话 + 记忆检索注入 + 多轮会话 |
 | `backend/llm/provider.py` | LLMProvider 抽象 + 6 实现（OpenAI/Anthropic/DeepSeek/Ollama/LiteLLM/Mock） |
 | `backend/memory/store.py` | L0-L3 CRUD（所有方法需 AsyncSession） |
 | `backend/memory/retrieval.py` | 分层检索（L3→L2→L1） |
 | `backend/memory/distillation.py` | DistillationPipeline（蒸馏到 L1/L2/L3） |
 | `backend/services/margin_engine.py` | 安全边际计算：纯函数，AnalysisInput → MarginResult |
+| `backend/services/email_svc.py` | 邮件服务：验证码发送（开发期降级控制台打印） |
 | `backend/data/westock_client.py` | westock-mcp 封装（无配置时降级 mock） |
 | `backend/data/cache.py` | Redis 缓存代理（Redis 不可用时优雅跳过） |
 | `backend/api/analysis.py` | Agent REST API（7 端点） |
+| `backend/api/auth.py` | 认证 API：注册/登录/邮箱验证码/密码重置（JWT） |
+| `backend/api/chat.py` | Chat API：send / stream(SSE) / history |
+| `backend/api/deps.py` | 依赖注入：get_db / get_current_user |
 
 ## 投资框架（详见 `docs/股票WEB监控系统/投资分析框架.md`）
 
@@ -49,7 +54,9 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 
 | 已完成 | 待实现 |
 |:--|:--|
-| Plan-1~5：平台/缓存/前端/Agent/记忆 | Chat Agent（SSE 对话 + 记忆注入） |
-| 45 tests 全部通过 | Diary Agent（日记 CRUD + 行为点评） |
-| westock-mcp / Redis / LLM 均支持降级 | Plan-4 模块测试（0→30+ tests） |
-| | 前端对接分析 API + 生产部署 |
+| Plan-1~5：平台/缓存/前端/Agent/记忆 | Diary Agent（后端 CRUD + 行为点评） |
+| Chat Agent：SSE 对话 + 记忆注入 + 前端聊天页 | 前端对接分析 API（Analysis 页为占位） |
+| 忘记密码/重置密码：邮箱验证码全链路 | 看板后端接口（前端已调用，后端未实现） |
+| 自选股管理：搜索添加 + CRUD + 智能分类 | |
+| 生产部署：腾讯云 Docker Compose（SMTP/westock/LLM 待配置） | |
+| 163 tests 全部通过 | |
