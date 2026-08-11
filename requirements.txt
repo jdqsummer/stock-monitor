@@ -25,7 +25,8 @@ langgraph==0.6.7
 langgraph-checkpoint==2.1.1
 
 # SSE streaming
-sse-starlette==2.2.1
+# 1.8.2 与 fastapi==0.111.0 的 starlette<0.38 兼容（2.2.1 需 starlette>=0.41.3，冲突）
+sse-starlette==1.8.2
 
 # dev
 pytest==8.2.2

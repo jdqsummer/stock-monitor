@@ -37,7 +37,7 @@ export function AppLayout() {
       <Layout>
         <Header style={{ background: '#fff', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0 24px' }}>
           <Dropdown menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: handleLogout }] }}>
-            <Button icon={<UserOutlined />}>{user?.username || '用户'}</Button>
+            <Button icon={<UserOutlined />}>{user?.email || user?.username || '用户'}</Button>
           </Dropdown>
         </Header>
         <Content style={{ margin: 16, padding: 24, background: '#fff', borderRadius: 8 }}>

@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -20,7 +20,10 @@ client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 client.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiResponse>) => {
-    if (error.response?.status === 401) {
+    // 认证接口的 401（如登录密码错误）是业务错误，交由页面提示；
+    // 其余接口的 401 视为会话过期，清空 token 跳登录页
+    const url = error.config?.url || '';
+    if (error.response?.status === 401 && !url.startsWith('/auth/')) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }
@@ -31,11 +34,14 @@ client.interceptors.response.use(
 // ── API 方法 ──
 
 // 认证
+// 后端契约：login 用 email，register 用 email + code + password（均为邮箱体系，无 username）
 export const authApi = {
-  register: (username: string, password: string) =>
-    client.post<ApiResponse>('/auth/register', { username, password }),
-  login: (username: string, password: string) =>
-    client.post<ApiResponse<TokenResponse>>('/auth/login', { username, password }),
+  register: (email: string, password: string, code: string) =>
+    client.post<ApiResponse<TokenResponse>>('/auth/register', { email, password, code }),
+  sendRegisterCode: (email: string) =>
+    client.post<ApiResponse>('/auth/register/send-code', { email }),
+  login: (email: string, password: string) =>
+    client.post<ApiResponse<TokenResponse>>('/auth/login', { email, password }),
   getMe: () => client.get<ApiResponse>('/auth/me'),
 };
 
@@ -62,7 +68,7 @@ export const chatApi = {
   send: (message: string, conversationId?: string) =>
     client.post<ApiResponse<{ content: string; conversation_id: string; model: string }>>('/chat/send', { message, conversation_id: conversationId }),
   getHistory: (limit = 20) =>
-    client.get<ApiResponse<{ id: string; agent_type: string; messages: { role: string; content: string }[]; summary: string | null; created_at: string }[]>>('/chat/history', { params: { limit } }),
+    client.get<ApiResponse<ConversationItem[]>>('/chat/history', { params: { limit } }),
   deleteConversation: (conversationId: string) =>
     client.delete<ApiResponse>(`/chat/history/${conversationId}`),
   getStreamUrl: (message: string, conversationId?: string) => {

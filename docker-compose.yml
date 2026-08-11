@@ -3,9 +3,24 @@ version: "3.8"
 services:
   # 后端 API
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # 国内 pip 镜像（默认官方源，其他环境不受影响）
+        PIP_INDEX_URL: https://mirrors.cloud.tencent.com/pypi/simple
     env_file: .env
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    # 启动前先跑 alembic 迁移建表（新库无表则 API 报错），再启动 uvicorn
+    command: sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    # SQLite 数据持久化：容器重建不丢库
+    volumes:
+      - app_data:/app/data
+    # 健康检查：供 nginx 等服务等待后端真正就绪
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       - redis
 
@@ -15,6 +30,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # 国内 npm 镜像（默认官方源，其他环境不受影响）
+        NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
     volumes:
       - frontend_dist:/app/dist
     command: sh -c "cp -r /usr/share/nginx/html/. /app/dist/ && echo 'frontend dist copied to shared volume'"
@@ -29,7 +47,7 @@ services:
       - frontend_dist:/usr/share/nginx/html
     depends_on:
       app:
-        condition: service_started
+        condition: service_healthy
       frontend:
         condition: service_completed_successfully
 
@@ -39,3 +57,4 @@ services:
 
 volumes:
   frontend_dist:
+  app_data:

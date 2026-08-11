@@ -76,10 +76,22 @@ class TestAuth:
 
     @pytest.mark.asyncio
     async def test_duplicate_registration(self, client, mock_redis):
-        """重复注册应返回 409"""
+        """重复注册应返回 409（send-code 提前提示已注册，register 端也拒绝）"""
         await _register_user(client, "user3@example.com", "testpass123")
-        resp = await _register_user(client, "user3@example.com", "testpass123")
+        # 已注册邮箱再发验证码 → 409 提示已注册，引导登录
+        resp = await client.post("/api/auth/register/send-code", json={
+            "email": "user3@example.com",
+            "purpose": "register",
+        })
         assert resp.status_code == 409
+        assert resp.json()["detail"] == "该邮箱已注册，请直接登录"
+        # 直接再次注册 → 仍 409
+        resp2 = await client.post("/api/auth/register", json={
+            "email": "user3@example.com",
+            "code": "000000",
+            "password": "testpass123",
+        })
+        assert resp2.status_code == 409
 
     @pytest.mark.asyncio
     async def test_get_me_authenticated(self, client, mock_redis):

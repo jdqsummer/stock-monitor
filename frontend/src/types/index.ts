@@ -8,7 +8,9 @@ export interface ApiResponse<T = unknown> {
 // ── 认证 ──
 export interface UserInfo {
   id: string;
-  username: string;
+  email: string;
+  email_verified?: boolean;
+  username?: string;
   created_at: string;
 }
 

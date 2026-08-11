@@ -20,9 +20,13 @@ router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 
 @router.post("/register/send-code")
-async def register_send_code(req: SendCodeRequest):
+async def register_send_code(req: SendCodeRequest, db: AsyncSession = Depends(get_db)):
     """发送注册验证码"""
-    # 检查邮箱是否已注册
+    # 邮箱已注册则直接提示并引导登录（避免白发验证码、到注册时才报 409）
+    if await AuthService.get_user_by_email(db, req.email):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册，请直接登录")
+
+    # 发送频率限制
     if not await AuthService.check_rate_limit(req.email, "register"):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="发送过于频繁，请稍后再试")
 
