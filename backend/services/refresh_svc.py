@@ -103,3 +103,35 @@ class RefreshService:
         row.is_official = fin.is_official
         row.updated_at = datetime.now()
         return row
+
+    @staticmethod
+    async def recompute_analysis(db: AsyncSession) -> int:
+        """收盘后重算：对每个 B 快照，用 A 表最新价重算 distance/signal"""
+        from backend.models.stock import AnalysisSnapshot
+        from backend.schemas.stock import StockQuote
+        from backend.services.stock_data_svc import StockDataService
+
+        snapshots = (
+            await db.execute(select(AnalysisSnapshot))
+        ).scalars().all()
+        count = 0
+        for snap in snapshots:
+            quote_row = (
+                await db.execute(select(StockSnapshot).where(StockSnapshot.code == snap.stock_code))
+            ).scalar_one_or_none()
+            if quote_row is None:
+                continue
+            quote = StockQuote(
+                code=quote_row.code, name=quote_row.name,
+                current_price=quote_row.current_price, change_pct=quote_row.change_pct,
+                total_market_cap=quote_row.total_market_cap,
+                pe_dynamic=quote_row.pe_dynamic, total_shares=quote_row.total_shares,
+            )
+            distance_pct, signal = StockDataService.recompute_distance_signal(snap, quote)
+            snap.current_price = quote.current_price
+            snap.current_market_cap = quote.total_market_cap
+            snap.distance_pct = distance_pct
+            snap.signal = signal.value
+            count += 1
+        await db.commit()
+        return count

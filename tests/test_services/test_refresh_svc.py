@@ -50,3 +50,39 @@ async def test_refresh_quotes_keeps_old_on_failure(db_session, monkeypatch):
         select(StockSnapshot).where(StockSnapshot.code == "600519")
     )).scalar_one()
     assert row_after.current_price == row_before.current_price
+
+
+import pytest
+from datetime import date
+
+from sqlalchemy import select
+
+from backend.models.stock import AnalysisSnapshot, StockSnapshot
+from backend.services.refresh_svc import RefreshService
+
+
+@pytest.mark.asyncio
+async def test_recompute_analysis_updates_signal(db_session):
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=3000.0,
+                                 total_market_cap=19500.0))
+    db_session.add(AnalysisSnapshot(
+        user_id="u1", stock_code="600519",
+        annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
+        pe_low=20, pe_high=35,
+        swing_market_cap_low=13760, swing_market_cap_high=29470,
+        swing_price_low=1147, swing_price_high=2456,
+        current_market_cap=19500, current_price=1560,
+        distance_pct=-38.9, signal="green", data_date=date(2026, 8, 11),
+    ))
+    await db_session.commit()
+
+    count = await RefreshService.recompute_analysis(db_session)
+    assert count == 1
+
+    snap = (await db_session.execute(
+        select(AnalysisSnapshot).where(AnalysisSnapshot.stock_code == "600519")
+    )).scalar_one()
+    assert snap.current_price == 3000.0
+    # (3000 - 2456)/2456 ≈ 22.1% → 观察区 yellow
+    assert snap.distance_pct == 22.1
+    assert snap.signal == "yellow"
