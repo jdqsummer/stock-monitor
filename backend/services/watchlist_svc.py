@@ -1,12 +1,9 @@
 # stock-monitor/backend/services/watchlist_svc.py
-import logging
-
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.stock import WatchlistItem
-
-logger = logging.getLogger(__name__)
 
 
 class DuplicateStockError(Exception):
@@ -62,7 +59,11 @@ class WatchlistService:
             industry=industry,
         )
         db.add(item)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise DuplicateStockError(f"该股票已在自选股中: {code} {name}")
         await db.refresh(item)
         return item
 

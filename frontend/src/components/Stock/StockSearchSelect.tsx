@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AutoComplete, Card, Descriptions } from 'antd';
+import { AutoComplete, Card, Descriptions, Spin } from 'antd';
 import type { StockQuote } from '@/types';
 import { watchlistApi } from '@/api/client';
 
@@ -39,6 +39,7 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
   useEffect(() => {
     if (!keyword.trim()) {
       setOptions([]);
+      setLoading(false);
       return;
     }
     const t = setTimeout(() => doSearch(keyword.trim()), 300);
@@ -87,7 +88,7 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
             </div>
           ),
         }))}
-        notFoundContent={keyword.trim() && !loading ? '暂无匹配' : undefined}
+        notFoundContent={loading ? <Spin size="small" /> : keyword.trim() ? '暂无匹配' : undefined}
         placeholder="输入股票代码或名称搜索"
         style={{ width: '100%' }}
         allowClear

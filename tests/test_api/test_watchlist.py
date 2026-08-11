@@ -88,7 +88,7 @@ class TestWatchlistAPI:
         assert resp.json()["data"] == []
 
     @pytest.mark.asyncio
-    async def test_remove_not_found(self, client, mock_redis):
+    async def test_remove_not_found(self, client):
         token = await _auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
         resp = await client.delete("/api/watchlist/not-exist", headers=headers)

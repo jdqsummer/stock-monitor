@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_db
 from backend.data.westock_client import WestockClient
+from backend.models.stock import WatchlistItem
 from backend.models.user import User
 from backend.schemas.common import ApiResponse
 from backend.schemas.stock import StockQuote
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api/watchlist", tags=["自选股"])
 _client = WestockClient()
 
 
-def _to_out(item) -> WatchlistItemOut:
+def _to_out(item: WatchlistItem) -> WatchlistItemOut:
     return WatchlistItemOut(
         id=item.id,
         stock_code=item.stock_code,

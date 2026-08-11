@@ -144,7 +144,8 @@ class WestockClient:
             logger.error(f"搜索股票失败 '{keyword}': {e}")
             return []
 
-    def _mock_search(self, keyword: str) -> list[StockQuote]:
+    @staticmethod
+    def _mock_search(keyword: str) -> list[StockQuote]:
         """开发阶段：在内置 mock 股票库中按代码/名称匹配，代码精确优先"""
         kw = keyword.strip()
         if not kw:
