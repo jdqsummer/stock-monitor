@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = "noreply@stock-monitor.local"
 
+    # 数据源
+    DATA_PROVIDER_PRIORITY: str = "mock"  # 逗号分隔优先级链：tencent,eastmoney,mock
+
     # 验证码
     VERIFY_CODE_EXPIRE_SECONDS: int = 300  # 5 分钟
     VERIFY_CODE_RATE_LIMIT_SECONDS: int = 60  # 同一邮箱 60s 内不可重复发送
