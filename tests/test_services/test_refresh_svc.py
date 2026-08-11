@@ -84,7 +84,7 @@ async def test_recompute_analysis_updates_signal(db_session):
     )).scalar_one()
     assert snap.current_price == 3000.0
     # (3000 - 2456)/2456 ≈ 22.1% → 观察区 yellow
-    assert snap.distance_pct == 22.1
+    assert snap.distance_pct == pytest.approx(22.1)
     assert snap.signal == "yellow"
 
 

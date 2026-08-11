@@ -126,7 +126,11 @@ async def analyze_quick(
 
 
 @router.post("/analyze/batch", response_model=AnalyzeResponse)
-async def analyze_batch(req: BatchAnalyzeRequest):
+async def analyze_batch(
+    req: BatchAnalyzeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     批量分析多只股票。
 
@@ -135,6 +139,8 @@ async def analyze_batch(req: BatchAnalyzeRequest):
     try:
         chain = AnalysisChain()
         reports = await chain.analyze_batch(req.codes)
+        for report in reports:
+            await SnapshotService.save_snapshot(db, current_user.id, report)
         return {
             "code": 0,
             "data": {

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.data.westock_client import WestockClient
 from backend.db.database import async_session_factory
 from backend.models.stock import StockSnapshot, WatchlistItem
-from backend.schemas.stock import StockQuote
+from backend.schemas.stock import FinancialReport, StockQuote
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class RefreshService:
         return count
 
     @staticmethod
-    async def _upsert_financial(db: AsyncSession, fin):
+    async def _upsert_financial(db: AsyncSession, fin: FinancialReport):
         from backend.models.stock import FinancialRecord
 
         row = (
@@ -109,7 +109,6 @@ class RefreshService:
     async def recompute_analysis(db: AsyncSession) -> int:
         """收盘后重算：对每个 B 快照，用 A 表最新价重算 distance/signal"""
         from backend.models.stock import AnalysisSnapshot
-        from backend.schemas.stock import StockQuote
         from backend.services.stock_data_svc import StockDataService
 
         snapshots = (

@@ -18,7 +18,7 @@ const columns: ColumnsType<WatchlistBoardRow> = [
   { title: '当前股价', dataIndex: 'current_price', key: 'current_price', width: 90,
     render: (v: number) => `¥${v.toFixed(2)}` },
   { title: '距击球区', dataIndex: 'distance_pct', key: 'distance_pct', width: 130,
-    render: (v: number, record: WatchlistBoardRow) => <SignalBadge signal={record.signal} distancePct={v} /> },
+    render: (v: number | null, record: WatchlistBoardRow) => <SignalBadge signal={record.signal} distancePct={v} /> },
 ];
 
 export function SignalBoard({ data, loading }: { data: WatchlistBoardRow[]; loading: boolean }) {

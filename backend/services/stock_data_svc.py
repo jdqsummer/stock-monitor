@@ -93,13 +93,45 @@ class StockDataService:
     async def get_board_rows(
         db: AsyncSession, user_id: str, items,
     ) -> list[WatchlistBoardRow]:
-        """组装安全边际监控看板行：A.watchlist × B.snapshot × A 实时价"""
+        """组装安全边际监控看板行：A.watchlist × B.snapshot × A 实时价（批量查询，避免 N+1）"""
         rows: list[WatchlistBoardRow] = []
+        if not items:
+            return rows
+
+        codes = [item.stock_code for item in items]
+        # 批量取 A 表行情
+        a_rows = (
+            await db.execute(select(StockSnapshot).where(StockSnapshot.code.in_(codes)))
+        ).scalars().all()
+        quotes_by_code: dict[str, StockQuote] = {}
+        for a in a_rows:
+            quotes_by_code[a.code] = StockQuote(
+                code=a.code, name=a.name, current_price=a.current_price,
+                change_pct=a.change_pct, total_market_cap=a.total_market_cap,
+                pe_dynamic=a.pe_dynamic, total_shares=a.total_shares,
+                update_time=a.update_time,
+            )
+        # 批量取 B 表快照
+        snap_rows = (
+            await db.execute(
+                select(AnalysisSnapshot).where(
+                    AnalysisSnapshot.user_id == user_id,
+                    AnalysisSnapshot.stock_code.in_(codes),
+                )
+            )
+        ).scalars().all()
+        snapshots_by_code: dict[str, AnalysisSnapshot] = {
+            s.stock_code: s for s in snap_rows
+        }
+
         for item in items:
-            quote = await StockDataService.get_quote_for_code(db, item.stock_code)
-            snapshot = await SnapshotService.get_latest_snapshot(db, user_id, item.stock_code)
+            quote = quotes_by_code.get(item.stock_code)
+            if quote is None:
+                # A 表无该 code → 兜底取实时行情
+                quote = await StockDataService.get_quote_for_code(db, item.stock_code)
             if quote is None:
                 continue
+            snapshot = snapshots_by_code.get(item.stock_code)
             if snapshot is None:
                 rows.append(WatchlistBoardRow(
                     code=item.stock_code, name=item.stock_name,

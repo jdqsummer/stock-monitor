@@ -91,6 +91,23 @@ class MarginResult(BaseModel):
 
 # ── 监控看板行 ──
 
+class DashboardPositionRow(BaseModel):
+    """仪表盘持仓行"""
+    id: str
+    stock_code: str
+    stock_name: str
+    shares: float
+    cost_price: float
+    current_price: float
+    profit_loss: float
+    profit_loss_pct: float
+    daily_pl: float
+    position_ratio: float
+    distance_pct: float | None = None
+    signal: Signal | None = None
+    industry: str | None = None
+
+
 class WatchlistBoardRow(BaseModel):
     """自选股监控看板的一行数据"""
     code: str
