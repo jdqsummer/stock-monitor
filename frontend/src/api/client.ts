@@ -42,6 +42,10 @@ export const authApi = {
     client.post<ApiResponse>('/auth/register/send-code', { email }),
   login: (email: string, password: string) =>
     client.post<ApiResponse<TokenResponse>>('/auth/login', { email, password }),
+  sendResetCode: (email: string) =>
+    client.post<ApiResponse>('/auth/password/send-code', { email }),
+  resetPassword: (email: string, code: string, newPassword: string) =>
+    client.post<ApiResponse>('/auth/password/reset', { email, code, new_password: newPassword }),
   getMe: () => client.get<ApiResponse>('/auth/me'),
 };
 
