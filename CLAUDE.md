@@ -19,7 +19,8 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 | `backend/memory/distillation.py` | DistillationPipeline（蒸馏到 L1/L2/L3） |
 | `backend/services/margin_engine.py` | 安全边际计算：纯函数，AnalysisInput → MarginResult |
 | `backend/services/email_svc.py` | 邮件服务：验证码发送（开发期降级控制台打印） |
-| `backend/data/westock_client.py` | westock-mcp 封装（无配置时降级 mock） |
+| `backend/data/westock_client.py` | 市场数据门面：多渠道 provider 链（腾讯/东财/腾讯-mock），主备自动切换，永不阻断 |
+| `backend/data/providers/` | 多渠道数据源抽象：TencentProvider（qt.gtimg.cn+smartbox）/ EastMoneyProvider（push2+searchapi+F10）/ MockProvider |
 | `backend/data/cache.py` | Redis 缓存代理（Redis 不可用时优雅跳过） |
 | `backend/api/analysis.py` | Agent REST API（7 端点） |
 | `backend/api/auth.py` | 认证 API：注册/登录/邮箱验证码/密码重置（JWT） |
@@ -56,8 +57,9 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 |:--|:--|
 | Plan-1~5：平台/缓存/前端/Agent/记忆 | Diary Agent（后端 CRUD + 行为点评） |
 | Chat Agent：SSE 对话 + 记忆注入 + 前端聊天页 | 前端对接分析 API（Analysis 页为占位） |
-| 忘记密码/重置密码：邮箱验证码全链路 | 定时任务实盘数据源接入（westock-mcp 真实渠道配置） |
-| 自选股管理：搜索添加 + CRUD + 智能分类 | |
+| 忘记密码/重置密码：邮箱验证码全链路 | 北交所 secid 完善 + 东财财报多期分页 |
+| 自选股管理：搜索添加 + CRUD + 智能分类 | OpenHarness 网关对接（多渠道另一路径） |
 | 仪表盘数据链路：A/B 双层（stock_snapshots/financials 原始数据 + analysis_snapshots 衍生数据）、定时刷新（30min 行情 + 收盘重算）、dashboard 三端点、分析落库、前端未分析显示 | |
+| 多渠道数据源：腾讯/东财公开 HTTP（行情+搜索+东财财报），provider 链主备自动切换，配置 DATA_PROVIDER_PRIORITY，mock 兜底 | |
 | 生产部署：腾讯云 Docker Compose（SMTP/westock/LLM 待配置） | |
-| 186 tests 全部通过 | |
+| 206 tests 全部通过 | |
