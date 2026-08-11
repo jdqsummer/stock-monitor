@@ -9,6 +9,24 @@ from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 logger = logging.getLogger(__name__)
 
 
+# 模块级 mock 股票库（开发阶段，未配置 westock-mcp 时用于搜索演示）
+# (code, name, price, change_pct, total_market_cap亿, pe_dynamic, total_shares亿)
+_MOCK_STOCK_DB: list[tuple] = [
+    ("600519", "贵州茅台", 1560.0, 1.2, 19500.0, 25.3, 12.6),
+    ("600036", "招商银行", 32.5, -0.3, 8200.0, 5.8, 252.2),
+    ("601318", "中国平安", 45.8, 0.8, 8350.0, 9.1, 182.1),
+    ("000858", "五粮液", 142.0, 1.0, 5510.0, 18.4, 38.8),
+    ("000333", "美的集团", 55.0, 0.5, 3850.0, 12.0, 70.0),
+    ("601899", "紫金矿业", 18.2, -1.0, 4800.0, 15.2, 263.2),
+    ("600030", "中信证券", 21.5, 0.4, 3180.0, 14.0, 148.0),
+    ("601012", "隆基绿能", 17.8, 2.1, 1350.0, 22.5, 75.8),
+    ("002594", "比亚迪", 240.0, 1.8, 6980.0, 28.0, 29.1),
+    ("000651", "格力电器", 40.5, -0.6, 2280.0, 8.5, 56.3),
+    ("600276", "恒瑞医药", 45.2, 0.9, 2880.0, 32.0, 63.7),
+    ("601857", "中国石油", 8.9, 0.2, 16280.0, 10.5, 1830.0),
+]
+
+
 class WestockClientError(Exception):
     """westock-mcp 客户端异常"""
     pass
@@ -120,11 +138,27 @@ class WestockClient:
                 resp.raise_for_status()
                 return [StockQuote(**item) for item in resp.json()]
 
-            return []
+            return self._mock_search(keyword)
 
         except httpx.HTTPError as e:
             logger.error(f"搜索股票失败 '{keyword}': {e}")
             return []
+
+    def _mock_search(self, keyword: str) -> list[StockQuote]:
+        """开发阶段：在内置 mock 股票库中按代码/名称匹配，代码精确优先"""
+        kw = keyword.strip()
+        if not kw:
+            return []
+        code_matches = [s for s in _MOCK_STOCK_DB if s[0] == kw]
+        name_matches = [s for s in _MOCK_STOCK_DB if kw in s[1] and s not in code_matches]
+        ordered = code_matches + name_matches
+        return [
+            StockQuote(
+                code=s[0], name=s[1], current_price=s[2], change_pct=s[3],
+                total_market_cap=s[4], pe_dynamic=s[5], total_shares=s[6],
+            )
+            for s in ordered
+        ]
 
     def _mock_quote(self, code: str) -> StockQuote:
         """开发阶段模拟行情数据"""
