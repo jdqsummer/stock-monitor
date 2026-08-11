@@ -3,17 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Button, message, Tabs } from 'antd';
 import { MailOutlined, LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { authApi } from '@/api/client';
-
-// 从 axios 错误中提取后端具体错误信息（FastAPI HTTPException 的 detail / 校验错误的 msg）
-function getErrorMessage(err: unknown, fallback: string): string {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail.length > 0) {
-    const first = detail[0] as { msg?: string };
-    if (first?.msg) return first.msg;
-  }
-  return fallback;
-}
+import { getErrorMessage } from '@/utils/error';
+import { ForgotPasswordModal } from '@/components/ForgotPasswordModal';
 
 export function Login() {
   const [activeTab, setActiveTab] = useState('login');
@@ -21,6 +12,7 @@ export function Login() {
   const [registerLoading, setRegisterLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [regEmail, setRegEmail] = useState('');
+  const [forgotOpen, setForgotOpen] = useState(false);
   const navigate = useNavigate();
 
   // 登录：邮箱 + 密码
@@ -105,6 +97,13 @@ export function Login() {
                   <Input.Password prefix={<LockOutlined />} placeholder="密码" />
                 </Form.Item>
                 <Form.Item>
+                  <div style={{ textAlign: 'right' }}>
+                    <Button type="link" size="small" onClick={() => setForgotOpen(true)}>
+                      忘记密码？
+                    </Button>
+                  </div>
+                </Form.Item>
+                <Form.Item>
                   <Button type="primary" htmlType="submit" loading={loading} block>登录</Button>
                 </Form.Item>
               </Form>
@@ -135,6 +134,7 @@ export function Login() {
           },
         ]} />
       </Card>
+      <ForgotPasswordModal open={forgotOpen} onClose={() => setForgotOpen(false)} />
     </div>
   );
 }
