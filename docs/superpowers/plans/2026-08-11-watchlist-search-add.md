@@ -167,7 +167,7 @@ git commit -m "feat: westock 搜索 mock 库降级 — 代码/名称联想返回
   - `WatchlistService.remove_item(db, user_id, item_id) -> bool`
   - `WatchlistService.update_industry(db, user_id, item_id, industry) -> WatchlistItem | None`
   - `WatchlistService.auto_classify(db, user_id) -> int`
-  - 异常类 `DuplicateStockError` / `WatchlistNotFoundError`（后者当前仅用于服务层内部约定，路由用 bool/None 判断）
+  - 异常类 `DuplicateStockError`（添加去重时抛出；路由捕获映射为 409）
 
 - [ ] **Step 1: 写失败测试**
 
