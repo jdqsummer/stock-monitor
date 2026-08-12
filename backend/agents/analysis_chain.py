@@ -91,6 +91,7 @@ class AnalysisReport:
     # 清单
     checklist_results: dict[str, str] = field(default_factory=dict)
     checklist_veto: bool = False
+    checklist_summary: str = ""              # 证伪判断摘要（清单 overall_assessment）
     conflicts: list[str] = field(default_factory=list)
 
     # 结论
@@ -136,6 +137,7 @@ class AnalysisReport:
             rating_confidence=state.get("rating_confidence", 0.0),
             checklist_results=state.get("checklist_results", {}),
             checklist_veto=state.get("checklist_veto", False),
+            checklist_summary=state.get("checklist_summary", ""),
             conflicts=state.get("conflicts", []),
             moat_assessment=state.get("moat_assessment", ""),
             risk_factors=state.get("risk_factors", []),

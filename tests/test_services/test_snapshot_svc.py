@@ -86,3 +86,23 @@ async def test_save_snapshot_qualitative(db_session):
     assert saved.analysis_source == "scheduled"
     assert saved.analysis_completed_at is not None
     assert saved.pe_rationale == "行业龙头溢价"
+
+
+@pytest.mark.asyncio
+async def test_save_snapshot_persists_checklist_fields(db_session):
+    """checklist 三字段应落库"""
+    from backend.agents.analysis_chain import AnalysisReport
+    from backend.services.snapshot_svc import SnapshotService
+
+    report = AnalysisReport(
+        code="600519", name="测试股",
+        checklist_results={"Q1": "有风险", "Q2": "没问题"},
+        checklist_veto=True,
+        checklist_summary="证伪充分，存在重大担忧",
+    )
+    snap = await SnapshotService.save_snapshot(db_session, "user-1", report)
+
+    assert snap.checklist_veto is True
+    assert snap.checklist_summary == "证伪充分，存在重大担忧"
+    import json
+    assert json.loads(snap.checklist_results) == {"Q1": "有风险", "Q2": "没问题"}

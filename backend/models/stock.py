@@ -97,6 +97,9 @@ class AnalysisSnapshot(Base):
     signal_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
     profit_quality_ok: Mapped[bool] = mapped_column(Boolean, default=True)
     profit_quality_warnings: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON 数组字符串
+    checklist_results: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON 字符串：Q1-Q14 逐题回答
+    checklist_veto: Mapped[bool] = mapped_column(Boolean, default=False)
+    checklist_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_source: Mapped[str] = mapped_column(String(20), default="manual")
     analysis_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

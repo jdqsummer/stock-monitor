@@ -83,6 +83,7 @@ class AnalysisState(TypedDict, total=False):
     # ── Step 9: 清单对照 & 结论 ──
     checklist_results: dict[str, str]        # 14 问道结果 {question: answer}
     checklist_veto: bool                     # 清单是否有否决项
+    checklist_summary: str                   # 证伪判断摘要（清单 overall_assessment）
     conflicts: list[str]                     # 与投资清单冲突
     moat_assessment: str                     # 护城河评估
     risk_factors: list[str]                  # 主要风险

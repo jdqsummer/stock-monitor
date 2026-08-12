@@ -58,6 +58,11 @@ class SnapshotService:
             json.dumps(report.profit_quality_warnings, ensure_ascii=False)
             if report.profit_quality_warnings else None
         )
+        existing.checklist_results = (
+            json.dumps(report.checklist_results, ensure_ascii=False) if report.checklist_results else None
+        )
+        existing.checklist_veto = report.checklist_veto
+        existing.checklist_summary = report.checklist_summary or None
         existing.analysis_source = source
         existing.analysis_completed_at = datetime.now()
         try:
