@@ -64,6 +64,9 @@ class NodeName(str, Enum):
     MANUAL_ADJUST = "manual_adjust"
     CROSS_CHECK_AND_OUTPUT = "cross_check_and_output"
 
+    # OpenHarness 单节点分析
+    OPENHARNESS_ANALYZE = "openharness_analyze"
+
     # 约束检查
     VALIDATE_CONSTRAINTS = "validate_constraints"
 
@@ -84,13 +87,13 @@ def should_continue_after_collect(state: AnalysisState) -> Literal["parse_target
     return "parse_target"
 
 
-def should_continue_after_parse(state: AnalysisState) -> Literal["check_profit_quality", "handle_error"]:
+def should_continue_after_parse(state: AnalysisState) -> Literal["openharness_analyze", "handle_error"]:
     """标的解析后的路由决策"""
     if state.get("current_price", 0) <= 0:
         errors = state.setdefault("errors", [])
         errors.append("标的解析失败：无法获取有效股价")
         return "handle_error"
-    return "check_profit_quality"
+    return "openharness_analyze"
 
 
 def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimate_annual_profit", "mechanical_rating"]:
@@ -128,7 +131,7 @@ async def collect_data_node(state: AnalysisState) -> dict:
     if not code:
         return {"errors": ["缺少股票代码"]}
 
-    logger.info(f"[Step 1/9] 数据采集: {code}")
+    logger.info(f"[Step 1/4] 数据采集: {code}")
 
     data_agent = DataAgent(westock_client=WestockClient())
     collected = await data_agent.collect(code)
@@ -154,7 +157,7 @@ async def parse_target_node(state: AnalysisState) -> dict:
 
     提取关键数据：当前价、总市值、总股本、动态PE。
     """
-    logger.info("[Step 2/9] 标的解析")
+    logger.info("[Step 2/4] 标的解析")
 
     quote = state.get("quote")
     updates: dict = {}
@@ -492,7 +495,7 @@ async def cross_check_and_output_node(state: AnalysisState) -> dict:
     - 生成最终结论
     - 输出归档格式
     """
-    logger.info("[Step 9/9] 清单对照 & 输出")
+    logger.info("[Step 4/4] 清单对照 & 输出")
 
     signal = state.get("signal", "red")
     final_rating = state.get("final_rating", "")
@@ -575,6 +578,22 @@ async def handle_error_node(state: AnalysisState) -> dict:
     }
 
 
+def _make_openharness_node(llm_provider):
+    """创建 OpenHarness 分析节点闭包 — 接管全部判断类分析（Step 3-8）"""
+    async def _node(state: AnalysisState) -> dict:
+        logger.info("[Step 3/4] OpenHarness 分析智能体")
+        # 延迟 import 避免 workflow <-> openharness 循环依赖
+        from backend.agents.openharness import OpenHarnessAgent
+        agent = OpenHarnessAgent(llm_provider=llm_provider)
+        result = await agent.analyze(state)
+        # 返回 OpenHarness 产出的状态更新
+        return {
+            k: v for k, v in result.items()
+            if k in AnalysisState.__annotations__
+        }
+    return _node
+
+
 # ═══════════════════════════════════════════
 # 工作流构建器
 # ═══════════════════════════════════════════
@@ -584,7 +603,7 @@ def create_analysis_workflow(
     enable_checkpoints: bool = True,
 ) -> StateGraph:
     """
-    创建 9 步分析链工作流。
+    创建 4 步分析链工作流。
 
     工作流图结构：
 
@@ -597,36 +616,7 @@ def create_analysis_workflow(
     [2. parse_target] ───(error)──▶ [handle_error] ──▶ END
           │
           ▼
-    [3. check_profit_quality]
-          │
-          ├──(亏损)──▶ [8a. mechanical_rating] ──▶ [9. cross_check]
-          │
-          ▼
-    [4. estimate_annual_profit]
-          │
-          ▼
-    [5. determine_pe_range]
-          │
-          ▼
-    [6. calculate_swing_zone]
-          │
-          ▼
-    [7. quantify_safety_margin]
-          │
-          ▼
-    [8a. mechanical_rating]
-          │
-          ▼
-    [8b. manual_adjust]
-          │
-          ▼
-    [validate_constraints]
-          │
-          ▼
-    [9. cross_check_and_output]
-          │
-          ▼
-         END
+    [3. openharness_analyze] ──▶ [4. cross_check_and_output] ──▶ END
 
     Args:
         llm_provider: LLM Provider（可选，用于 LLM 增强节点）
@@ -638,65 +628,26 @@ def create_analysis_workflow(
     # 创建 StateGraph
     workflow = StateGraph(AnalysisState)
 
-    # 注册节点
+    # 注册节点（4 节点精简图）
     workflow.add_node(NodeName.COLLECT_DATA, collect_data_node)
     workflow.add_node(NodeName.PARSE_TARGET, parse_target_node)
-    workflow.add_node(NodeName.CHECK_PROFIT_QUALITY, check_profit_quality_node)
-    workflow.add_node(NodeName.ESTIMATE_ANNUAL_PROFIT, estimate_annual_profit_node)
-    workflow.add_node(NodeName.DETERMINE_PE_RANGE, determine_pe_range_node)
-    workflow.add_node(NodeName.CALCULATE_SWING_ZONE, calculate_swing_zone_node)
-    workflow.add_node(NodeName.QUANTIFY_SAFETY_MARGIN, quantify_safety_margin_node)
-    workflow.add_node(NodeName.MECHANICAL_RATING, mechanical_rating_node)
-    workflow.add_node(NodeName.MANUAL_ADJUST, manual_adjust_node)
+    workflow.add_node(NodeName.OPENHARNESS_ANALYZE, _make_openharness_node(llm_provider))
     workflow.add_node(NodeName.CROSS_CHECK_AND_OUTPUT, cross_check_and_output_node)
-    workflow.add_node(NodeName.VALIDATE_CONSTRAINTS, validate_constraints_node)
     workflow.add_node(NodeName.HANDLE_ERROR, handle_error_node)
 
-    # 设置入口
     workflow.set_entry_point(NodeName.COLLECT_DATA)
 
-    # 条件边：数据采集 → 标的解析 或 错误
     workflow.add_conditional_edges(
         NodeName.COLLECT_DATA,
         should_continue_after_collect,
         {"parse_target": NodeName.PARSE_TARGET, "handle_error": NodeName.HANDLE_ERROR},
     )
-
-    # 条件边：标的解析 → 利润质量检查 或 错误
     workflow.add_conditional_edges(
         NodeName.PARSE_TARGET,
         should_continue_after_parse,
-        {"check_profit_quality": NodeName.CHECK_PROFIT_QUALITY, "handle_error": NodeName.HANDLE_ERROR},
+        {"openharness_analyze": NodeName.OPENHARNESS_ANALYZE, "handle_error": NodeName.HANDLE_ERROR},
     )
-
-    # 条件边：利润质量 → 年化利润 或 直接评级（亏损）
-    workflow.add_conditional_edges(
-        NodeName.CHECK_PROFIT_QUALITY,
-        should_continue_after_profit_check,
-        {
-            "estimate_annual_profit": NodeName.ESTIMATE_ANNUAL_PROFIT,
-            "mechanical_rating": NodeName.MECHANICAL_RATING,
-        },
-    )
-
-    # 顺序边：Step 4 → 5 → 6 → 7 → 8a → 8b → 约束 → 9
-    workflow.add_edge(NodeName.ESTIMATE_ANNUAL_PROFIT, NodeName.DETERMINE_PE_RANGE)
-    workflow.add_edge(NodeName.DETERMINE_PE_RANGE, NodeName.CALCULATE_SWING_ZONE)
-    workflow.add_edge(NodeName.CALCULATE_SWING_ZONE, NodeName.QUANTIFY_SAFETY_MARGIN)
-    workflow.add_edge(NodeName.QUANTIFY_SAFETY_MARGIN, NodeName.MECHANICAL_RATING)
-    # 条件边：机械评级 → 人工调整 或 跳过直达输出（🔴）
-    workflow.add_conditional_edges(
-        NodeName.MECHANICAL_RATING,
-        should_continue_at_rating,
-        {
-            "manual_adjust": NodeName.MANUAL_ADJUST,
-            "cross_check_and_output": NodeName.CROSS_CHECK_AND_OUTPUT,
-        },
-    )
-    workflow.add_edge(NodeName.MANUAL_ADJUST, NodeName.VALIDATE_CONSTRAINTS)
-    workflow.add_edge(NodeName.VALIDATE_CONSTRAINTS, NodeName.CROSS_CHECK_AND_OUTPUT)
-
-    # 终止边
+    workflow.add_edge(NodeName.OPENHARNESS_ANALYZE, NodeName.CROSS_CHECK_AND_OUTPUT)
     workflow.add_edge(NodeName.CROSS_CHECK_AND_OUTPUT, END)
     workflow.add_edge(NodeName.HANDLE_ERROR, END)
 
@@ -707,7 +658,7 @@ def create_analysis_workflow(
     else:
         compiled = workflow.compile()
 
-    logger.info("9 步分析链工作流已创建")
+    logger.info("4 步分析链工作流已创建")
     return compiled
 
 

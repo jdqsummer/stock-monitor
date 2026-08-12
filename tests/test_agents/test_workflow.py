@@ -5,11 +5,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.agents.data_agent import DataAgent
+
 from backend.agents.state import AnalysisState
 from backend.agents.workflow import (
     NodeName,
     calculate_swing_zone_node,
     check_profit_quality_node,
+    create_analysis_workflow,
     cross_check_and_output_node,
     determine_pe_range_node,
     estimate_annual_profit_node,
@@ -94,10 +97,10 @@ class TestRoutingDecisions:
         assert result == "handle_error"
 
     def test_should_continue_after_parse_valid_price(self):
-        """有有效股价 → check_profit_quality"""
+        """有有效股价 → openharness_analyze"""
         state = make_state(current_price=50.0)
         result = should_continue_after_parse(state)
-        assert result == "check_profit_quality"
+        assert result == "openharness_analyze"
 
     def test_should_continue_after_parse_zero_price(self):
         """股价为 0 → handle_error"""
@@ -527,6 +530,64 @@ class TestNodeFunctions:
 
         # 正常状态不应增加错误
         assert result == {} or "errors" not in result
+
+
+# ── 4 节点集成测试 ──
+
+@pytest.mark.asyncio
+async def test_workflow_runs_4_node_graph_without_llm():
+    """无 LLM：完整图跑通，产出最终评级与建议"""
+    initial = {
+        "stock_code": "600519",
+        "stock_name": "测试股",
+        "user_query": "分析一下",
+        "current_price": 50.0,
+        "total_market_cap": 750.0,
+        "total_shares": 15.0,
+        "pe_dynamic": 22.0,
+        "industry_category": "白酒",
+        "net_profit_parent": 35.0,
+        "net_profit_deducted": 34.0,
+        "quote": None,
+        "financials": [],
+        "news": [],
+        "extra_data": {},
+        "errors": [],
+    }
+
+    workflow = create_analysis_workflow(llm_provider=None, enable_checkpoints=False)
+
+    with patch.object(DataAgent, "collect", new_callable=AsyncMock) as mock_collect:
+        mock_collect.return_value = {
+            "quote": MagicMock(
+                current_price=50.0,
+                total_market_cap=750.0,
+                total_shares=15.0,
+                pe_dynamic=22.0,
+                name="测试股",
+            ),
+            "financials": [
+                MagicMock(
+                    net_profit_parent=35.0,
+                    net_profit_deducted=34.0,
+                    report_period="2025H1",
+                    is_official=True,
+                )
+            ],
+            "news": [],
+            "errors": [],
+        }
+        result = await workflow.ainvoke(
+            initial,
+            {"configurable": {"thread_id": "test_4node"}},
+        )
+
+    assert result["current_price"] == 50.0
+    assert result["annual_profit_low"] > 0
+    assert result["final_rating"]
+    assert result["recommendation"]
+    # 验证新图结构：4 节点图包含 OPENHARNESS_ANALYZE
+    assert NodeName.OPENHARNESS_ANALYZE in {n for n, _ in workflow.nodes.items()}
 
 
 # ── data_to_state 转换器 ──
