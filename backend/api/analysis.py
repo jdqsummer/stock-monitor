@@ -262,7 +262,7 @@ async def watchlist_analyze_status(
     job_id: str = Query(..., description="job id"),
     current_user: User = Depends(get_current_user),
 ):
-    status = analysis_job_service.get_status(job_id)
+    status = analysis_job_service.get_status(job_id, current_user.id)
     if status is None:
         raise HTTPException(status_code=404, detail="任务不存在")
     return {"code": 0, "data": status, "message": "ok"}

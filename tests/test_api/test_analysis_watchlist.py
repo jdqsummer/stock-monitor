@@ -5,15 +5,15 @@ from backend.models.stock import AnalysisSnapshot, StockSnapshot
 from backend.services.analysis_job_svc import STATUS_DONE
 
 
-async def _auth_token(client) -> str:
+async def _auth_token(client, email: str = "wl@example.com") -> str:
     await client.post("/api/auth/register/send-code", json={
-        "email": "wl@example.com", "purpose": "register",
+        "email": email, "purpose": "register",
     })
     await client.post("/api/auth/register", json={
-        "email": "wl@example.com", "code": "000000", "password": "pass1234",
+        "email": email, "code": "000000", "password": "pass1234",
     })
     resp = await client.post("/api/auth/login", json={
-        "email": "wl@example.com", "password": "pass1234",
+        "email": email, "password": "pass1234",
     })
     return resp.json()["data"]["access_token"]
 
@@ -48,13 +48,16 @@ class TestWatchlistAnalyzeAPI:
     async def test_status_returns_progress(self, client):
         from backend.api import analysis as analysis_api
 
+        token = await _auth_token(client)
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+
         svc = analysis_api.analysis_job_service
         svc._jobs["job_x"] = {
-            "job_id": "job_x", "user_id": "u1", "source": "manual",
+            "job_id": "job_x", "user_id": user_id, "source": "manual",
             "created_at": "2026-08-12T15:30:00",
             "codes": {"600519": STATUS_DONE, "000858": "pending"},
         }
-        token = await _auth_token(client)
         resp = await client.get(
             "/api/analysis/watchlist/status", params={"job_id": "job_x"},
             headers={"Authorization": f"Bearer {token}"},
@@ -63,6 +66,29 @@ class TestWatchlistAnalyzeAPI:
         data = resp.json()["data"]
         assert data["total"] == 2
         assert data["done"] == 1
+
+    @pytest.mark.asyncio
+    async def test_status_denies_other_user(self, client):
+        """job 归属校验：非属主用户查询同一 job 返回 404"""
+        from backend.api import analysis as analysis_api
+
+        owner_token = await _auth_token(client)
+        owner_me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {owner_token}"})
+        owner_id = owner_me.json()["data"]["id"]
+
+        svc = analysis_api.analysis_job_service
+        svc._jobs["job_y"] = {
+            "job_id": "job_y", "user_id": owner_id, "source": "manual",
+            "created_at": "2026-08-12T15:30:00",
+            "codes": {"600519": STATUS_DONE, "000858": "pending"},
+        }
+
+        other_token = await _auth_token(client, email="wl2@example.com")
+        resp = await client.get(
+            "/api/analysis/watchlist/status", params={"job_id": "job_y"},
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 404
 
 
 class TestSnapshotAPI:

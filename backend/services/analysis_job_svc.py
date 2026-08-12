@@ -53,9 +53,11 @@ class AnalysisJobService:
         asyncio.create_task(self._run(job_id))
         return job_id
 
-    def get_status(self, job_id: str) -> dict | None:
+    def get_status(self, job_id: str, user_id: str | None = None) -> dict | None:
         job = self._jobs.get(job_id)
         if job is None:
+            return None
+        if user_id is not None and job["user_id"] != user_id:
             return None
         codes = job["codes"]
         total = len(codes)
