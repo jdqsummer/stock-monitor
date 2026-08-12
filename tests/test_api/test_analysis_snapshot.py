@@ -35,3 +35,9 @@ class TestAnalysisSnapshot:
         assert len(snapshots) == 1
         assert snapshots[0].stock_code == "600519"
         assert snapshots[0].signal in {"green", "yellow", "red"}
+
+
+def test_analyze_request_use_llm_defaults_true():
+    from backend.api.analysis import AnalyzeRequest
+    req = AnalyzeRequest(code="600519")
+    assert req.use_llm is True

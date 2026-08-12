@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
-from backend.agents.analysis_chain import AnalysisChain, AnalysisReport, create_analysis_chain
+from backend.agents.analysis_chain import AnalysisChain, AnalysisReport
 from backend.agents.data_agent import DataAgent
 from backend.agents.workflow import WorkflowRunner
 from backend.api.deps import get_current_user, get_db
@@ -30,7 +30,7 @@ class AnalyzeRequest(BaseModel):
     code: str = Field(..., description="股票代码，如 600519")
     name: str = Field(default="", description="股票名称")
     industry: str = Field(default="", description="行业分类（可选）")
-    use_llm: bool = Field(default=False, description="是否使用 LLM 增强定性分析")
+    use_llm: bool = Field(default=True, description="是否使用 LLM 增强定性分析")
 
 
 class QuickAnalyzeRequest(BaseModel):
@@ -87,7 +87,7 @@ async def analyze_stock(
     击球区计算、安全边际量化、评级和清单对照。
     """
     try:
-        chain = create_analysis_chain() if not req.use_llm else AnalysisChain(llm_provider=get_llm())
+        chain = AnalysisChain() if req.use_llm else AnalysisChain(llm_provider=None)
         report = await chain.analyze(
             code=req.code,
             stock_name=req.name,

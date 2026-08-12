@@ -30,6 +30,7 @@ from backend.agents.state import (
     DataCollectionState,
     ToolCall,
 )
+from backend.agents.openharness import OpenHarnessAgent
 from backend.agents.workflow import (
     NodeName,
     WorkflowRunner,
@@ -63,6 +64,8 @@ __all__ = [
     "ConstraintResult",
     "DataCollectionState",
     "ToolCall",
+    # OpenHarness
+    "OpenHarnessAgent",
     # 工作流
     "NodeName",
     "WorkflowRunner",
