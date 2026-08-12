@@ -31,3 +31,23 @@ async def test_sync_auto_analysis_jobs_registers_per_user():
         assert "auto_u2" not in ids
     finally:
         sched.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_sync_auto_analysis_jobs_skips_bad_time():
+    async def collect():
+        return [("u1", "bad"), ("u2", "15:30"), ("u3", "25:00")]
+
+    sched = TaskScheduler()
+    sched.start()
+    try:
+        await sched.sync_auto_analysis_jobs(
+            collect_func=collect,
+            run_func=lambda user_id: None,
+        )
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "auto_u2" in ids
+        assert "auto_u1" not in ids
+        assert "auto_u3" not in ids
+    finally:
+        sched.shutdown()

@@ -106,21 +106,27 @@ class TaskScheduler:
 
         # 新增/更新时间变化的 job
         for job_id, time_str in wanted.items():
-            hour, minute = time_str.split(":")
-            existing = self._jobs.get(job_id)
-            next_run = existing.next_run_time if existing else None
-            existing_cron = (next_run.hour, next_run.minute) if next_run else None
-            if existing_cron == (int(hour), int(minute)):
+            try:
+                hour, minute = time_str.split(":")
+                existing = self._jobs.get(job_id)
+                next_run = existing.next_run_time if existing else None
+                existing_cron = (next_run.hour, next_run.minute) if next_run else None
+                if existing_cron == (int(hour), int(minute)):
+                    continue
+                if existing:
+                    self._scheduler.remove_job(job_id)
+                user_id = job_id[len("auto_"):]
+                job = self._scheduler.add_job(
+                    run_func,
+                    CronTrigger(hour=int(hour), minute=int(minute), day_of_week="mon-fri"),
+                    id=job_id,
+                    name=f"自选股自动分析 {user_id}",
+                    args=[user_id],
+                    replace_existing=True,
+                )
+                self._jobs[job_id] = job
+            except (ValueError, IndexError) as e:
+                # 坏时间格式（如 "bad" / "25:00"）只跳过该用户，不阻断整批
+                logger.warning(f"跳过非法定时配置 {job_id} ({time_str}): {e}")
+                self._jobs.pop(job_id, None)  # 若旧 job 已被移除，保持 _jobs 一致
                 continue
-            if existing:
-                self._scheduler.remove_job(job_id)
-            user_id = job_id[len("auto_"):]
-            job = self._scheduler.add_job(
-                run_func,
-                CronTrigger(hour=int(hour), minute=int(minute), day_of_week="mon-fri"),
-                id=job_id,
-                name=f"自选股自动分析 {user_id}",
-                args=[user_id],
-                replace_existing=True,
-            )
-            self._jobs[job_id] = job

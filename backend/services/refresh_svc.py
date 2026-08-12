@@ -164,11 +164,9 @@ async def run_user_auto_analysis(user_id: str, session_factory=None) -> int:
     """定时入口：收集该用户自选股 → 提交 scheduled job，返回数量"""
     factory = session_factory or async_session_factory
     async with factory() as session:
-        try:
-            items = await WatchlistService.list_items(session, user_id)
-        finally:
-            await session.close()
-    codes = [it.stock_code for it in items]
+        items = await WatchlistService.list_items(session, user_id)
+        # session 块内提取纯列值，避免关闭后访问 ORM 对象
+        codes = [it.stock_code for it in items]
     if codes:
         from backend.services.analysis_job_svc import analysis_job_service
         analysis_job_service.submit(user_id, codes, source="scheduled")
