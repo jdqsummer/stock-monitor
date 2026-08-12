@@ -355,16 +355,7 @@ class AnalysisChain:
             initial_state=initial_state,
         )
 
-        # 如果分析成功且 LLM 可用，增强定性分析
-        if not state.get("errors") and self.llm:
-            try:
-                state = await self._enhance_with_llm(state)
-            except Exception as e:
-                logger.error(f"LLM 增强失败: {e}")
-                warnings = state.get("warnings", [])
-                warnings.append(f"LLM 增强失败: {str(e)}")
-                state["warnings"] = warnings
-
+        # 分析智能体已内建 LLM 定性/清单/约束；无需后处理增强
         report = AnalysisReport.from_state(state)
         logger.info(f"===== 分析完成: {code} → {report.final_rating} =====")
 
@@ -402,15 +393,7 @@ class AnalysisChain:
             news=news,
         )
 
-        if not state.get("errors") and self.llm:
-            try:
-                state = await self._enhance_with_llm(state)
-            except Exception as e:
-                logger.error(f"LLM 增强失败: {e}")
-                warnings = state.get("warnings", [])
-                warnings.append(f"LLM 增强失败: {str(e)}")
-                state["warnings"] = warnings
-
+        # 分析智能体已内建 LLM 定性/清单/约束；无需后处理增强
         return AnalysisReport.from_state(state)
 
     async def analyze_batch(self, codes: list[str]) -> list[AnalysisReport]:
@@ -531,77 +514,6 @@ class AnalysisChain:
         })
 
         return AnalysisReport.from_state(state)
-
-    async def _enhance_with_llm(self, state: dict) -> dict:
-        """
-        用 LLM 增强定性分析。
-
-        增强内容：
-        - 行业分类（如果未指定）
-        - PE 区间判断
-        - 护城河评估
-        - 风险因素识别
-        - 逆向清单检查
-        """
-        if not self.llm:
-            return state
-
-        stock_name = state.get("stock_name", "")
-        code = state.get("stock_code", "")
-        industry = state.get("industry_category", "")
-        current_price = state.get("current_price", 0)
-        pe_dynamic = state.get("pe_dynamic")
-
-        prompt = f"""你是一个资深价值投资分析师。请对以下股票进行定性分析。
-
-**股票**：{stock_name}（{code}）
-**当前股价**：{current_price} 元
-**动态 PE**：{pe_dynamic or '未知'}
-**当前行业分类**：{industry or '未指定'}
-
-请以 JSON 格式返回以下内容：
-```json
-{{
-    "industry_category": "细分行业分类",
-    "pe_low": 数字,
-    "pe_high": 数字,
-    "pe_rationale": "PE 区间设定的理由",
-    "moat_assessment": "护城河深度评估",
-    "risk_factors": ["风险1", "风险2", "风险3"],
-    "recommendation_adjustment": "对量化评级的调整建议（如有）"
-}}
-```
-"""
-
-        try:
-            resp = await self.llm.json_chat(
-                [{"role": "user", "content": prompt}],
-            )
-
-            # 安全更新 state
-            if not isinstance(resp, dict):
-                logger.warning(f"LLM 返回非 dict 响应，跳过增强: {type(resp)}")
-                return state
-
-            if resp.get("industry_category") and not state.get("industry_category"):
-                state["industry_category"] = resp["industry_category"]
-
-            if not state.get("moat_assessment") and resp.get("moat_assessment"):
-                state["moat_assessment"] = resp["moat_assessment"]
-
-            if not state.get("risk_factors") and resp.get("risk_factors"):
-                state["risk_factors"] = resp["risk_factors"]
-
-            if resp.get("pe_rationale") and not state.get("pe_rationale"):
-                state["pe_rationale"] = resp["pe_rationale"]
-
-            logger.info(f"LLM 增强完成: 行业={state.get('industry_category')}")
-
-        except Exception as e:
-            logger.error(f"LLM JSON 输出解析失败: {e}")
-
-        return state
-
 
 # ═══════════════════════════════════════════
 # 清单评估（14 道逆向反问）
