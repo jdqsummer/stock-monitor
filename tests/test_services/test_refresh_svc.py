@@ -95,3 +95,21 @@ async def test_job_entry_points_exist():
 
     assert callable(run_quote_refresh)
     assert callable(run_recompute_analysis)
+
+
+@pytest.mark.asyncio
+async def test_collect_auto_analysis_users(db_session):
+    from backend.models.user import User
+    from backend.services.refresh_svc import collect_auto_analysis_users
+
+    u1 = User(email="auto1@example.com", password_hash="x",
+              config={"analysis_auto_enabled": True, "analysis_schedule_afternoon": "16:00"})
+    u2 = User(email="auto2@example.com", password_hash="x",
+              config={"analysis_auto_enabled": False})
+    u3 = User(email="auto3@example.com", password_hash="x", config=None)
+    db_session.add_all([u1, u2, u3])
+    await db_session.commit()
+    await db_session.refresh(u1)
+
+    result = await collect_auto_analysis_users(db_session)
+    assert result == [(u1.id, "16:00")]

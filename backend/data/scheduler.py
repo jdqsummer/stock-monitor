@@ -92,3 +92,35 @@ class TaskScheduler:
             }
             for job in self._scheduler.get_jobs()
         ]
+
+    async def sync_auto_analysis_jobs(self, collect_func, run_func):
+        """按每用户 enabled + 时间 reconcile 定时分析 job（移除过期、新增/更新）"""
+        current = await collect_func()
+        wanted = {f"auto_{user_id}": time for user_id, time in current}
+
+        # 移除已关闭用户的 job
+        for job_id in list(self._jobs.keys()):
+            if job_id.startswith("auto_") and job_id not in wanted:
+                self._scheduler.remove_job(job_id)
+                self._jobs.pop(job_id, None)
+
+        # 新增/更新时间变化的 job
+        for job_id, time_str in wanted.items():
+            hour, minute = time_str.split(":")
+            existing = self._jobs.get(job_id)
+            next_run = existing.next_run_time if existing else None
+            existing_cron = (next_run.hour, next_run.minute) if next_run else None
+            if existing_cron == (int(hour), int(minute)):
+                continue
+            if existing:
+                self._scheduler.remove_job(job_id)
+            user_id = job_id[len("auto_"):]
+            job = self._scheduler.add_job(
+                run_func,
+                CronTrigger(hour=int(hour), minute=int(minute), day_of_week="mon-fri"),
+                id=job_id,
+                name=f"自选股自动分析 {user_id}",
+                args=[user_id],
+                replace_existing=True,
+            )
+            self._jobs[job_id] = job

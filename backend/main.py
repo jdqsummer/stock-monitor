@@ -15,6 +15,20 @@ async def lifespan(app: FastAPI):
     # 行情 30min 刷新（交易时段由 MarketCalendar 判断）；收盘重算 B
     scheduler.add_quote_refresh_job(run_quote_refresh, interval_minutes=30)
     scheduler.add_analysis_job(run_recompute_analysis)
+
+    # 每用户自动分析 reconcile（start 前，确保 startup 时已注册）
+    from backend.services.refresh_svc import collect_auto_analysis_users, run_user_auto_analysis
+    from backend.db.database import async_session_factory
+
+    async def _collect_users():
+        async with async_session_factory() as session:
+            try:
+                return await collect_auto_analysis_users(session)
+            finally:
+                await session.close()
+
+    await scheduler.sync_auto_analysis_jobs(_collect_users, run_user_auto_analysis)
+
     scheduler.start()
     yield
     scheduler.shutdown()

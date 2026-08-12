@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.data.westock_client import WestockClient
 from backend.db.database import async_session_factory
 from backend.models.stock import StockSnapshot, WatchlistItem
+from backend.services.watchlist_svc import WatchlistService
 from backend.schemas.stock import FinancialReport, StockQuote
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,34 @@ async def run_quote_refresh() -> int:
             return await RefreshService.refresh_quotes(session)
         finally:
             await session.close()
+
+
+async def collect_auto_analysis_users(db: AsyncSession) -> list[tuple[str, str]]:
+    """返回 (user_id, 收盘时间) 列表：仅 analysis_auto_enabled=true 的用户"""
+    from backend.models.user import User
+
+    users = (await db.execute(select(User))).scalars().all()
+    result = []
+    for u in users:
+        cfg = u.config or {}
+        if cfg.get("analysis_auto_enabled"):
+            result.append((u.id, cfg.get("analysis_schedule_afternoon", "15:30")))
+    return result
+
+
+async def run_user_auto_analysis(user_id: str, session_factory=None) -> int:
+    """定时入口：收集该用户自选股 → 提交 scheduled job，返回数量"""
+    factory = session_factory or async_session_factory
+    async with factory() as session:
+        try:
+            items = await WatchlistService.list_items(session, user_id)
+        finally:
+            await session.close()
+    codes = [it.stock_code for it in items]
+    if codes:
+        from backend.services.analysis_job_svc import analysis_job_service
+        analysis_job_service.submit(user_id, codes, source="scheduled")
+    return len(codes)
 
 
 async def run_recompute_analysis() -> int:
