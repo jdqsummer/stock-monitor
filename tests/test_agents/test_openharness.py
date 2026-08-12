@@ -236,3 +236,91 @@ async def test_tool_validate_constraints_happy_path():
 
     assert updates["__constraint_violations__"] == []
     assert "通过" in text
+
+
+# ── Task 7: ReAct 循环引擎 ──
+
+import json as _json
+from unittest.mock import AsyncMock
+from backend.llm.provider import LLMResponse, LLMConfig, ProviderType
+
+
+class ScriptedReActLLM:
+    """按脚本依次返回 ReAct 工具调用响应；json_chat 返回脚本结果"""
+
+    def __init__(self, react_responses, json_payload=None):
+        self.react_responses = list(react_responses)
+        self.json_payload = json_payload
+
+    async def chat(self, messages, tools=None, tool_choice="auto"):
+        return self.react_responses.pop(0)
+
+    async def json_chat(self, messages):
+        return self.json_payload
+
+
+def tool_call_response(tool_name, args=None):
+    """构造一个带工具调用的 LLMResponse（OpenAI raw_response 格式）"""
+    raw = AsyncMock()
+    choice = AsyncMock()
+    msg = AsyncMock()
+    tc = AsyncMock()
+    tc.id = f"call_{tool_name}"
+    tc.function.name = tool_name
+    tc.function.arguments = args and _json.dumps(args) or "{}"
+    msg.tool_calls = [tc]
+    choice.message = msg
+    raw.choices = [choice]
+    return LLMResponse(content="", model="mock", raw_response=raw)
+
+
+@pytest.mark.asyncio
+async def test_react_loop_runs_tools_then_concludes(monkeypatch):
+    """ReAct：LLM 依次调 calc_swing_zone / output_conclusion → state 完整"""
+    import backend.agents.openharness as oh
+
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = ScriptedReActLLM(
+        react_responses=[
+            tool_call_response("calc_swing_zone"),
+            tool_call_response("output_conclusion"),
+            LLMResponse(content="完成", model="mock"),
+        ],
+        json_payload={
+            "final_rating": "🟡",
+            "recommendation": "观察区，等待",
+            "action_items": ["等待击球点"],
+        },
+    )
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+
+    state = make_state(
+        annual_profit_low=32.0, annual_profit_high=35.0,
+        pe_low=18.0, pe_high=22.0, total_shares=15.0,
+        distance_pct=15.0,
+    )
+    result = await agent._react_loop(state)
+
+    assert result["swing_price_low"] == 38.4
+    assert result["final_rating"] == "🟡"
+    # 强制依赖 LLM 结论：rule_based 路径不会产生此精确字符串
+    assert result["recommendation"] == "观察区，等待"
+
+
+@pytest.mark.asyncio
+async def test_react_loop_hard_constraint_rejected(monkeypatch):
+    """硬约束失败时错误写入 errors"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = ScriptedReActLLM(
+        react_responses=[tool_call_response("validate_constraints"), LLMResponse(content="ok", model="mock")],
+        json_payload={},
+    )
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+
+    state = make_state(
+        annual_profit_low=-2.0, annual_profit_high=-2.0,
+        final_rating="🟡", distance_pct=999,
+    )
+    result = await agent._react_loop(state)
+
+    assert any("年化" in e or "评级" in e for e in result["errors"])

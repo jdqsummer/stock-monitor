@@ -24,6 +24,64 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 10
 
+# ── 模块级：工具定义（OpenAI function-call 格式） ──
+
+OPENHARNESS_TOOLS: list[dict] = [
+    {"type": "function", "function": {
+        "name": "read_context",
+        "description": "读取当前分析所需的全部数据上下文（行情/财报/新闻/股本/净利润）",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "assess_profit_quality",
+        "description": "利润质量定性判断（扣非口径可信度、非经常性损益占比），先于估值执行",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "estimate_annual_profit",
+        "description": "保守年化利润计算（H1×2 优先，亏损不年化）",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "analyze_qualitative",
+        "description": "定性分析：商业模式+护城河+重大风险，必须在估值前调用",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "run_reverse_checklist",
+        "description": "执行 14 道逆向投资反问清单，证伪买入逻辑，必须在估值前调用",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "anchor_industry_pe",
+        "description": "结合定性结论给定行业 PE 合理区间（高成长上修/稳定偏低/重大风险下修），必须给出理由",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "calc_swing_zone",
+        "description": "确定性计算击球区市值与股价范围",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "calc_safety_margin",
+        "description": "确定性计算距击球区与信号灯",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "validate_constraints",
+        "description": "约束引擎硬校验，产出关键决策前必须调用；硬约束失败不可绕过",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "output_conclusion",
+        "description": "综合全部结论输出最终评级与投资建议（买入-可配置区/等待时机-观察区/坚决放弃-太难）",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+]
+
+SYSTEM_PROMPT = """你是一个基于约束的价值投资分析智能体（OpenHarness）。请按以下纪律分析：
+
+执行阶段（先定性后定量）：
+1. 基础判断：read_context → assess_profit_quality → estimate_annual_profit
+2. 定性分析：analyze_qualitative → run_reverse_checklist（证伪买入逻辑，识别风险与利好）
+3. 估值判断：anchor_industry_pe（结合阶段 2 结论给定 PE 范围，高成长上修/稳定偏低/重大风险下修，必须给理由）
+4. 定量计算：calc_swing_zone → calc_safety_margin（确定性计算，数值不可手工改）
+5. 校验与结论：validate_constraints（硬约束不可绕过）→ output_conclusion
+
+纪律红线（不可违反）：亏损企业必评 🔴；距击球区 > 50% 不追高；利润质量存疑需下调评级；
+PE 极端（>100）不碰。若 validate_constraints 报告硬约束失败，必须先修正再继续。
+不要编造数据，一切以 read_context 与实际工具结果为准。"""
+
 # 纯规则降级子链：复用现有 LangGraph 节点逻辑
 RULE_BASED_STEPS = [
     check_profit_quality_node,
@@ -243,6 +301,65 @@ class OpenHarnessAgent:
         return await handler(state, args)
 
     async def _react_loop(self, state: dict) -> dict:
-        """ReAct 循环（Task 7 完整实现，当前先占位走规则路径）"""
-        logger.info("OpenHarnessAgent: ReAct 循环待实现，暂走规则路径")
-        return await self._rule_based(state)
+        messages: list[dict] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": self._build_user_prompt(state)},
+        ]
+        for _ in range(MAX_TOOL_ROUNDS):
+            resp = await self.llm.chat(messages, tools=OPENHARNESS_TOOLS, tool_choice="auto")
+            tool_calls = self._parse_tool_calls(resp)
+            if not tool_calls:
+                break
+            for tc in tool_calls:
+                name = tc.get("name", "")
+                args = tc.get("arguments", {})
+                if not isinstance(args, dict):
+                    args = {}
+                updates, result_text = await self._execute_tool(name, args, state)
+                # 过滤内部辅助键（如 __constraint_violations__），避免污染持久 state
+                updates = {k: v for k, v in updates.items() if not k.startswith("__")}
+                state.update(updates)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", f"call_{len(messages)}"),
+                    "content": result_text,
+                })
+
+        # 循环结束：兜底硬校验
+        results = await self.constraint_engine.evaluate(state)
+        self._apply_hard_constraints(state, results)
+        return state
+
+    def _build_user_prompt(self, state: dict) -> str:
+        return (
+            f"请分析股票 {state.get('stock_name', '')}({state.get('stock_code', '')}) 的安全边际。"
+            f"行业: {state.get('industry_category', '未知')}。"
+            f"严格按执行阶段推进，先定性后定量，最后输出结论。"
+        )
+
+    def _parse_tool_calls(self, resp) -> list[dict]:
+        raw = resp.raw_response
+        if hasattr(raw, "choices") and raw.choices:
+            choice = raw.choices[0]
+            msg = getattr(choice, "message", None)
+            if msg and getattr(msg, "tool_calls", None):
+                return [
+                    {
+                        "id": tc.id,
+                        "name": tc.function.name,
+                        "arguments": _safe_json(tc.function.arguments),
+                    }
+                    for tc in msg.tool_calls
+                ]
+        return []
+
+
+def _safe_json(s: str) -> dict:
+    """安全解析工具参数 JSON 字符串"""
+    if not s:
+        return {}
+    import json
+    try:
+        return json.loads(s) if isinstance(s, str) else (s if isinstance(s, dict) else {})
+    except (json.JSONDecodeError, ValueError):
+        return {}
