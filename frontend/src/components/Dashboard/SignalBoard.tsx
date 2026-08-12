@@ -1,7 +1,10 @@
-import { Table } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import type { Key } from 'react';
+import { Button, Space, Table, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
+import { analysisApi } from '@/api/client';
 import type { WatchlistBoardRow } from '@/types';
 
 const columns: ColumnsType<WatchlistBoardRow> = [
@@ -21,21 +24,73 @@ const columns: ColumnsType<WatchlistBoardRow> = [
     render: (v: number | null, record: WatchlistBoardRow) => <SignalBadge signal={record.signal} distancePct={v} /> },
 ];
 
-export function SignalBoard({ data, loading }: { data: WatchlistBoardRow[]; loading: boolean }) {
+export function SignalBoard({ data, loading, onRefresh }: {
+  data: WatchlistBoardRow[];
+  loading: boolean;
+  onRefresh: () => void;
+}) {
   const navigate = useNavigate();
+  const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [progress, setProgress] = useState('');
+
+  const pollTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (pollTimer.current) window.clearInterval(pollTimer.current);
+  }, []);
+
+  const handleAnalyze = async () => {
+    if (selectedKeys.length === 0) return;
+    setAnalyzing(true);
+    setProgress('提交任务...');
+    try {
+      const res = await analysisApi.analyzeWatchlist(selectedKeys.map(String));
+      const jobId = res.data.data.job_id;
+      pollTimer.current = window.setInterval(async () => {
+        try {
+          const st = (await analysisApi.watchlistStatus(jobId)).data.data;
+          setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+          if (st.done + st.failed + st.skipped >= st.total) {
+            if (pollTimer.current) window.clearInterval(pollTimer.current);
+            setAnalyzing(false);
+            setProgress('');
+            message.success('分析完成');
+            onRefresh();
+          }
+        } catch {
+          /* 轮询失败忽略，下轮重试 */
+        }
+      }, 3000);
+    } catch (err) {
+      setAnalyzing(false);
+      setProgress('');
+      message.error('提交分析失败');
+    }
+  };
+
   return (
-    <Table
-      columns={columns}
-      dataSource={data}
-      rowKey="code"
-      loading={loading}
-      size="small"
-      scroll={{ x: 1200 }}
-      onRow={(record) => ({
-        onClick: () => navigate(`/stock/${record.code}`),
-        style: { cursor: 'pointer' },
-      })}
-      pagination={{ pageSize: 20 }}
-    />
+    <div>
+      <Space style={{ marginBottom: 12 }}>
+        <Button type="primary" disabled={selectedKeys.length === 0 || analyzing}
+          loading={analyzing} onClick={handleAnalyze}>
+          {analyzing ? progress || '分析中...' : `立即分析${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}
+        </Button>
+      </Space>
+      <Table
+        columns={columns}
+        dataSource={data}
+        rowKey="code"
+        loading={loading}
+        size="small"
+        scroll={{ x: 1200 }}
+        rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }}
+        onRow={(record) => ({
+          onClick: () => navigate(`/stock/${record.code}`),
+          style: { cursor: 'pointer' },
+        })}
+        pagination={{ pageSize: 20 }}
+      />
+    </div>
   );
 }

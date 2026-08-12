@@ -43,7 +43,7 @@ export function Dashboard() {
       <Divider />
 
       <Card title="🔔 安全边际监控看板" style={{ marginBottom: 16 }}>
-        <SignalBoard data={watchlist} loading={loading} />
+        <SignalBoard data={watchlist} loading={loading} onRefresh={fetchData} />
       </Card>
 
       <Card title="💼 持仓分析">
