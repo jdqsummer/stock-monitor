@@ -4,7 +4,7 @@
 基于 LangGraph StateGraph 的 Agent 工作流编排引擎。
 
 核心功能：
-  1. 9 步分析链工作流
+  1. 4 步分析链工作流
   2. 条件路由（早退、错误处理）
   3. 检查点（Checkpoint）支持断点续传
   4. 流式进度反馈
@@ -33,7 +33,6 @@ from langgraph.graph import END, StateGraph
 
 from backend.agents.constraints import (
     ConstraintEngine,
-    IndustryPEAnchorConstraint,
     resolve_pe_anchor,
 )
 from backend.agents.data_agent import DataAgent, data_to_state
@@ -102,6 +101,7 @@ def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimat
     注意：此处检查 net_profit_deducted（Step 3 已设置），
     而非 annual_profit_low（Step 4 才会设置）。
     """
+    # DEPRECATED: OpenHarnessAgent 接管该逻辑（_apply_hard_constraints / 内部子链）；保留仅供旧测试引用
     net_profit_deducted = state.get("net_profit_deducted", 0)
     # 亏损直接跳到评级
     if net_profit_deducted <= 0:
@@ -111,6 +111,7 @@ def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimat
 
 def should_continue_at_rating(state: AnalysisState) -> Literal["manual_adjust", "cross_check_and_output"]:
     """评级阶段的路由决策：🔴 跳过人工调整直达输出"""
+    # DEPRECATED: OpenHarnessAgent 接管该逻辑（_apply_hard_constraints / 内部子链）；保留仅供旧测试引用
     signal = state.get("signal", "")
     if signal == "red":
         return "cross_check_and_output"
@@ -188,7 +189,7 @@ async def check_profit_quality_node(state: AnalysisState) -> dict:
 
     检查扣非口径、非经常性损益占比。
     """
-    logger.info("[Step 3/9] 利润质量甄别")
+    logger.info("[Step 3] 利润质量甄别")
 
     financials = state.get("financials", [])
     net_profit_parent = state.get("net_profit_parent", 0)
@@ -249,7 +250,7 @@ async def estimate_annual_profit_node(state: AnalysisState) -> dict:
     - 正式财报 > 预告
     - 亏损不年化
     """
-    logger.info("[Step 4/9] 年化利润估算")
+    logger.info("[Step 4] 年化利润估算")
 
     financials = state.get("financials", [])
     net_profit_deducted = state.get("net_profit_deducted", 0)
@@ -303,7 +304,7 @@ async def determine_pe_range_node(state: AnalysisState) -> dict:
     根据行业分类确定合理 PE 倍数区间。
     优先用 LLM 判断，回退到规则匹配。
     """
-    logger.info("[Step 5/9] 行业 PE 区间锚定")
+    logger.info("[Step 5] 行业 PE 区间锚定")
 
     industry = state.get("industry_category", "")
     pe_dynamic = state.get("pe_dynamic")
@@ -341,7 +342,7 @@ async def calculate_swing_zone_node(state: AnalysisState) -> dict:
     - 击球区市值 = 年化净利润 × PE 区间
     - 击球区股价 = 击球区市值 ÷ 总股本
     """
-    logger.info("[Step 6/9] 击球区计算")
+    logger.info("[Step 6] 击球区计算")
 
     profit_low = state.get("annual_profit_low", 0)
     profit_high = state.get("annual_profit_high", 0)
@@ -385,7 +386,7 @@ async def quantify_safety_margin_node(state: AnalysisState) -> dict:
     - > 50% → 🔴 高估区
     - 亏损 → 🔴
     """
-    logger.info("[Step 7/9] 安全边际量化")
+    logger.info("[Step 7] 安全边际量化")
 
     current_price = state.get("current_price", 0)
     swing_price_high = state.get("swing_price_high", 0)
@@ -429,7 +430,7 @@ async def mechanical_rating_node(state: AnalysisState) -> dict:
 
     按量化规则初评，不包含人工判断。
     """
-    logger.info("[Step 8a/9] 机械评级")
+    logger.info("[Step 8a] 机械评级")
 
     signal = state.get("signal", "red")
     distance_pct = state.get("distance_pct", 0)
@@ -460,7 +461,7 @@ async def manual_adjust_node(state: AnalysisState) -> dict:
     - 基本面拐点向上 → 可不按 PE 机械评级
     - 行业季节性 → 暂不评级
     """
-    logger.info("[Step 8b/9] 人工调整")
+    logger.info("[Step 8b] 人工调整")
 
     adjustments = state.get("manual_adjustments", [])
     final_rating = state.get("final_rating", "")
@@ -545,6 +546,7 @@ async def cross_check_and_output_node(state: AnalysisState) -> dict:
 
 async def validate_constraints_node(state: AnalysisState) -> dict:
     """OpenHarness 约束校验节点"""
+    # DEPRECATED: OpenHarnessAgent 接管该逻辑（_apply_hard_constraints）；保留仅供旧测试引用
     logger.info("[约束检查] 执行 OpenHarness 约束校验")
 
     engine = ConstraintEngine()
@@ -584,13 +586,20 @@ def _make_openharness_node(llm_provider):
         logger.info("[Step 3/4] OpenHarness 分析智能体")
         # 延迟 import 避免 workflow <-> openharness 循环依赖
         from backend.agents.openharness import OpenHarnessAgent
-        agent = OpenHarnessAgent(llm_provider=llm_provider)
-        result = await agent.analyze(state)
-        # 返回 OpenHarness 产出的状态更新
-        return {
-            k: v for k, v in result.items()
-            if k in AnalysisState.__annotations__
-        }
+        try:
+            agent = OpenHarnessAgent(llm_provider=llm_provider)
+            result = await agent.analyze(state)
+            # 返回 OpenHarness 产出的状态更新
+            return {
+                k: v for k, v in result.items()
+                if k in AnalysisState.__annotations__
+            }
+        except Exception as e:
+            logger.error(f"OpenHarness 分析失败: {e}", exc_info=True)
+            errors = state.get("errors", [])
+            if isinstance(errors, list):
+                errors.append(f"OpenHarness 分析失败: {str(e)}")
+            return {"errors": errors}
     return _node
 
 

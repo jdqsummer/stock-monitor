@@ -611,11 +611,18 @@ def create_analysis_chain(llm_model: str = "") -> AnalysisChain:
     """
     创建分析链实例。
 
+    如果 LLM 未配置（无 API key / provider 初始化失败），
+    返回纯规则引擎模式（llm_provider=None）。
+
     Args:
         llm_model: LLM 模型规格（如 "deepseek:deepseek-chat"），空字符串使用环境变量 LLM_MODEL
 
     Returns:
         AnalysisChain 实例
     """
-    llm = get_llm(llm_model) if llm_model else get_llm()
+    try:
+        llm = get_llm(llm_model) if llm_model else get_llm()
+    except Exception:
+        logger.warning("LLM 初始化失败，回退到纯规则引擎模式", exc_info=True)
+        llm = None
     return AnalysisChain(llm_provider=llm)
