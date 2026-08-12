@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
+from backend.data.providers.base import ProviderError
 from backend.schemas.stock import StockQuote
 
 
@@ -131,6 +132,9 @@ class TestWatchlistAPI:
         with patch(
             "backend.api.watchlist._client.search_stock",
             AsyncMock(return_value=[_mock_quote()]),
+        ), patch(
+            "backend.api.watchlist._client.fetch_quote",
+            AsyncMock(return_value=_mock_quote()),
         ):
             resp = await client.get(
                 "/api/watchlist/search", params={"keyword": "600519"}, headers=headers,
@@ -140,3 +144,63 @@ class TestWatchlistAPI:
         assert len(results) == 1
         assert results[0]["code"] == "600519"
         assert results[0]["name"] == "贵州茅台"
+
+    @pytest.mark.asyncio
+    async def test_search_enriched_with_quote(self, client, mock_redis):
+        """搜索返回的占位零值行情，应被实时行情富化（下拉/详情面板展示真实数据）"""
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        meta = StockQuote(
+            code="688825", name="长鑫科技",
+            current_price=0.0, total_market_cap=0.0,
+        )
+        quote = StockQuote(
+            code="688825", name="长鑫科技", current_price=50.82, change_pct=0.83,
+            change_amount=0.42, total_market_cap=33988.87, turnover_rate=0.56,
+            pe_dynamic=120.55, total_shares=668.81,
+        )
+        with patch(
+            "backend.api.watchlist._client.search_stock",
+            AsyncMock(return_value=[meta]),
+        ), patch(
+            "backend.api.watchlist._client.fetch_quote",
+            AsyncMock(return_value=quote),
+        ):
+            resp = await client.get(
+                "/api/watchlist/search", params={"keyword": "长鑫科技"}, headers=headers,
+            )
+        assert resp.status_code == 200
+        result = resp.json()["data"][0]
+        assert result["code"] == "688825"
+        assert result["name"] == "长鑫科技"
+        assert result["current_price"] == 50.82
+        assert result["change_pct"] == 0.83
+        assert result["change_amount"] == 0.42
+        assert result["total_market_cap"] == 33988.87
+        assert result["turnover_rate"] == 0.56
+        assert result["pe_dynamic"] == 120.55
+        assert result["total_shares"] == 668.81
+
+    @pytest.mark.asyncio
+    async def test_search_quote_failure_keeps_meta(self, client, mock_redis):
+        """某只股票行情拉取失败时，保留搜索返回的 code/name 元数据，不中断整批"""
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        meta = StockQuote(
+            code="688825", name="长鑫科技",
+            current_price=0.0, total_market_cap=0.0,
+        )
+        with patch(
+            "backend.api.watchlist._client.search_stock",
+            AsyncMock(return_value=[meta]),
+        ), patch(
+            "backend.api.watchlist._client.fetch_quote",
+            AsyncMock(side_effect=ProviderError("行情失败")),
+        ):
+            resp = await client.get(
+                "/api/watchlist/search", params={"keyword": "长鑫科技"}, headers=headers,
+            )
+        assert resp.status_code == 200
+        result = resp.json()["data"][0]
+        assert result["code"] == "688825"
+        assert result["name"] == "长鑫科技"

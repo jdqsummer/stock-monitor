@@ -46,7 +46,9 @@ async def test_tencent_quote():
     assert quote.name == "贵州茅台"
     assert quote.current_price == 1720.0
     assert quote.change_pct == 0.12
+    assert quote.change_amount == 2.06
     assert quote.total_market_cap == 19500.0
+    assert quote.turnover_rate == 0.20
     assert quote.pe_dynamic == 25.3
     assert quote.total_shares == pytest.approx(19500.0 / 1720.0)
 

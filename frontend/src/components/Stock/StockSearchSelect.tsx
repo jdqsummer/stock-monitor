@@ -9,9 +9,14 @@ interface Props {
 }
 
 // 涨红跌绿
-const changeColor = (pct: number) => (pct > 0 ? '#f5222d' : pct < 0 ? '#389e0d' : '#888');
+const changeColor = (v: number) => (v > 0 ? '#f5222d' : v < 0 ? '#389e0d' : '#888');
 
 const formatCap = (v: number) => (v >= 10000 ? `${(v / 10000).toFixed(2)} 万亿` : `${v.toFixed(0)} 亿`);
+
+const formatChangeAmount = (v: number | null) => {
+  if (v == null) return '—';
+  return `${v > 0 ? '+' : ''}${v.toFixed(2)} 元`;
+};
 
 export function StockSearchSelect({ onSelect, onClear }: Props) {
   const [keyword, setKeyword] = useState('');
@@ -102,9 +107,16 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
                 {selected.change_pct > 0 ? '+' : ''}{selected.change_pct}%
               </span>
             </Descriptions.Item>
+            <Descriptions.Item label="涨跌值">
+              <span style={{ color: changeColor(selected.change_amount ?? 0) }}>
+                {formatChangeAmount(selected.change_amount)}
+              </span>
+            </Descriptions.Item>
+            <Descriptions.Item label="换手率">
+              {selected.turnover_rate != null ? `${selected.turnover_rate.toFixed(2)}%` : '—'}
+            </Descriptions.Item>
             <Descriptions.Item label="总市值">{formatCap(selected.total_market_cap)}</Descriptions.Item>
             <Descriptions.Item label="动态PE">{selected.pe_dynamic ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="总股本">{selected.total_shares ?? '—'} 亿股</Descriptions.Item>
           </Descriptions>
         </Card>
       )}

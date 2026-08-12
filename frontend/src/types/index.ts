@@ -37,7 +37,9 @@ export interface StockQuote {
   name: string;
   current_price: number;
   change_pct: number;
+  change_amount: number | null;
   total_market_cap: number;
+  turnover_rate: number | null;
   pe_dynamic: number | null;
   total_shares: number | null;
   update_time: string | null;

@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
-_QUOTE_FIELDS = "f2,f3,f12,f13,f14,f20,f21,f115,f167,f168"
+# push2 无 fltt 时价格类字段为 ×100 整数（f2=133888 即 1338.88），解析时统一 ÷100
+_QUOTE_FIELDS = "f2,f3,f4,f8,f12,f13,f14,f20,f21,f115,f167,f168"
 
 
 class EastMoneyProvider(StockDataProvider):
@@ -60,16 +61,21 @@ class EastMoneyProvider(StockDataProvider):
             except (TypeError, ValueError):
                 return 0.0
 
+        # 价格类字段（f2/f3/f4/f8/f115）为 ×100 整数，÷100 还原为浮点
+        price = _f("f2") / 100
         mkt_cap = _f("f20") / 1e8  # 元 → 亿
-        price = _f("f2")
         shares = mkt_cap / price if price > 0 else None
+        change_amount = _f("f4") / 100
+        turnover_rate = _f("f8") / 100
         return StockQuote(
             code=code,
             name=row.get("f14") or code,
             current_price=price,
-            change_pct=_f("f3"),
+            change_pct=_f("f3") / 100,
+            change_amount=change_amount or None,
             total_market_cap=mkt_cap,
-            pe_dynamic=_f("f115") or None,
+            turnover_rate=turnover_rate or None,
+            pe_dynamic=(_f("f115") / 100) or None,
             total_shares=shares,
         )
 

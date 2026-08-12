@@ -7,10 +7,12 @@ from backend.schemas.stock import StockQuote
 
 
 def _quote_fixture() -> dict:
+    # 真实 push2 响应：价格类字段 ×100 整数（f2=172000 即 1720.00）
     return {
         "rc": 0, "data": {"total": 1, "diff": [
-            {"f2": 1720.0, "f3": 0.12, "f12": "600519", "f13": 1, "f14": "贵州茅台",
-             "f20": 2.16e12, "f21": 2.15e12, "f115": 25.3, "f167": 8.5, "f168": 0.2},
+            {"f2": 172000, "f3": 12, "f4": 206, "f8": 20,
+             "f12": "600519", "f13": 1, "f14": "贵州茅台",
+             "f20": 2.16e12, "f21": 2.15e12, "f115": 2530, "f167": 850, "f168": 20},
         ]},
     }
 
@@ -45,7 +47,9 @@ async def test_eastmoney_quote():
     assert quote.name == "贵州茅台"
     assert quote.current_price == 1720.0
     assert quote.change_pct == 0.12
+    assert quote.change_amount == 2.06
     assert quote.total_market_cap == pytest.approx(2.16e12 / 1e8)  # 元 → 亿
+    assert quote.turnover_rate == 0.20
     assert quote.pe_dynamic == 25.3
 
 

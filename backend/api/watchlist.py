@@ -1,8 +1,11 @@
 # stock-monitor/backend/api/watchlist.py
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_db
+from backend.data.providers.base import ProviderError
 from backend.data.westock_client import WestockClient
 from backend.models.stock import WatchlistItem
 from backend.models.user import User
@@ -95,4 +98,16 @@ async def search_stock(
     current_user: User = Depends(get_current_user),
 ):
     results = await _client.search_stock(keyword)
-    return ApiResponse(data=results)
+    # 搜索接口只返回代码/名称，行情字段为占位零值；
+    # 逐只补拉实时行情富化，让联想下拉与详情面板展示真实数据（单只失败保留元数据不中断）
+    enriched = await asyncio.gather(*(_enrich_quote(r) for r in results))
+    return ApiResponse(data=list(enriched))
+
+
+async def _enrich_quote(r: StockQuote) -> StockQuote:
+    try:
+        q = await _client.fetch_quote(r.code)
+    except ProviderError:
+        return r
+    # 保留搜索结果的 code/name（避免 mock 兜底覆盖真实名称），行情字段用实时值
+    return q.model_copy(update={"code": r.code, "name": r.name})

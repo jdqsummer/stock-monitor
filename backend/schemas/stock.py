@@ -21,7 +21,9 @@ class StockQuote(BaseModel):
     name: str                              # 股票名称
     current_price: float                   # 当前股价
     change_pct: float = 0.0                # 涨跌幅 %
+    change_amount: float | None = None     # 涨跌值（元），与 change_pct 对应
     total_market_cap: float                # 总市值（亿元）
+    turnover_rate: float | None = None     # 换手率 %
     pe_dynamic: float | None = None        # 动态 PE
     total_shares: float | None = None      # 总股本（亿股）
     update_time: datetime | None = None    # 数据更新时间
