@@ -60,6 +60,9 @@ export function Settings() {
           <Form.Item name="analysis_schedule_afternoon" label="收盘分析时间">
             <Input placeholder="15:30" />
           </Form.Item>
+          <Form.Item name="analysis_auto_enabled" label="自动分析我的自选股（每日）" valuePropName="checked">
+            <Switch />
+          </Form.Item>
 
           <Divider>投资偏好</Divider>
 

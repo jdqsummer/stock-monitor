@@ -60,6 +60,27 @@ export interface WatchlistBoardRow {
   signal: Signal;
   industry: string | null;
   analysis_date: string | null;
+  signal_label?: string | null;
+  analysis_source?: string | null;
+  analysis_completed_at?: string | null;
+  moat_assessment?: string | null;
+  risk_factors?: string[];
+  pe_rationale?: string | null;
+  recommendation?: string | null;
+  profit_quality_ok?: boolean;
+  profit_quality_warnings?: string[];
+}
+
+// ── 自选股自动分析任务 ──
+export interface JobStatus {
+  job_id: string;
+  source: string;
+  total: number;
+  done: number;
+  failed: number;
+  skipped: number;
+  running: number;
+  results: Record<string, string>;
 }
 
 // ── 持仓 ──
@@ -122,6 +143,7 @@ export interface UserConfig {
   data_refresh_interval_minutes: number;
   analysis_schedule_morning: string;
   analysis_schedule_afternoon: string;
+  analysis_auto_enabled: boolean;
   westock_api_key: string | null;
   investment_style: string;
   risk_tolerance: string;

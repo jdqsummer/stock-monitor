@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -67,6 +67,16 @@ export const watchlistApi = {
   autoClassify: () => client.post<ApiResponse<{ updated: number }>>('/watchlist/auto-classify'),
   search: (keyword: string) =>
     client.get<ApiResponse<StockQuote[]>>('/watchlist/search', { params: { keyword } }),
+};
+
+// 自选股自动安全边际分析
+export const analysisApi = {
+  analyzeWatchlist: (codes: string[]) =>
+    client.post<ApiResponse<{ job_id: string }>>('/analysis/watchlist/analyze', { codes }),
+  watchlistStatus: (jobId: string) =>
+    client.get<ApiResponse<JobStatus>>('/analysis/watchlist/status', { params: { job_id: jobId } }),
+  getSnapshot: (code: string) =>
+    client.get<ApiResponse<WatchlistBoardRow>>(`/analysis/snapshot/${code}`),
 };
 
 // 聊天
