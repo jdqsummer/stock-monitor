@@ -76,6 +76,38 @@ class OpenHarnessAgent:
         state.update(updates)
         return state
 
+    # ── 确定性计算工具（纯公式，数值不漂移） ──
+
+    async def _tool_estimate_annual_profit(self, state: dict, args: dict) -> tuple[dict, str]:
+        updates = await estimate_annual_profit_node(state)
+        text = f"年化利润: {updates.get('annual_profit_low')}-{updates.get('annual_profit_high')}亿（{updates.get('profit_method')}）"
+        return updates, text
+
+    async def _tool_calc_swing_zone(self, state: dict, args: dict) -> tuple[dict, str]:
+        updates = await calculate_swing_zone_node(state)
+        text = (
+            f"击球区市值: {updates.get('swing_market_cap_low')}-{updates.get('swing_market_cap_high')}亿，"
+            f"击球区股价: {updates.get('swing_price_low')}-{updates.get('swing_price_high')}元"
+        )
+        return updates, text
+
+    async def _tool_calc_safety_margin(self, state: dict, args: dict) -> tuple[dict, str]:
+        updates = await quantify_safety_margin_node(state)
+        text = f"距击球区: {updates.get('distance_pct')}%，信号: {updates.get('signal_label')}"
+        return updates, text
+
+    async def _execute_tool(self, name: str, args: dict, state: dict) -> tuple[dict, str]:
+        """按名称分发到工具，返回 (state_updates, 给 LLM 看的文本)"""
+        tool_map = {
+            "estimate_annual_profit": self._tool_estimate_annual_profit,
+            "calc_swing_zone": self._tool_calc_swing_zone,
+            "calc_safety_margin": self._tool_calc_safety_margin,
+        }
+        handler = tool_map.get(name)
+        if handler is None:
+            return {}, f"未知工具: {name}"
+        return await handler(state, args)
+
     async def _react_loop(self, state: dict) -> dict:
         """ReAct 循环（Task 7 完整实现，当前先占位走规则路径）"""
         logger.info("OpenHarnessAgent: ReAct 循环待实现，暂走规则路径")
