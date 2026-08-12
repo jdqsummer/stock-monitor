@@ -126,6 +126,26 @@ class TestWatchlistAPI:
         assert resp.json()["data"][0]["industry"] == "白酒"
 
     @pytest.mark.asyncio
+    async def test_auto_classify_unknown_via_provider(self, client, mock_redis):
+        """内置映射未收录的股票：智能分类经 provider 链补全行业"""
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.post("/api/watchlist", json={
+            "stock_code": "300750", "stock_name": "宁德时代",
+        }, headers=headers)
+
+        with patch(
+            "backend.api.watchlist._client.fetch_industry",
+            AsyncMock(return_value="电气设备"),
+        ):
+            resp = await client.post("/api/watchlist/auto-classify", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["updated"] == 1
+
+        resp = await client.get("/api/watchlist", headers=headers)
+        assert resp.json()["data"][0]["industry"] == "电气设备"
+
+    @pytest.mark.asyncio
     async def test_search(self, client, mock_redis):
         token = await _auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}

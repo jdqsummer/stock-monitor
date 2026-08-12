@@ -59,6 +59,11 @@ class StockDataProvider(abc.ABC):
         """搜索股票（代码/名称模糊匹配）"""
         ...
 
+    @abc.abstractmethod
+    async def fetch_industry(self, code: str) -> str:
+        """获取行业分类（返回一级行业名，如「电气设备」；无法判定时抛 ProviderError 由链切换）"""
+        ...
+
     async def close(self):
         """释放底层连接"""
         pass

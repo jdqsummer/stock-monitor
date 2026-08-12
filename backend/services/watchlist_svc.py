@@ -3,6 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.data.providers.base import ProviderError
+from backend.data.westock_client import WestockClient
 from backend.models.stock import WatchlistItem
 
 
@@ -101,13 +103,26 @@ class WatchlistService:
         return item
 
     @staticmethod
-    async def auto_classify(db: AsyncSession, user_id: str) -> int:
-        """按内置代码→行业映射批量赋值，返回更新数量"""
+    async def auto_classify(
+        db: AsyncSession, user_id: str, client: WestockClient | None = None,
+    ) -> int:
+        """智能分类：只为未分类（industry 为空）的自选股填行业。
+
+        内置代码→行业映射优先（离线快路径），未收录代码经数据源链补全；
+        已手动分类的股票不覆盖。返回更新数量。
+        """
         items = await WatchlistService.list_items(db, user_id)
         updated = 0
         for item in items:
-            industry = _INDUSTRY_MAP.get(item.stock_code)
-            if industry and item.industry != industry:
+            if item.industry:
+                continue  # 已分类（含手动），保留不覆盖
+            industry = _INDUSTRY_MAP.get(item.stock_code)  # 离线快路径（覆盖 mock 库）
+            if not industry and client:
+                try:
+                    industry = await client.fetch_industry(item.stock_code)
+                except ProviderError:
+                    industry = None  # 数据源不可用 → 跳过该股，不阻断整批
+            if industry:
                 item.industry = industry
                 updated += 1
         if updated:

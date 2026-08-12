@@ -84,6 +84,10 @@ class TencentProvider(StockDataProvider):
         """腾讯公开接口无稳定财报源，降级抛错（由链切换）"""
         raise ProviderError(f"腾讯无财报接口: {code}")
 
+    async def fetch_industry(self, code: str) -> str:
+        """腾讯公开接口无稳定行业源，降级抛错（由链切换到东财）"""
+        raise ProviderError(f"腾讯无行业接口: {code}")
+
     async def fetch_news(self, code: str, limit: int = 10) -> list[CompanyNews]:
         return []
 

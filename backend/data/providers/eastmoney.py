@@ -137,6 +137,38 @@ class EastMoneyProvider(StockDataProvider):
         except (httpx.HTTPError, ValueError) as e:
             raise ProviderError(f"东财财报失败 {code}: {e}") from e
 
+    async def fetch_industry(self, code: str) -> str:
+        """行业分类：F10 基本资料 EM2016（东财三级行业，取一级），如 300750 → 电气设备"""
+        secucode = f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
+        client = await self._get_client()
+        try:
+            resp = await client.get(
+                "https://datacenter.eastmoney.com/securities/api/data/v1/get",
+                params={
+                    "reportName": "RPT_F10_ORG_BASICINFO",
+                    "columns": "ALL", "quoteColumns": "",
+                    "filter": f'(SECUCODE="{secucode}")',
+                    "pageNumber": "1", "pageSize": "1",
+                    "sortTypes": "", "sortColumns": "",
+                    "source": "HSF10", "client": "PC",
+                },
+                headers={"Referer": "https://emweb.securities.eastmoney.com/", "User-Agent": _UA},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            rows = (((data or {}).get("result") or {}).get("data")) or []
+            if not rows:
+                raise ProviderError(f"东财行业无数据: {code}")
+            em2016 = rows[0].get("EM2016") or ""
+            top = em2016.split("-")[0].strip()
+            if not top:
+                raise ProviderError(f"东财行业字段缺失: {code}")
+            return top
+        except ProviderError:
+            raise
+        except (httpx.HTTPError, ValueError) as e:
+            raise ProviderError(f"东财行业失败 {code}: {e}") from e
+
     @staticmethod
     def _parse_financial(row: dict, code: str) -> FinancialReport:
         def _f(key: str):

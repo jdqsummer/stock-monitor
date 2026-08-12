@@ -88,7 +88,7 @@ async def auto_classify(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    updated = await WatchlistService.auto_classify(db, current_user.id)
+    updated = await WatchlistService.auto_classify(db, current_user.id, _client)
     return ApiResponse(data={"updated": updated}, message="智能分类完成")
 
 

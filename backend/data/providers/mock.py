@@ -1,6 +1,6 @@
 # stock-monitor/backend/data/providers/mock.py
 """Mock 数据源：未配置真实渠道时的降级兜底（开发/离线可用）"""
-from backend.data.providers.base import StockDataProvider
+from backend.data.providers.base import ProviderError, StockDataProvider
 from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 
 
@@ -22,6 +22,17 @@ _MOCK_STOCK_DB: list[tuple] = [
 ]
 
 
+# mock 库股票 → 一级行业（智能分类兜底；与 watchlist_svc._INDUSTRY_MAP 对应）
+_MOCK_INDUSTRY_MAP: dict[str, str] = {
+    "600519": "白酒", "000858": "白酒",
+    "600036": "银行", "601318": "保险",
+    "000333": "家电", "000651": "家电",
+    "601899": "有色金属", "600030": "非银金融",
+    "601012": "光伏", "002594": "汽车",
+    "600276": "医药生物", "601857": "石油石化",
+}
+
+
 class MockProvider(StockDataProvider):
     """开发阶段模拟数据源"""
 
@@ -36,6 +47,13 @@ class MockProvider(StockDataProvider):
 
     async def search_stock(self, keyword: str) -> list[StockQuote]:
         return self._mock_search(keyword)
+
+    async def fetch_industry(self, code: str) -> str:
+        """mock 库内代码返回内置行业；未知代码抛 ProviderError（链兜底失败由服务层跳过）"""
+        industry = _MOCK_INDUSTRY_MAP.get(code)
+        if not industry:
+            raise ProviderError(f"mock 库无行业: {code}")
+        return industry
 
     def _mock_search(self, keyword: str) -> list[StockQuote]:
         kw = keyword.strip()

@@ -1,7 +1,7 @@
 import pytest
 
 from backend.config import settings
-from backend.data.providers.base import normalize_code
+from backend.data.providers.base import ProviderError, normalize_code
 from backend.data.providers.mock import MockProvider
 
 
@@ -48,3 +48,12 @@ async def test_mock_search():
     assert results[0].code == "600519"
     assert results[0].name == "贵州茅台"
     assert await provider.search_stock("  ") == []
+
+
+@pytest.mark.asyncio
+async def test_mock_industry():
+    provider = MockProvider()
+    assert await provider.fetch_industry("600519") == "白酒"
+    assert await provider.fetch_industry("000333") == "家电"
+    with pytest.raises(ProviderError):
+        await provider.fetch_industry("999999")  # 非 mock 库代码 → 无行业

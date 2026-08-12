@@ -1,6 +1,9 @@
 # stock-monitor/tests/test_services/test_watchlist_svc.py
+from unittest.mock import AsyncMock
+
 import pytest
 
+from backend.data.providers.base import ProviderError
 from backend.services.watchlist_svc import DuplicateStockError, WatchlistService
 
 
@@ -58,3 +61,39 @@ async def test_auto_classify(db_session):
     industries = {i.stock_code: i.industry for i in items}
     assert industries["600519"] == "白酒"
     assert industries["000333"] == "家电"
+
+
+@pytest.mark.asyncio
+async def test_auto_classify_unknown_via_client(db_session):
+    """内置映射未收录的代码：走数据源 client 补全行业"""
+    await WatchlistService.add_item(db_session, "u1", "300750", "宁德时代")
+    client = AsyncMock()
+    client.fetch_industry = AsyncMock(return_value="电气设备")
+    count = await WatchlistService.auto_classify(db_session, "u1", client)
+    assert count == 1
+    items = await WatchlistService.list_items(db_session, "u1")
+    assert items[0].industry == "电气设备"
+
+
+@pytest.mark.asyncio
+async def test_auto_classify_provider_fail_skips(db_session):
+    """数据源失败：跳过该股，industry 保持 None，不报错不阻断"""
+    await WatchlistService.add_item(db_session, "u1", "300750", "宁德时代")
+    client = AsyncMock()
+    client.fetch_industry = AsyncMock(side_effect=ProviderError("无行业数据"))
+    count = await WatchlistService.auto_classify(db_session, "u1", client)
+    assert count == 0
+    items = await WatchlistService.list_items(db_session, "u1")
+    assert items[0].industry is None
+
+
+@pytest.mark.asyncio
+async def test_auto_classify_preserves_manual(db_session):
+    """已手动分类的股票不被智能分类覆盖"""
+    await WatchlistService.add_item(db_session, "u1", "603986", "兆易创新", "半导体")
+    client = AsyncMock()
+    client.fetch_industry = AsyncMock(return_value="电子设备")
+    count = await WatchlistService.auto_classify(db_session, "u1", client)
+    assert count == 0
+    items = await WatchlistService.list_items(db_session, "u1")
+    assert items[0].industry == "半导体"

@@ -85,3 +85,11 @@ async def test_tencent_search():
 async def test_tencent_search_empty_keyword():
     provider = TencentProvider(transport=httpx.MockTransport(_handler_factory(_search_fixture())))
     assert await provider.search_stock("  ") == []
+
+
+@pytest.mark.asyncio
+async def test_tencent_industry_raises():
+    """腾讯公开接口无稳定行业源，降级抛错由链切换到东财"""
+    provider = TencentProvider(transport=httpx.MockTransport(_handler_factory(_quote_fixture())))
+    with pytest.raises(ProviderError):
+        await provider.fetch_industry("600519")

@@ -61,6 +61,19 @@ class WestockClient:
                 continue
         return []
 
+    async def fetch_industry(self, code: str) -> str:
+        """按优先级链取行业分类，全部不可用时抛 ProviderError（服务层跳过不阻断）"""
+        last_error: Exception | None = None
+        for p in self.providers:
+            try:
+                industry = await p.fetch_industry(code)
+                if industry:
+                    return industry
+            except ProviderError as e:
+                logger.warning(f"数据源 {type(p).__name__} 行业失败: {e}")
+                last_error = e
+        raise ProviderError(f"所有数据源行业均不可用: {code}: {last_error}")
+
     async def close(self):
         for p in self.providers:
             try:

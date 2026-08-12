@@ -57,3 +57,34 @@ async def test_facade_all_fail_falls_to_mock(monkeypatch):
     quote = await client.fetch_quote("600519")
     assert quote.current_price == 50.0  # mock 兜底
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_facade_fetch_industry_failover_to_eastmoney(monkeypatch):
+    """腾讯行业不可用 → 链切换到东财"""
+    async def tencent_boom(self, code):
+        raise ProviderError("tencent no industry")
+    monkeypatch.setattr(TencentProvider, "fetch_industry", tencent_boom)
+
+    async def em_ok(self, code):
+        return "电气设备"
+    monkeypatch.setattr(EastMoneyProvider, "fetch_industry", em_ok)
+
+    client = WestockClient(priority="tencent,eastmoney")
+    assert await client.fetch_industry("300750") == "电气设备"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_facade_fetch_industry_all_fail_raises(monkeypatch):
+    """所有数据源行业均不可用 → 抛 ProviderError（服务层跳过不阻断）"""
+    async def boom(self, code):
+        raise ProviderError("down")
+    monkeypatch.setattr(TencentProvider, "fetch_industry", boom)
+    monkeypatch.setattr(EastMoneyProvider, "fetch_industry", boom)
+    monkeypatch.setattr(MockProvider, "fetch_industry", boom)
+
+    client = WestockClient(priority="tencent,eastmoney")
+    with pytest.raises(ProviderError):
+        await client.fetch_industry("300750")
+    await client.close()

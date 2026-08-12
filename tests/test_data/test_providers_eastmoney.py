@@ -76,3 +76,32 @@ async def test_eastmoney_financials():
     assert report.net_profit_deducted == pytest.approx(3.2e10 / 1e8)
     assert report.roe == pytest.approx(15.5)
     assert report.is_official is True
+
+
+def _basicinfo_fixture() -> dict:
+    # 东财 F10 基本资料：EM2016 为「一级-二级-三级」行业分类
+    return {"result": {"data": [
+        {"SECUCODE": "300750.SZ", "SECURITY_NAME_ABBR": "宁德时代",
+         "EM2016": "电气设备-电源设备-储能设备"},
+    ], "pages": 1}}
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_industry():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_basicinfo_fixture())))
+    assert await provider.fetch_industry("300750") == "电气设备"
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_industry_no_data():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory({"result": {"data": []}})))
+    with pytest.raises(ProviderError):
+        await provider.fetch_industry("300750")
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_industry_missing_em2016():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(
+        _handler_factory({"result": {"data": [{"SECUCODE": "300750.SZ"}]}})))
+    with pytest.raises(ProviderError):
+        await provider.fetch_industry("300750")
