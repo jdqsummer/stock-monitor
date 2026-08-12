@@ -1,7 +1,18 @@
 """OpenHarnessAgent 测试"""
 import pytest
 
+from backend.agents.analysis_chain import run_reverse_checklist
 from backend.agents.openharness import OpenHarnessAgent
+
+
+class FakeChecklistLLM:
+    async def json_chat(self, messages):
+        return {
+            "checklist_results": {"Q1": "有风险", "Q2": "没问题"},
+            "checklist_veto": True,
+            "most_concerning": "核心护城河五年内可能被削弱",
+            "overall_assessment": "证伪充分，存在重大担忧，应暂停买入",
+        }
 
 
 def make_state(**overrides) -> dict:
@@ -68,3 +79,19 @@ async def test_execute_tool_dispatches_by_name():
     )
     updates, _ = await agent._execute_tool("calc_swing_zone", {}, state)
     assert updates["swing_price_low"] == 38.4
+
+
+@pytest.mark.asyncio
+async def test_tool_run_reverse_checklist(monkeypatch):
+    """清单工具返回结构化证伪结果并写入 state"""
+    import backend.agents.openharness as oh
+    monkeypatch.setattr(oh, "run_reverse_checklist", lambda llm, info: FakeChecklistLLM().json_chat(None))
+
+    agent = OpenHarnessAgent(llm_provider=None)
+    state = make_state(stock_name="贵州茅台")
+    updates, text = await agent._tool_run_reverse_checklist(state, {})
+
+    assert updates["checklist_results"]["Q1"] == "有风险"
+    assert updates["checklist_veto"] is True
+    assert updates["checklist_summary"] == "证伪充分，存在重大担忧，应暂停买入"
+    assert "证伪" in text

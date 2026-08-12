@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from backend.agents.analysis_chain import run_reverse_checklist
 from backend.agents.constraints import ConstraintEngine, create_constraint_engine
 from backend.agents.workflow import (
     calculate_swing_zone_node,
@@ -96,12 +97,28 @@ class OpenHarnessAgent:
         text = f"距击球区: {updates.get('distance_pct')}%，信号: {updates.get('signal_label')}"
         return updates, text
 
+    async def _tool_run_reverse_checklist(self, state: dict, args: dict) -> tuple[dict, str]:
+        stock_info = (
+            f"股票: {state.get('stock_name', '')}({state.get('stock_code', '')})，"
+            f"现价: {state.get('current_price')} 元，动态PE: {state.get('pe_dynamic')}，"
+            f"扣非净利: {state.get('net_profit_deducted')} 亿，行业: {state.get('industry_category')}"
+        )
+        result = await run_reverse_checklist(self.llm, stock_info)
+        updates = {
+            "checklist_results": result.get("checklist_results", {}),
+            "checklist_veto": bool(result.get("checklist_veto", False)),
+            "checklist_summary": result.get("overall_assessment", ""),
+        }
+        text = f"证伪结论: {'存在否决项' if updates['checklist_veto'] else '无否决项'}。最担忧点: {result.get('most_concerning', '')}。{updates['checklist_summary']}"
+        return updates, text
+
     async def _execute_tool(self, name: str, args: dict, state: dict) -> tuple[dict, str]:
         """按名称分发到工具，返回 (state_updates, 给 LLM 看的文本)"""
         tool_map = {
             "estimate_annual_profit": self._tool_estimate_annual_profit,
             "calc_swing_zone": self._tool_calc_swing_zone,
             "calc_safety_margin": self._tool_calc_safety_margin,
+            "run_reverse_checklist": self._tool_run_reverse_checklist,
         }
         handler = tool_map.get(name)
         if handler is None:
