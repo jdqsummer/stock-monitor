@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -243,8 +244,9 @@ class OpenHarnessAgent:
                 msg = f"[{r['constraint_name']}] {r['message']}"
                 messages.append(msg)
                 errors = state.setdefault("errors", [])
-                errors.append(msg)
-                state["errors"] = errors
+                if msg not in errors:
+                    errors.append(msg)
+                    state["errors"] = errors
         return messages
 
     async def _tool_validate_constraints(self, state: dict, args: dict) -> tuple[dict, str]:
@@ -310,6 +312,19 @@ class OpenHarnessAgent:
             tool_calls = self._parse_tool_calls(resp)
             if not tool_calls:
                 break
+            # 追加 assistant tool_calls 帧，使后续 tool 消息有对应上下文（OpenAI 兼容必需）
+            messages.append({
+                "role": "assistant",
+                "content": resp.content or None,
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"], ensure_ascii=False)}
+                    }
+                    for tc in tool_calls
+                ],
+            })
             for tc in tool_calls:
                 name = tc.get("name", "")
                 args = tc.get("arguments", {})
@@ -358,7 +373,6 @@ def _safe_json(s: str) -> dict:
     """安全解析工具参数 JSON 字符串"""
     if not s:
         return {}
-    import json
     try:
         return json.loads(s) if isinstance(s, str) else (s if isinstance(s, dict) else {})
     except (json.JSONDecodeError, ValueError):

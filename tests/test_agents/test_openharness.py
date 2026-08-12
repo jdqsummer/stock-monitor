@@ -191,6 +191,21 @@ async def test_apply_hard_constraints_writes_errors():
 
 
 @pytest.mark.asyncio
+async def test_apply_hard_constraints_dedupes_errors():
+    """硬约束重复校验时 errors 不重复追加"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    from backend.agents.state import ConstraintResult
+    results = [
+        ConstraintResult(constraint_name="纪律红线", passed=False, severity="error",
+                         message="亏损企业必评🔴", suggestion="下调评级", auto_fixable=False),
+    ]
+    state = make_state()
+    agent._apply_hard_constraints(state, results)
+    agent._apply_hard_constraints(state, results)
+    assert state["errors"].count("[纪律红线] 亏损企业必评🔴") == 1
+
+
+@pytest.mark.asyncio
 async def test_tool_output_conclusion():
     """综合结论工具写入最终评级与建议"""
     agent = OpenHarnessAgent(llm_provider=None)
@@ -251,8 +266,10 @@ class ScriptedReActLLM:
     def __init__(self, react_responses, json_payload=None):
         self.react_responses = list(react_responses)
         self.json_payload = json_payload
+        self.calls = []
 
     async def chat(self, messages, tools=None, tool_choice="auto"):
+        self.calls.append(messages)
         return self.react_responses.pop(0)
 
     async def json_chat(self, messages):
@@ -305,6 +322,11 @@ async def test_react_loop_runs_tools_then_concludes(monkeypatch):
     assert result["final_rating"] == "🟡"
     # 强制依赖 LLM 结论：rule_based 路径不会产生此精确字符串
     assert result["recommendation"] == "观察区，等待"
+    # 回归防护：assistant tool_calls 帧必须追加到对话历史（OpenAI 兼容必需）
+    assert any(
+        any(m.get("role") == "assistant" and m.get("tool_calls") for m in hist)
+        for hist in agent.llm.calls
+    )
 
 
 @pytest.mark.asyncio
