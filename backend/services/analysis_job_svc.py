@@ -86,8 +86,8 @@ class AnalysisJobService:
 
     async def _process_one(self, job_id: str, code: str, user_id: str, item):
         job = self._jobs[job_id]
-        job["codes"][code] = STATUS_RUNNING
         async with self._semaphore:
+            job["codes"][code] = STATUS_RUNNING
             try:
                 if not self._llm_available():
                     job["codes"][code] = STATUS_SKIPPED

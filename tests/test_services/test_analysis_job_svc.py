@@ -122,3 +122,28 @@ async def test_concurrency_limited(db_session, test_session_factory):
     await svc._run(job_id)
     assert slow.max_active == 1
     assert svc.get_status(job_id)["done"] == 2
+
+
+@pytest.mark.asyncio
+async def test_queued_codes_stay_pending_while_running(db_session, test_session_factory):
+    """semaphore 未授予前，排队股票保持 pending，而非误标 running"""
+    from backend.services.analysis_job_svc import STATUS_PENDING, STATUS_RUNNING
+
+    class SlowChain:
+        async def analyze(self, code, stock_name="", user_query="", industry=""):
+            await asyncio.sleep(0.2)
+            return _report(code)
+
+    svc = AnalysisJobService(chain=SlowChain(), llm_available=lambda: True,
+                             max_concurrency=1, session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519", "000858"], "manual")
+    task = asyncio.create_task(svc._run(job_id))
+    await asyncio.sleep(0.05)  # 第一只正在跑，第二只应仍在排队
+
+    status = svc.get_status(job_id)
+    assert status["running"] == 1
+    assert status["results"]["600519"] == STATUS_RUNNING
+    assert status["results"]["000858"] == STATUS_PENDING  # 未被误标 running
+
+    await task
+    assert svc.get_status(job_id)["done"] == 2
