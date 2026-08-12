@@ -95,3 +95,9 @@ async def db_session():
     """提供独立的测试数据库 session"""
     async with test_async_session_factory() as session:
         yield session
+
+
+@pytest_asyncio.fixture
+async def test_session_factory():
+    """可注入 AnalysisJobService 的 session 工厂（绑定测试引擎）"""
+    return test_async_session_factory
