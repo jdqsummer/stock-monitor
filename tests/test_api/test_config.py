@@ -1,6 +1,9 @@
 # stock-monitor/tests/test_api/test_config.py
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from backend.models.user import User
 
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:
@@ -54,6 +57,36 @@ class TestConfig:
         assert data["data"]["llm_model"] == "qwen-max"
         assert data["data"]["risk_tolerance"] == "conservative"
         assert data["data"]["notification_enabled"] is True
+
+    @pytest.mark.asyncio
+    async def test_update_config_persists_analysis_auto_enabled(self, client, db_session):
+        """分析开关应持久化：PUT → GET 回显 → 库中 user.config JSON 均可见"""
+        email = "cfg_auto_analysis@example.com"
+        token = await _register_and_login(client, email)
+        new_config = {
+            "llm_model": "deepseek-chat",
+            "llm_temperature": 0.3,
+            "llm_max_tokens": 4096,
+            "data_refresh_interval_minutes": 30,
+            "analysis_schedule_morning": "09:30",
+            "analysis_schedule_afternoon": "16:00",
+            "westock_api_key": None,
+            "investment_style": "value",
+            "risk_tolerance": "moderate",
+            "notification_enabled": True,
+            "analysis_auto_enabled": True,
+        }
+        put_resp = await client.put("/api/config", json=new_config, headers={"Authorization": f"Bearer {token}"})
+        assert put_resp.status_code == 200
+        assert put_resp.json()["data"]["analysis_auto_enabled"] is True
+
+        get_resp = await client.get("/api/config", headers={"Authorization": f"Bearer {token}"})
+        assert get_resp.status_code == 200
+        assert get_resp.json()["data"]["analysis_auto_enabled"] is True
+
+        result = await db_session.execute(select(User).where(User.email == email))
+        user = result.scalar_one()
+        assert user.config["analysis_auto_enabled"] is True
 
     @pytest.mark.asyncio
     async def test_get_llm_models(self, client):

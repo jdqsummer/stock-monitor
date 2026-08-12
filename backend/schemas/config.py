@@ -14,6 +14,7 @@ class UserConfig(BaseModel):
     investment_style: str = "value"
     risk_tolerance: str = "moderate"
     notification_enabled: bool = False
+    analysis_auto_enabled: bool = False
 
 
 class LLMModelInfo(BaseModel):
