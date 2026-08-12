@@ -15,6 +15,17 @@ from backend.services.snapshot_svc import SnapshotService
 logger = logging.getLogger(__name__)
 
 
+def _safe_json_list(raw) -> list:
+    """将 JSON 字符串安全解析为列表；不合法时返回空列表，永不抛异常。"""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 class StockDataService:
     """
     股票数据服务。
@@ -114,13 +125,11 @@ class StockDataService:
                 snapshot.analysis_completed_at.isoformat() if snapshot.analysis_completed_at else None
             ),
             "moat_assessment": snapshot.moat_assessment,
-            "risk_factors": json.loads(snapshot.risk_factors) if snapshot.risk_factors else [],
+            "risk_factors": _safe_json_list(snapshot.risk_factors),
             "pe_rationale": snapshot.pe_rationale,
             "recommendation": snapshot.recommendation,
             "profit_quality_ok": snapshot.profit_quality_ok,
-            "profit_quality_warnings": (
-                json.loads(snapshot.profit_quality_warnings) if snapshot.profit_quality_warnings else []
-            ),
+            "profit_quality_warnings": _safe_json_list(snapshot.profit_quality_warnings),
         }
 
     @staticmethod

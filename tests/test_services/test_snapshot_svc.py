@@ -85,3 +85,4 @@ async def test_save_snapshot_qualitative(db_session):
     assert saved.profit_quality_warnings == '["扣非低于净利"]'
     assert saved.analysis_source == "scheduled"
     assert saved.analysis_completed_at is not None
+    assert saved.pe_rationale == "行业龙头溢价"

@@ -23,7 +23,7 @@ export function StockDetail() {
     if (!code) return;
     analysisApi.getSnapshot(code)
       .then(res => setSnap(res.data.data as WatchlistBoardRow))
-      .catch(() => setNotFound(true))
+      .catch((err) => { console.error('Failed to fetch snapshot:', err); setNotFound(true); })
       .finally(() => setLoading(false));
   }, [code]);
 
@@ -62,8 +62,8 @@ export function StockDetail() {
           <Descriptions.Item label="行业">{snap.industry_category || snap.industry || '-'}</Descriptions.Item>
           <Descriptions.Item label="击球区市值">{snap.swing_market_cap}</Descriptions.Item>
           <Descriptions.Item label="对应股价">{snap.swing_price}</Descriptions.Item>
-          <Descriptions.Item label="当前市值">{snap.current_market_cap.toFixed(0)}亿</Descriptions.Item>
-          <Descriptions.Item label="当前股价">¥{snap.current_price.toFixed(2)}</Descriptions.Item>
+          <Descriptions.Item label="当前市值">{snap.current_market_cap != null ? snap.current_market_cap.toFixed(0) : '-'}亿</Descriptions.Item>
+          <Descriptions.Item label="当前股价">{snap.current_price != null ? `¥${snap.current_price.toFixed(2)}` : '-'}</Descriptions.Item>
           <Descriptions.Item label="距击球区">
             {snap.distance_pct != null ? `${snap.distance_pct > 0 ? '+' : ''}${snap.distance_pct.toFixed(1)}%` : '-'}
           </Descriptions.Item>
