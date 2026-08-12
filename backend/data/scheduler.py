@@ -126,7 +126,13 @@ class TaskScheduler:
                 )
                 self._jobs[job_id] = job
             except (ValueError, IndexError) as e:
-                # 坏时间格式（如 "bad" / "25:00"）只跳过该用户，不阻断整批
-                logger.warning(f"跳过非法定时配置 {job_id} ({time_str}): {e}")
-                self._jobs.pop(job_id, None)  # 若旧 job 已被移除，保持 _jobs 一致
+                # 坏时间格式（如 "bad" / "25:00"）只跳过该用户，不阻断整批。
+                # 若该用户此前有有效 job，需一并移除 scheduler 中残留的幽灵 job；
+                # 但仅当 job 仍存在于 scheduler 时才调用 remove_job（"25:00" 场景下
+                # remove_job 已在 try 内执行过，重复调用会抛 JobLookupError）。
+                logger.warning(f"跳过用户 {job_id} 的无效分析时间: {e}")
+                if job_id in self._jobs:
+                    if any(j.id == job_id for j in self._scheduler.get_jobs()):
+                        self._scheduler.remove_job(job_id)
+                    self._jobs.pop(job_id, None)
                 continue
