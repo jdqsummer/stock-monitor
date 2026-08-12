@@ -180,6 +180,53 @@ class OpenHarnessAgent:
         text = f"PE 区间: {pe_low}-{pe_high}。理由: {updates['pe_rationale']}"
         return updates, text
 
+    # ── 约束硬校验 & 综合结论 ──
+
+    def _apply_hard_constraints(self, state: dict, results: list) -> list[str]:
+        messages = []
+        for r in results:
+            if not r["passed"] and r["severity"] == "error":
+                msg = f"[{r['constraint_name']}] {r['message']}"
+                messages.append(msg)
+                errors = state.setdefault("errors", [])
+                errors.append(msg)
+                state["errors"] = errors
+        return messages
+
+    async def _tool_validate_constraints(self, state: dict, args: dict) -> tuple[dict, str]:
+        results = await self.constraint_engine.evaluate(state)
+        violations = self._apply_hard_constraints(state, results)
+        if violations:
+            text = "硬约束失败（不可绕过，必须修正）：" + "；".join(violations)
+        else:
+            warnings = [r["message"] for r in results if not r["passed"] and r["severity"] == "warning"]
+            text = "约束校验通过。" + (f"软约束提示: {'；'.join(warnings)}" if warnings else "")
+        return {"__constraint_violations__": violations}, text
+
+    async def _tool_output_conclusion(self, state: dict, args: dict) -> tuple[dict, str]:
+        prompt = (
+            f"基于以下分析结论给出投资综合结论（结论不输出过程）。\n"
+            f"信号: {state.get('signal_label')}，距击球区: {state.get('distance_pct')}%，"
+            f"击球区股价: {state.get('swing_price_low')}-{state.get('swing_price_high')} 元，"
+            f"证伪结论: {state.get('checklist_summary', '未执行')}，"
+            f"护城河: {state.get('moat_assessment', '未评估')}。\n"
+            f"请以 JSON 返回: {{\"final_rating\": \"🟢/🟡/🔴\", "
+            f"\"recommendation\": \"一句话建议（可配置区/观察区/坚决放弃）\", "
+            f"\"action_items\": [\"行动1\", \"行动2\"]}}"
+        )
+        resp = await self.llm.json_chat([{"role": "user", "content": prompt}])
+        final_rating = resp.get("final_rating", state.get("final_rating", "🟡"))
+        if final_rating not in ("🟢", "🟡", "🔴"):
+            final_rating = "🟡"
+        updates = {
+            "final_rating": final_rating,
+            "recommendation": resp.get("recommendation", ""),
+            "action_items": resp.get("action_items", []),
+            "rating_confidence": 0.75,
+        }
+        text = f"综合结论: {final_rating} — {updates['recommendation']}"
+        return updates, text
+
     async def _execute_tool(self, name: str, args: dict, state: dict) -> tuple[dict, str]:
         """按名称分发到工具，返回 (state_updates, 给 LLM 看的文本)"""
         tool_map = {
@@ -191,6 +238,8 @@ class OpenHarnessAgent:
             "assess_profit_quality": self._tool_assess_profit_quality,
             "analyze_qualitative": self._tool_analyze_qualitative,
             "anchor_industry_pe": self._tool_anchor_industry_pe,
+            "validate_constraints": self._tool_validate_constraints,
+            "output_conclusion": self._tool_output_conclusion,
         }
         handler = tool_map.get(name)
         if handler is None:

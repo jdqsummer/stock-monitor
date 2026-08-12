@@ -159,3 +159,47 @@ async def test_tool_anchor_industry_pe_invalid_ranges_fall_back(
 
     assert updates["pe_low"] == expected_low
     assert updates["pe_high"] == expected_high
+
+
+# ── Task 6: 约束硬校验工具 + 综合结论工具 ──
+
+
+@pytest.mark.asyncio
+async def test_tool_validate_constraints_rejects_hard_violation():
+    """亏损且未评🔴 → 硬约束拒绝"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    state = make_state(annual_profit_low=-2.0, annual_profit_high=-2.0, final_rating="🟡", distance_pct=999)
+    updates, text = await agent._tool_validate_constraints(state, {})
+
+    assert updates["__constraint_violations__"]
+    assert "评级" in text or "年化" in text
+
+
+@pytest.mark.asyncio
+async def test_apply_hard_constraints_writes_errors():
+    """硬约束失败写入 state.errors"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    state = make_state()
+    from backend.agents.state import ConstraintResult
+    results = [
+        ConstraintResult(constraint_name="纪律红线", passed=False, severity="error",
+                         message="距击球区 > 50%", suggestion="不追高", auto_fixable=False),
+    ]
+    messages = agent._apply_hard_constraints(state, results)
+    assert messages == ["[纪律红线] 距击球区 > 50%"]
+    assert state["errors"] == ["[纪律红线] 距击球区 > 50%"]
+
+
+@pytest.mark.asyncio
+async def test_tool_output_conclusion():
+    """综合结论工具写入最终评级与建议"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = FakeQualitativeLLM({
+        "final_rating": "🟡", "recommendation": "距击球区 15%，观察区，等待更好时机",
+        "action_items": ["设定击球点提醒", "持续跟踪基本面"],
+    })
+    state = make_state(distance_pct=15.0)
+    updates, text = await agent._tool_output_conclusion(state, {})
+
+    assert updates["final_rating"] == "🟡"
+    assert "观察" in updates["recommendation"]
