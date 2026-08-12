@@ -95,3 +95,39 @@ async def test_tool_run_reverse_checklist(monkeypatch):
     assert updates["checklist_veto"] is True
     assert updates["checklist_summary"] == "证伪充分，存在重大担忧，应暂停买入"
     assert "证伪" in text
+
+
+class FakeQualitativeLLM:
+    def __init__(self, payload): self.payload = payload
+    async def json_chat(self, messages): return self.payload
+
+
+@pytest.mark.asyncio
+async def test_tool_analyze_qualitative():
+    """定性工具产出商业模式+护城河与风险"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = FakeQualitativeLLM({
+        "moat_assessment": "品牌护城河极深，定价权强，商业模式为高毛利高端消费",
+        "risk_factors": ["消费降级", "政策收紧"],
+    })
+    state = make_state()
+    updates, text = await agent._tool_analyze_qualitative(state, {})
+
+    assert "护城河" in updates["moat_assessment"]
+    assert updates["risk_factors"] == ["消费降级", "政策收紧"]
+
+
+@pytest.mark.asyncio
+async def test_tool_anchor_industry_pe_uses_rule_as_anchor():
+    """PE 锚定以规则表为初始锚点，LLM 可结合定性给定范围"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = FakeQualitativeLLM({
+        "pe_low": 18, "pe_high": 22,
+        "pe_rationale": "白酒龙头，但行业增速放缓，估值中枢下移",
+    })
+    state = make_state(industry_category="白酒")
+    updates, text = await agent._tool_anchor_industry_pe(state, {})
+
+    assert updates["pe_low"] == 18
+    assert updates["pe_high"] == 22
+    assert "白酒" in updates["pe_rationale"] or "龙头" in updates["pe_rationale"]
