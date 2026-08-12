@@ -1,6 +1,7 @@
 # stock-monitor/backend/services/snapshot_svc.py
+import json
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ class SnapshotService:
     @staticmethod
     async def save_snapshot(
         db: AsyncSession, user_id: str, report: AnalysisReport,
+        source: str = "manual",
     ) -> AnalysisSnapshot:
         """分析完成后落库 B（upsert by user_id + stock_code）"""
         existing = (
@@ -45,6 +47,19 @@ class SnapshotService:
         existing.distance_pct = report.distance_pct
         existing.signal = report.signal or "none"
         existing.rating = report.final_rating
+        existing.industry_category = report.industry_category or None
+        existing.moat_assessment = report.moat_assessment or None
+        existing.risk_factors = json.dumps(report.risk_factors, ensure_ascii=False) if report.risk_factors else None
+        existing.pe_rationale = report.pe_rationale or None
+        existing.recommendation = report.recommendation or None
+        existing.signal_label = report.signal_label or None
+        existing.profit_quality_ok = report.profit_quality_ok
+        existing.profit_quality_warnings = (
+            json.dumps(report.profit_quality_warnings, ensure_ascii=False)
+            if report.profit_quality_warnings else None
+        )
+        existing.analysis_source = source
+        existing.analysis_completed_at = datetime.now()
         try:
             existing.data_date = date.fromisoformat(report.data_date)
         except (ValueError, TypeError):

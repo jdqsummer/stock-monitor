@@ -62,3 +62,26 @@ async def test_get_latest_snapshot(db_session):
     got = await SnapshotService.get_latest_snapshot(db_session, "u1", "600519")
     assert got is not None
     assert got.annual_profit_low == 688
+
+
+@pytest.mark.asyncio
+async def test_save_snapshot_qualitative(db_session):
+    report = _report()
+    report.industry_category = "白酒"
+    report.moat_assessment = "品牌护城河强"
+    report.risk_factors = ["宏观风险", "政策风险"]
+    report.pe_rationale = "行业龙头溢价"
+    report.recommendation = "可分批建仓"
+    report.signal_label = "击球区"
+    report.profit_quality_ok = False
+    report.profit_quality_warnings = ["扣非低于净利"]
+    saved = await SnapshotService.save_snapshot(db_session, "u1", report, source="scheduled")
+    assert saved.industry_category == "白酒"
+    assert saved.moat_assessment == "品牌护城河强"
+    assert saved.risk_factors == '["宏观风险", "政策风险"]'
+    assert saved.recommendation == "可分批建仓"
+    assert saved.signal_label == "击球区"
+    assert saved.profit_quality_ok is False
+    assert saved.profit_quality_warnings == '["扣非低于净利"]'
+    assert saved.analysis_source == "scheduled"
+    assert saved.analysis_completed_at is not None
