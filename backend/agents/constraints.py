@@ -222,11 +222,16 @@ class IndustryPEAnchorConstraint(Constraint):
         "乳制品": (18, 30),
         "调味品": (25, 40),
         "食品饮料": (20, 35),
+        "饮料": (20, 35),
         # 医药
         "医药生物": (25, 45),
         "医疗器械": (25, 40),
         "医疗健康": (20, 40),
-        # 科技/半导体
+        "化学制药": (25, 40),
+        # 科技/半导体（粗粒度兜底；细分优先走 EM2016_PE_ALIAS）
+        "电子设备": (18, 30),
+        "电子": (18, 30),
+        "半导体": (25, 45),
         "半导体设备": (35, 55),
         "半导体设计": (30, 50),
         "半导体材料": (25, 45),
@@ -238,12 +243,14 @@ class IndustryPEAnchorConstraint(Constraint):
         "通信设备": (15, 25),
         "软件": (25, 50),
         "SaaS": (30, 60),
-        # 新能源
+        # 新能源（粗粒度兜底；细分优先走 EM2016_PE_ALIAS）
         "新能源": (15, 30),
         "光伏": (12, 22),
         "风电": (12, 20),
         "锂电池": (15, 28),
         "新能源汽车": (15, 30),
+        "电气设备": (15, 28),
+        "电源设备": (15, 28),
         # 金融/周期
         "银行": (5, 10),
         "保险": (8, 15),
@@ -256,6 +263,8 @@ class IndustryPEAnchorConstraint(Constraint):
         # 制造/工业
         "家电": (12, 20),
         "汽车": (10, 20),
+        "汽车零部件": (15, 25),
+        "交运设备": (12, 22),
         "建筑材料": (10, 18),
         "建筑装饰": (8, 15),
         "交通运输": (10, 18),
@@ -304,18 +313,20 @@ class IndustryPEAnchorConstraint(Constraint):
                 auto_fixable=False,
             )
 
-        # 行业 PE 参考一致性检查
-        if industry and industry in self.INDUSTRY_PE_REFERENCE:
-            ref_low, ref_high = self.INDUSTRY_PE_REFERENCE[industry]
-            if pe_low < ref_low * 0.5 or pe_high > ref_high * 1.5:
-                return ConstraintResult(
-                    constraint_name=self.name,
-                    passed=True,
-                    severity="warning",
-                    message=f"PE 区间 {pe_low}-{pe_high} 偏离行业参考 {ref_low}-{ref_high}，请确认有合理理由",
-                    suggestion="与行业参考锚点对照，偏离需明确说明理由",
-                    auto_fixable=False,
-                )
+        # 行业 PE 参考一致性检查（细粒度解析）
+        if industry:
+            ref_cat, ref = resolve_pe_anchor(industry)
+            if ref:
+                ref_low, ref_high = ref
+                if pe_low < ref_low * 0.5 or pe_high > ref_high * 1.5:
+                    return ConstraintResult(
+                        constraint_name=self.name,
+                        passed=True,
+                        severity="warning",
+                        message=f"PE 区间 {pe_low}-{pe_high} 偏离行业参考 {ref_cat} {ref_low}-{ref_high}，请确认有合理理由",
+                        suggestion="与行业参考锚点对照，偏离需明确说明理由",
+                        auto_fixable=False,
+                    )
 
         return ConstraintResult(
             constraint_name=self.name,
@@ -325,6 +336,76 @@ class IndustryPEAnchorConstraint(Constraint):
             suggestion="",
             auto_fixable=False,
         )
+
+
+# ═══════════════════════════════════════════
+# 细粒度行业 PE 锚定解析
+# ═══════════════════════════════════════════
+
+# 东财 EM2016 细分行业名 → PE 参考表类别（翻译对齐，颗粒度优先）
+# 直接命中参考表键的段（白酒/面板/PCB/医疗器械等）无需在此登记
+EM2016_PE_ALIAS: dict[str, str] = {
+    # 半导体（瑞芯微等 Fabless 设计）
+    "集成电路": "半导体设计",
+    "数字芯片设计": "半导体设计",
+    "模拟芯片设计": "半导体设计",
+    "芯片设计": "半导体设计",
+    "分立器件": "半导体",
+    "半导体材料": "半导体材料",
+    "半导体设备": "半导体设备",
+    # 新能源
+    "太阳能": "光伏",
+    "光伏设备": "光伏",
+    "储能设备": "锂电池",
+    "电池": "锂电池",
+    "动力电池": "锂电池",
+    "风电设备": "风电",
+    # 汽车
+    "乘用车": "汽车",
+    "商用车": "汽车",
+    "汽车整车": "汽车",
+    # 家电
+    "白色家电": "家电",
+    "黑色家电": "家电",
+    "厨卫电器": "家电",
+    # 食品饮料
+    "白酒": "白酒",
+    "饮料": "食品饮料",
+    "乳制品": "乳制品",
+    # 医药
+    "化学制剂": "医药生物",
+    "原料药": "医药生物",
+    "生物制品": "医药生物",
+    "医疗设备": "医疗器械",
+    "医疗服务": "医疗健康",
+}
+
+
+def resolve_pe_anchor(industry: str | None) -> tuple[str | None, tuple[float, float] | None]:
+    """把行业字符串解析为最匹配的 PE 锚定类别。
+
+    industry 可能是：
+      - 东财 EM2016 完整链（如 "电子设备-半导体-集成电路"）
+      - 单段行业名（如 "白酒" / "电子设备"）
+
+    从最细粒度（三级）向最粗粒度（一级）依次尝试：
+      1. 段名直接命中参考表键 → 用该锚点
+      2. 段名命中 EM2016 别名 → 用映射类别的锚点
+      3. 全部未命中 → (None, None)，由调用方走默认区间
+
+    Returns:
+        (锚定类别名, (pe_low, pe_high))；未命中返回 (None, None)
+    """
+    if not industry:
+        return None, None
+    segments = [s.strip() for s in industry.replace("/", "-").split("-") if s.strip()]
+    for seg in reversed(segments):  # 最细 → 最粗
+        if seg in IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE:
+            return seg, IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE[seg]
+        alias = EM2016_PE_ALIAS.get(seg)
+        if alias and alias in IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE:
+            return alias, IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE[alias]
+    return None, None
 
 
 # ═══════════════════════════════════════════

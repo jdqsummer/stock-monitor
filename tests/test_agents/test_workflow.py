@@ -194,6 +194,38 @@ class TestNodeFunctions:
         assert result["profit_quality_ok"] is False
         assert len(result["profit_quality_warnings"]) >= 1
 
+    @pytest.mark.asyncio
+    async def test_check_profit_quality_missing_deducted_falls_back(self):
+        """扣非缺失（None）但归母有效 → 回退归母口径，不误判亏损"""
+        mock_fin = MagicMock()
+        mock_fin.net_profit_parent = 3.3
+        mock_fin.net_profit_deducted = None  # 数据源未返回扣非
+
+        state = make_state(
+            financials=[mock_fin],
+            net_profit_parent=3.3,
+            net_profit_deducted=0,
+        )
+        result = await check_profit_quality_node(state)
+
+        # 回退到归母口径，避免被当成亏损跳过量化分析
+        assert result["net_profit_deducted"] == pytest.approx(3.3)
+        assert result["profit_quality_ok"] is True
+        assert any("扣非" in w for w in result["profit_quality_warnings"])
+
+    @pytest.mark.asyncio
+    async def test_check_profit_quality_missing_deducted_no_parent(self):
+        """归母、扣非都缺失 → 保持 0，不产生回退"""
+        mock_fin = MagicMock()
+        mock_fin.net_profit_parent = None
+        mock_fin.net_profit_deducted = None
+
+        state = make_state(financials=[mock_fin])
+        result = await check_profit_quality_node(state)
+
+        assert result["net_profit_deducted"] == 0
+        assert result["net_profit_parent"] == 0
+
     # Step 4: 年化利润
 
     @pytest.mark.asyncio
@@ -247,6 +279,19 @@ class TestNodeFunctions:
 
         assert result["pe_low"] == 15.0
         assert result["pe_high"] == 25.0
+
+    @pytest.mark.asyncio
+    async def test_determine_pe_range_full_chain(self):
+        """完整东财链 → 细粒度锚定（电子设备-半导体-集成电路 → 半导体设计 30-50）"""
+        state = make_state(
+            industry_category="电子设备-半导体-集成电路",
+            pe_dynamic=22.0,
+        )
+        result = await determine_pe_range_node(state)
+
+        assert result["pe_low"] == 30.0
+        assert result["pe_high"] == 50.0
+        assert "半导体设计" in result["pe_rationale"]
 
     # Step 6: 击球区
 

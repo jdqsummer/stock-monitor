@@ -10,7 +10,7 @@ import type { WatchlistBoardRow } from '@/types';
 const columns: ColumnsType<WatchlistBoardRow> = [
   { title: '股票名称', dataIndex: 'name', key: 'name', width: 120,
     render: (text: string, record: WatchlistBoardRow) => <a href={`/stock/${record.code}`}>{text}</a> },
-  { title: '行业', dataIndex: 'industry', key: 'industry', width: 100 },
+  { title: '行业', dataIndex: 'industry', key: 'industry', width: 200, ellipsis: true },
   { title: '年化净利', dataIndex: 'annual_profit', key: 'annual_profit', width: 100 },
   { title: '方法', dataIndex: 'profit_method', key: 'profit_method', width: 60 },
   { title: '击球区PE', dataIndex: 'swing_pe', key: 'swing_pe', width: 90 },

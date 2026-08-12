@@ -65,14 +65,14 @@ async def test_auto_classify(db_session):
 
 @pytest.mark.asyncio
 async def test_auto_classify_unknown_via_client(db_session):
-    """内置映射未收录的代码：走数据源 client 补全行业"""
+    """内置映射未收录的代码：走数据源 client 补全完整行业链"""
     await WatchlistService.add_item(db_session, "u1", "300750", "宁德时代")
     client = AsyncMock()
-    client.fetch_industry = AsyncMock(return_value="电气设备")
+    client.fetch_industry = AsyncMock(return_value="电气设备-电源设备-储能设备")
     count = await WatchlistService.auto_classify(db_session, "u1", client)
     assert count == 1
     items = await WatchlistService.list_items(db_session, "u1")
-    assert items[0].industry == "电气设备"
+    assert items[0].industry == "电气设备-电源设备-储能设备"
 
 
 @pytest.mark.asyncio
@@ -92,8 +92,20 @@ async def test_auto_classify_preserves_manual(db_session):
     """已手动分类的股票不被智能分类覆盖"""
     await WatchlistService.add_item(db_session, "u1", "603986", "兆易创新", "半导体")
     client = AsyncMock()
-    client.fetch_industry = AsyncMock(return_value="电子设备")
+    client.fetch_industry = AsyncMock(return_value="电子设备-半导体-集成电路")
     count = await WatchlistService.auto_classify(db_session, "u1", client)
     assert count == 0
     items = await WatchlistService.list_items(db_session, "u1")
     assert items[0].industry == "半导体"
+
+
+@pytest.mark.asyncio
+async def test_auto_classify_upgrades_old_top_level(db_session):
+    """旧自动分类（一级行业）升级为完整链"""
+    await WatchlistService.add_item(db_session, "u1", "300750", "宁德时代", "电气设备")
+    client = AsyncMock()
+    client.fetch_industry = AsyncMock(return_value="电气设备-电源设备-储能设备")
+    count = await WatchlistService.auto_classify(db_session, "u1", client)
+    assert count == 1
+    items = await WatchlistService.list_items(db_session, "u1")
+    assert items[0].industry == "电气设备-电源设备-储能设备"

@@ -5,7 +5,7 @@ import type { PositionInfo } from '@/types';
 
 const columns: ColumnsType<PositionInfo> = [
   { title: '企业名', dataIndex: 'stock_name', key: 'name', width: 120 },
-  { title: '行业', dataIndex: 'industry', key: 'industry', width: 100 },
+  { title: '行业', dataIndex: 'industry', key: 'industry', width: 200, ellipsis: true },
   { title: '持有数量', dataIndex: 'shares', key: 'shares', width: 80 },
   { title: '成本价', dataIndex: 'cost_price', key: 'cost_price', width: 80, render: (v: number) => `¥${v.toFixed(2)}` },
   { title: '现价', dataIndex: 'current_price', key: 'current_price', width: 80, render: (v: number) => `¥${v.toFixed(2)}` },

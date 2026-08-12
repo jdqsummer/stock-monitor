@@ -138,7 +138,10 @@ class EastMoneyProvider(StockDataProvider):
             raise ProviderError(f"东财财报失败 {code}: {e}") from e
 
     async def fetch_industry(self, code: str) -> str:
-        """行业分类：F10 基本资料 EM2016（东财三级行业，取一级），如 300750 → 电气设备"""
+        """行业分类：F10 基本资料 EM2016 完整链（一级-二级-三级），如 300750 → 电气设备-电源设备-储能设备
+
+        返回完整链而非仅一级，供细粒度 PE 锚定（resolve_pe_anchor 从最细段开始匹配）。
+        """
         secucode = f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
         client = await self._get_client()
         try:
@@ -160,10 +163,10 @@ class EastMoneyProvider(StockDataProvider):
             if not rows:
                 raise ProviderError(f"东财行业无数据: {code}")
             em2016 = rows[0].get("EM2016") or ""
-            top = em2016.split("-")[0].strip()
-            if not top:
+            chain = "-".join(s.strip() for s in em2016.split("-") if s.strip())
+            if not chain:
                 raise ProviderError(f"东财行业字段缺失: {code}")
-            return top
+            return chain
         except ProviderError:
             raise
         except (httpx.HTTPError, ValueError) as e:
@@ -183,8 +186,11 @@ class EastMoneyProvider(StockDataProvider):
             report_period=_report_period(str(row.get("REPORT_DATE") or "")),
             revenue=_f("TOTALOPERATEREVE"),
             net_profit_parent=_f("PARENTNETPROFIT"),
-            net_profit_deducted=_f("DEDUCTPARENTNETPROFIT"),
-            roe=_round_roe(row.get("WEIGHTAVG_ROE")),
+            # 东财 RPT_F10_FINANCE_MAINFINADATA 扣非字段为 KCFJCXSYJLR
+            # （DEDUCTPARENTNETPROFIT 在该接口恒为 null，曾致扣非恒 0）
+            net_profit_deducted=_f("KCFJCXSYJLR"),
+            # 加权 ROE 字段为 ROEJQ（WEIGHTAVG_ROE 在该接口不存在）
+            roe=_round_roe(row.get("ROEJQ")),
             is_official=True,
         )
 

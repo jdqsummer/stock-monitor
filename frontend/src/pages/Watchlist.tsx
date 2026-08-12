@@ -79,9 +79,9 @@ export function Watchlist() {
   const columns: ColumnsType<WatchlistItem> = [
     { title: '股票代码', dataIndex: 'stock_code', width: 120 },
     { title: '股票名称', dataIndex: 'stock_name', width: 120 },
-    { title: '行业分类', dataIndex: 'industry', width: 150,
+    { title: '行业分类', dataIndex: 'industry', width: 220,
       render: (v: string | null, record: WatchlistItem) => (
-        <Select value={v || undefined} placeholder="选择行业" style={{ width: 120 }}
+        <Select value={v || undefined} placeholder="选择行业" style={{ width: 200 }}
           options={INDUSTRY_OPTIONS.map(o => ({ value: o, label: o }))}
           onChange={(val) => handleClassify(record.id, val)} />
       ) },

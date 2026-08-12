@@ -25,10 +25,12 @@ def _search_fixture() -> dict:
 
 
 def _financial_fixture() -> dict:
+    # 真实 RPT_F10_FINANCE_MAINFINADATA 响应：扣非字段是 KCFJCXSYJLR，
+    # 而非 DEDUCTPARENTNETPROFIT（后者在该接口恒为 null）
     return {"result": {"data": [
         {"SECUCODE": "600519.SH", "SECURITY_NAME_ABBR": "贵州茅台", "REPORT_DATE": "2026-06-30",
          "TOTALOPERATEREVE": 1.2e11, "PARENTNETPROFIT": 3.5e10,
-         "DEDUCTPARENTNETPROFIT": 3.2e10, "WEIGHTAVG_ROE": 15.5},
+         "KCFJCXSYJLR": 3.2e10, "ROEJQ": 15.5},
     ], "pages": 1}}
 
 
@@ -88,8 +90,9 @@ def _basicinfo_fixture() -> dict:
 
 @pytest.mark.asyncio
 async def test_eastmoney_industry():
+    """返回完整 EM2016 链（一级-二级-三级），供细粒度 PE 锚定"""
     provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_basicinfo_fixture())))
-    assert await provider.fetch_industry("300750") == "电气设备"
+    assert await provider.fetch_industry("300750") == "电气设备-电源设备-储能设备"
 
 
 @pytest.mark.asyncio

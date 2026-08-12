@@ -12,6 +12,7 @@ from backend.agents.constraints import (
     ProfitQualityConstraint,
     RatingConsistencyConstraint,
     create_constraint_engine,
+    resolve_pe_anchor,
 )
 from backend.agents.state import AnalysisState, ConstraintResult
 
@@ -182,6 +183,61 @@ class TestIndustryPEAnchorConstraint:
         )
         # 偏离白酒参考 (20, 35) → 应 warning
         assert "偏离" in result["message"] or result["severity"] == "warning"
+
+
+# ── resolve_pe_anchor：细粒度行业 PE 锚定解析器 ──
+
+class TestResolvePeAnchor:
+    """东财 EM2016 完整行业链 → PE 锚定类别解析"""
+
+    def test_resolves_fabless_design_chain(self):
+        """瑞芯微：电子设备-半导体-集成电路 → 半导体设计 (30-50)"""
+        cat, (lo, hi) = resolve_pe_anchor("电子设备-半导体-集成电路")
+        assert cat == "半导体设计"
+        assert (lo, hi) == (30, 50)
+
+    def test_resolves_battery_chain(self):
+        """宁德时代：电气设备-电源设备-储能设备 → 锂电池 (15-28)"""
+        cat, (lo, hi) = resolve_pe_anchor("电气设备-电源设备-储能设备")
+        assert cat == "锂电池"
+        assert (lo, hi) == (15, 28)
+
+    def test_resolves_solar_chain(self):
+        """隆基：电气设备-电源设备-太阳能 → 光伏 (12-22)"""
+        cat, _ = resolve_pe_anchor("电气设备-电源设备-太阳能")
+        assert cat == "光伏"
+
+    def test_resolves_auto_chain(self):
+        """比亚迪：交运设备-汽车-乘用车 → 汽车 (10-20)"""
+        cat, _ = resolve_pe_anchor("交运设备-汽车-乘用车")
+        assert cat == "汽车"
+
+    def test_resolves_baijiu_direct_key(self):
+        """茅台：食品饮料-饮料-白酒 → 白酒（参考表直接键）"""
+        cat, (lo, hi) = resolve_pe_anchor("食品饮料-饮料-白酒")
+        assert cat == "白酒"
+        assert (lo, hi) == (20, 35)
+
+    def test_resolves_white_goods_chain(self):
+        """美的：家电-白色家电-白色家电 → 家电"""
+        cat, _ = resolve_pe_anchor("家电-白色家电-白色家电")
+        assert cat == "家电"
+
+    def test_resolves_pharma_chain(self):
+        """恒瑞：医药生物-化学制药-化学制剂 → 医药生物"""
+        cat, _ = resolve_pe_anchor("医药生物-化学制药-化学制剂")
+        assert cat == "医药生物"
+
+    def test_resolves_single_level_direct(self):
+        """单段且是参考表键 → 直接命中"""
+        cat, _ = resolve_pe_anchor("白酒")
+        assert cat == "白酒"
+
+    def test_unknown_returns_none(self):
+        """未知行业 → (None, None) 走默认"""
+        assert resolve_pe_anchor("未知行业") == (None, None)
+        assert resolve_pe_anchor("") == (None, None)
+        assert resolve_pe_anchor(None) == (None, None)
 
 
 # ── FalsificationPriorityConstraint ──

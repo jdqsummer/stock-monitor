@@ -31,7 +31,11 @@ from typing import Any, AsyncIterator, Callable, Literal, Optional
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from backend.agents.constraints import ConstraintEngine, IndustryPEAnchorConstraint
+from backend.agents.constraints import (
+    ConstraintEngine,
+    IndustryPEAnchorConstraint,
+    resolve_pe_anchor,
+)
 from backend.agents.data_agent import DataAgent, data_to_state
 from backend.agents.state import AnalysisState, DataCollectionState
 from backend.data.westock_client import WestockClient
@@ -193,7 +197,16 @@ async def check_profit_quality_node(state: AnalysisState) -> dict:
     if financials:
         latest = financials[0]
         net_profit_parent = latest.net_profit_parent or 0
-        net_profit_deducted = latest.net_profit_deducted or 0
+        # 区分「扣非缺失（None）」与「真亏损（0/负）」：
+        # 缺失但归母有效 → 回退归母口径并警示，避免被误判亏损而跳过量化分析
+        if latest.net_profit_deducted is None:
+            if net_profit_parent > 0:
+                net_profit_deducted = net_profit_parent
+                warnings.append("扣非净利润数据缺失，暂以归母口径评估（待正式财报修正）")
+            else:
+                net_profit_deducted = 0
+        else:
+            net_profit_deducted = latest.net_profit_deducted or 0
 
     # 计算非经常性占比
     if net_profit_parent > 0:
@@ -292,15 +305,16 @@ async def determine_pe_range_node(state: AnalysisState) -> dict:
     industry = state.get("industry_category", "")
     pe_dynamic = state.get("pe_dynamic")
 
-    # PE 参考表（从 constraints.py 导入，单一权威来源）
-    pe_reference = IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE
-
     pe_low, pe_high = 15.0, 25.0  # 默认范围
-    rationale = f"未识别行业 '{industry}'，使用默认 PE 区间"
-
-    if industry and industry in pe_reference:
-        pe_low, pe_high = pe_reference[industry]
-        rationale = f"行业锚定: {industry} {pe_low}-{pe_high} 倍"
+    category, anchor = resolve_pe_anchor(industry)
+    if anchor:
+        pe_low, pe_high = anchor
+        if category == industry:
+            rationale = f"行业锚定: {industry} {pe_low}-{pe_high} 倍"
+        else:
+            rationale = f"行业锚定: {category}（来源 {industry}） {pe_low}-{pe_high} 倍"
+    else:
+        rationale = f"未识别行业 '{industry}'，使用默认 PE 区间"
 
     # PE 极端值调整
     if pe_dynamic and pe_dynamic > 100:

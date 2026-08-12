@@ -46,10 +46,10 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 - Mock 优先开发（本地全套 mock 可运行），生产一键切换
 
 ## 开发流程
-
 1. Plan-First：`brainstorming` → `writing-plans` → 用户确认 → 编码
 2. TDD：RED（先写失败测试）→ GREEN（最小实现）→ REFACTOR（清理）
-3. 提交前：`pytest tests/ -v` 全部通过 + `verification-before-completion` 验证
+3. 可验证驱动的开发，任何代码改动都需要测试验证才算完成
+4. 提交前：`pytest tests/ -v` 全部通过 + `verification-before-completion` 验证
 
 ## 进度
 
