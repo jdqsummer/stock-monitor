@@ -59,6 +59,7 @@ export interface WatchlistBoardRow {
   distance_pct: number | null;
   signal: Signal;
   industry: string | null;
+  industry_category?: string | null;
   analysis_date: string | null;
   signal_label?: string | null;
   analysis_source?: string | null;
