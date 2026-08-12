@@ -47,6 +47,7 @@ export function SignalBoard({ data, loading, onRefresh }: {
     try {
       const res = await analysisApi.analyzeWatchlist(selectedKeys.map(String));
       const jobId = res.data.data.job_id;
+      if (pollTimer.current) window.clearInterval(pollTimer.current);
       pollTimer.current = window.setInterval(async () => {
         try {
           const st = (await analysisApi.watchlistStatus(jobId)).data.data;
@@ -63,6 +64,10 @@ export function SignalBoard({ data, loading, onRefresh }: {
         }
       }, 3000);
     } catch (err) {
+      if (pollTimer.current) {
+        window.clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
       setAnalyzing(false);
       setProgress('');
       message.error('提交分析失败');
