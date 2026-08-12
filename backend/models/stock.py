@@ -89,4 +89,14 @@ class AnalysisSnapshot(Base):
     signal: Mapped[str] = mapped_column(String(10), default="none")
     rating: Mapped[str] = mapped_column(String(10), default="")
     data_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    industry_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    moat_assessment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    risk_factors: Mapped[str | None] = mapped_column(Text, nullable=True)          # JSON 数组字符串
+    pe_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signal_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    profit_quality_ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    profit_quality_warnings: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON 数组字符串
+    analysis_source: Mapped[str] = mapped_column(String(20), default="manual")
+    analysis_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

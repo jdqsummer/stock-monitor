@@ -58,3 +58,14 @@ def test_analysis_snapshot_numeric_fields():
     assert "swing_price_high" in columns
     assert "signal" in columns
     assert "rating" in columns
+
+
+def test_analysis_snapshot_qualitative_columns():
+    columns = {c.name: c for c in AnalysisSnapshot.__table__.columns}
+    for col in [
+        "industry_category", "moat_assessment", "risk_factors",
+        "pe_rationale", "recommendation", "signal_label",
+        "profit_quality_ok", "profit_quality_warnings",
+        "analysis_source", "analysis_completed_at",
+    ]:
+        assert col in columns
