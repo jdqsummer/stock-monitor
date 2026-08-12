@@ -160,8 +160,15 @@ class OpenHarnessAgent:
             f"请以 JSON 返回: {{\"pe_low\": 数字, \"pe_high\": 数字, \"pe_rationale\": \"设定理由\"}}"
         )
         resp = await self.llm.json_chat([{"role": "user", "content": prompt}])
-        pe_low = float(resp.get("pe_low", anchor[0] if anchor else 15.0))
-        pe_high = float(resp.get("pe_high", anchor[1] if anchor else 25.0))
+        default_low, default_high = (anchor if anchor else (15.0, 25.0))
+        try:
+            pe_low = float(resp.get("pe_low", default_low))
+        except (TypeError, ValueError):
+            pe_low = default_low
+        try:
+            pe_high = float(resp.get("pe_high", default_high))
+        except (TypeError, ValueError):
+            pe_high = default_high
         if pe_low <= 0 or pe_high < pe_low:
             pe_low, pe_high = (anchor if anchor else (15.0, 25.0))
         updates = {

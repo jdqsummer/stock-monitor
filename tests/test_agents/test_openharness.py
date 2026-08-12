@@ -130,4 +130,32 @@ async def test_tool_anchor_industry_pe_uses_rule_as_anchor():
 
     assert updates["pe_low"] == 18
     assert updates["pe_high"] == 22
+    assert updates["industry_category"] == "白酒"
     assert "白酒" in updates["pe_rationale"] or "龙头" in updates["pe_rationale"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "industry, payload, expected_low, expected_high",
+    [
+        # 有锚点行业（白酒 20-35）：非法区间 → 回退锚点
+        ("白酒", {"pe_low": 0, "pe_high": 35, "pe_rationale": "无效"}, 20.0, 35.0),
+        ("白酒", {"pe_low": 30, "pe_high": 25, "pe_rationale": "倒挂"}, 20.0, 35.0),
+        ("白酒", {"pe_low": "n/a", "pe_high": "n/a", "pe_rationale": "非数值"}, 20.0, 35.0),
+        # 无锚点行业 → 默认 15-25
+        ("未知行业", {"pe_low": -5, "pe_high": 10, "pe_rationale": "无效"}, 15.0, 25.0),
+        ("", {"pe_low": 30, "pe_high": 20, "pe_rationale": "倒挂"}, 15.0, 25.0),
+        ("未知行业", {"pe_low": "n/a", "pe_high": "n/a", "pe_rationale": "非数值"}, 15.0, 25.0),
+    ],
+)
+async def test_tool_anchor_industry_pe_invalid_ranges_fall_back(
+    industry, payload, expected_low, expected_high
+):
+    """PE 锚定工具对非法区间回退锚点/默认 15-25"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = FakeQualitativeLLM(payload)
+    state = make_state(industry_category=industry)
+    updates, _ = await agent._tool_anchor_industry_pe(state, {})
+
+    assert updates["pe_low"] == expected_low
+    assert updates["pe_high"] == expected_high
