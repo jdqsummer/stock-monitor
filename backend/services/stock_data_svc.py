@@ -90,6 +90,40 @@ class StockDataService:
         return distance_pct, signal
 
     @staticmethod
+    def snapshot_to_dict(snapshot: AnalysisSnapshot, quote: StockQuote | None) -> dict:
+        """B 表快照 → 详情 dict（含定性字段；risk/warnings 解析为列表）"""
+        name = quote.name if quote else ""
+        return {
+            "code": snapshot.stock_code,
+            "name": name,
+            "annual_profit": f"{snapshot.annual_profit_low:.0f}-{snapshot.annual_profit_high:.0f}亿",
+            "profit_method": snapshot.profit_method,
+            "swing_pe": f"{snapshot.pe_low:.0f}-{snapshot.pe_high:.0f}倍",
+            "swing_market_cap": f"{snapshot.swing_market_cap_low:.0f}-{snapshot.swing_market_cap_high:.0f}亿",
+            "swing_price": f"{snapshot.swing_price_low:.0f}-{snapshot.swing_price_high:.0f}元",
+            "current_market_cap": snapshot.current_market_cap,
+            "current_price": snapshot.current_price,
+            "distance_pct": snapshot.distance_pct,
+            "signal": snapshot.signal,
+            "signal_label": snapshot.signal_label,
+            "industry": snapshot.industry_category,
+            "industry_category": snapshot.industry_category,
+            "analysis_date": snapshot.data_date.isoformat() if snapshot.data_date else None,
+            "analysis_source": snapshot.analysis_source,
+            "analysis_completed_at": (
+                snapshot.analysis_completed_at.isoformat() if snapshot.analysis_completed_at else None
+            ),
+            "moat_assessment": snapshot.moat_assessment,
+            "risk_factors": json.loads(snapshot.risk_factors) if snapshot.risk_factors else [],
+            "pe_rationale": snapshot.pe_rationale,
+            "recommendation": snapshot.recommendation,
+            "profit_quality_ok": snapshot.profit_quality_ok,
+            "profit_quality_warnings": (
+                json.loads(snapshot.profit_quality_warnings) if snapshot.profit_quality_warnings else []
+            ),
+        }
+
+    @staticmethod
     async def get_board_rows(
         db: AsyncSession, user_id: str, items,
     ) -> list[WatchlistBoardRow]:

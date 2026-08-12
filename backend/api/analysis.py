@@ -14,7 +14,9 @@ from backend.agents.workflow import WorkflowRunner
 from backend.api.deps import get_current_user, get_db
 from backend.llm.provider import get_llm
 from backend.models.user import User
+from backend.services.analysis_job_svc import analysis_job_service
 from backend.services.snapshot_svc import SnapshotService
+from backend.services.stock_data_svc import StockDataService
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,11 @@ class QuickAnalyzeRequest(BaseModel):
 class BatchAnalyzeRequest(BaseModel):
     """批量分析请求"""
     codes: list[str] = Field(..., description="股票代码列表", min_length=1, max_length=20)
+
+
+class WatchlistAnalyzeRequest(BaseModel):
+    """自选股批量分析请求"""
+    codes: list[str] = Field(..., min_length=1, max_length=50, description="股票代码列表")
 
 
 class AnalyzeResponse(BaseModel):
@@ -238,3 +245,38 @@ async def agent_health():
         },
         "message": "ok",
     }
+
+
+@router.post("/watchlist/analyze", response_model=AnalyzeResponse)
+async def analyze_watchlist(
+    req: WatchlistAnalyzeRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """手动批量分析自选股（多选/全选）→ 异步 job"""
+    job_id = analysis_job_service.submit(current_user.id, req.codes, source="manual")
+    return {"code": 0, "data": {"job_id": job_id}, "message": "分析任务已提交"}
+
+
+@router.get("/watchlist/status", response_model=AnalyzeResponse)
+async def watchlist_analyze_status(
+    job_id: str = Query(..., description="job id"),
+    current_user: User = Depends(get_current_user),
+):
+    status = analysis_job_service.get_status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return {"code": 0, "data": status, "message": "ok"}
+
+
+@router.get("/snapshot/{code}", response_model=AnalyzeResponse)
+async def get_snapshot(
+    code: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """当前用户该股 B 表快照（含定性字段），供详情页"""
+    snap = await SnapshotService.get_latest_snapshot(db, current_user.id, code)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="该股票尚未分析")
+    quote = await StockDataService.get_quote_for_code(db, code)
+    return {"code": 0, "data": StockDataService.snapshot_to_dict(snap, quote), "message": "ok"}
