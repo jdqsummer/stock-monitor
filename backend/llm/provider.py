@@ -690,6 +690,11 @@ def get_llm(model_spec: str = "") -> LLMProvider:
     return _provider_cache[model_spec]
 
 
+def is_llm_available() -> bool:
+    """LLM 是否已配置为真实 provider（非 mock）"""
+    return get_llm().config.provider != ProviderType.MOCK
+
+
 def clear_llm_cache():
     """清空 Provider 缓存"""
     _provider_cache.clear()
