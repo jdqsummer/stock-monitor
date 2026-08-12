@@ -16,6 +16,7 @@ def test_board_row_defaults_for_unanalyzed():
     assert row.signal == Signal.NONE
 
 
+import json
 import pytest
 from datetime import date
 
@@ -91,9 +92,6 @@ async def test_save_snapshot_qualitative(db_session):
 @pytest.mark.asyncio
 async def test_save_snapshot_persists_checklist_fields(db_session):
     """checklist 三字段应落库"""
-    from backend.agents.analysis_chain import AnalysisReport
-    from backend.services.snapshot_svc import SnapshotService
-
     report = AnalysisReport(
         code="600519", name="测试股",
         checklist_results={"Q1": "有风险", "Q2": "没问题"},
@@ -104,5 +102,20 @@ async def test_save_snapshot_persists_checklist_fields(db_session):
 
     assert snap.checklist_veto is True
     assert snap.checklist_summary == "证伪充分，存在重大担忧"
-    import json
     assert json.loads(snap.checklist_results) == {"Q1": "有风险", "Q2": "没问题"}
+
+
+@pytest.mark.asyncio
+async def test_save_snapshot_checklist_empty_to_none(db_session):
+    """checklist 空值应落库为 None / False"""
+    report = AnalysisReport(
+        code="600519", name="测试股",
+        checklist_results={},
+        checklist_veto=False,
+        checklist_summary="",
+    )
+    snap = await SnapshotService.save_snapshot(db_session, "user-1", report)
+
+    assert snap.checklist_results is None
+    assert snap.checklist_summary is None
+    assert snap.checklist_veto is False
