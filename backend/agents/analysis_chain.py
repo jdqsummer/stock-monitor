@@ -581,19 +581,19 @@ class AnalysisChain:
                 logger.warning(f"LLM 返回非 dict 响应，跳过增强: {type(resp)}")
                 return state
 
-            if not state.get("industry_category") and resp.get("industry_category"):
+            if resp.get("industry_category") and not state.get("industry_category"):
                 state["industry_category"] = resp["industry_category"]
 
-                if not state.get("moat_assessment"):
-                    state["moat_assessment"] = resp.get("moat_assessment", "")
+            if not state.get("moat_assessment") and resp.get("moat_assessment"):
+                state["moat_assessment"] = resp["moat_assessment"]
 
-                if not state.get("risk_factors"):
-                    state["risk_factors"] = resp.get("risk_factors", [])
+            if not state.get("risk_factors") and resp.get("risk_factors"):
+                state["risk_factors"] = resp["risk_factors"]
 
-                if resp.get("pe_rationale") and not state.get("pe_rationale"):
-                    state["pe_rationale"] = resp["pe_rationale"]
+            if resp.get("pe_rationale") and not state.get("pe_rationale"):
+                state["pe_rationale"] = resp["pe_rationale"]
 
-                logger.info(f"LLM 增强完成: 行业={resp.get('industry_category')}")
+            logger.info(f"LLM 增强完成: 行业={state.get('industry_category')}")
 
         except Exception as e:
             logger.error(f"LLM JSON 输出解析失败: {e}")
