@@ -203,3 +203,36 @@ async def test_tool_output_conclusion():
 
     assert updates["final_rating"] == "🟡"
     assert "观察" in updates["recommendation"]
+    assert updates["rating_confidence"] == 0.75
+    assert updates["action_items"] == ["设定击球点提醒", "持续跟踪基本面"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload, expected", [
+    ({"final_rating": "INVALID", "recommendation": "x", "action_items": []}, "🟡"),
+    ({"final_rating": None, "recommendation": "x", "action_items": []}, "🟡"),
+    ({"final_rating": "🔴", "recommendation": "x", "action_items": []}, "🔴"),
+])
+async def test_tool_output_conclusion_rating_guard(payload, expected):
+    """final_rating 非法 → 默认 🟡；合法值原样保留"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = FakeQualitativeLLM(payload)
+    state = make_state(distance_pct=15.0)
+    updates, _ = await agent._tool_output_conclusion(state, {})
+
+    assert updates["final_rating"] == expected
+
+
+@pytest.mark.asyncio
+async def test_tool_validate_constraints_happy_path():
+    """全部硬约束通过 → 无违规，text 含'通过'"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    state = make_state(
+        annual_profit_low=32.0, annual_profit_high=35.0, profit_method="H1×2",
+        pe_low=20.0, pe_high=35.0, distance_pct=10.0, final_rating="🟡",
+        signal="yellow", signal_label="观察区",
+    )
+    updates, text = await agent._tool_validate_constraints(state, {})
+
+    assert updates["__constraint_violations__"] == []
+    assert "通过" in text

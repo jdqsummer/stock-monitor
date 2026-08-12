@@ -67,11 +67,7 @@ class OpenHarnessAgent:
             state.update(updates)
 
         results = await self.constraint_engine.evaluate(state)
-        for r in results:
-            if not r["passed"] and r["severity"] == "error":
-                errors = state.setdefault("errors", [])
-                errors.append(f"[{r['constraint_name']}] {r['message']}")
-                state["errors"] = errors
+        self._apply_hard_constraints(state, results)
 
         updates = await cross_check_and_output_node(state)
         state.update(updates)
