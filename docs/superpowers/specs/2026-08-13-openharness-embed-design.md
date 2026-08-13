@@ -316,7 +316,39 @@ analyze_qualitative（护城河/成长/风险） → anchor_industry_pe → calc
 | 工具输出落盘截断 | LLM 信息缺失 | 工具控制输出长度（摘要式返回） |
 | 现有确定性测试语义失效 | 测试维护 | 逐条评估改写（见第十五节） |
 
-## 十七、开放项（实施时定）
+## 十七、执行日志与可观测性
+
+**动机**：软规则下评级/结论由 LLM 决定，用户需要回看"为什么得出这个结论"，以持续完善 SKILL.md。适配层需保存 harness 的原始执行产物。
+
+**记录内容**（每次分析）：
+
+- **事件流**：`ToolExecutionStarted/Completed`（工具名、入参、输出）、`StatusEvent`（重试/压缩）、`ErrorEvent`、`CompactProgressEvent`
+- **最终 assistant 消息文本**：最后一条 `AssistantTurnComplete.message`（含输出 JSON）
+- **输入上下文**：注入的 state 序列化（数据摘要）
+- **框架版本**：`framework_version`
+- **token 用量**：`UsageSnapshot` 汇总
+- **时间戳**：起止时间
+
+**存储方案**：
+
+- 结构化落库：`analysis_snapshots` 新增列，或新表 `analysis_execution_logs` 存 JSON blob
+- 或文件 artifact：`logs/openharness/<analysis_id>.jsonl`，每条事件一行
+- 建议：**JSONL 文件 + DB 存路径与摘要**，体积可控、便于 diff 对照分析
+
+**成本控制**：
+
+- 日志开关（如 `OPENHARNESS_LOG_ENABLED`），默认开启
+- 工具输出已在 harness 侧截断/落盘（`_offload_tool_output_if_needed`），无需重复存储
+- 完整 assistant 消息按需保留，可配置裁剪
+
+**与用户分析的衔接**：
+
+- 前端/分析页可查看某次分析的执行日志（工具调用序列 + 最终 JSON）
+- 复盘经验 → 修改 SKILL.md → 用旧日志对照新结果，验证框架改动效果
+
+**测试**：适配层单测断言"事件流 + 最终消息被正确落盘/落库"。
+
+## 十八、开放项（实施时定）
 
 1. `vendor/` 是否纳入 git 提交（建议纳入，保证部署自包含）
 2. QueryEngine 连接池化（批量分析性能）
