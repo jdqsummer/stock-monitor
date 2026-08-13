@@ -5,13 +5,18 @@
 """
 from __future__ import annotations
 
+import logging
+
 from pydantic import BaseModel, Field
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
 
+from backend.agents.growth import compute_growth_metrics
 from backend.agents.workflow import (
     check_profit_quality_node,
     estimate_annual_profit_node,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class _EmptyInput(BaseModel):
@@ -67,16 +72,60 @@ class ReadContextTool(BaseTool):
 
 class AssessProfitQualityTool(BaseTool):
     name = "assess_profit_quality"
-    description = "利润质量判断（扣非口径可信度、非经常性损益占比），先于估值执行"
+    description = "利润质量与经营质量判断（扣非口径 + 近8期增长趋势），先于估值执行"
     input_model = _EmptyInput
 
     async def execute(self, arguments, context: ToolExecutionContext) -> ToolResult:
         st = _state(context)
-        updates = await check_profit_quality_node(st)
+        updates = await check_profit_quality_node(st)          # 已含 growth_metrics
+        assessment = await self._llm_qualitative(
+            context, st, updates.get("growth_metrics", {}), updates.get("profit_quality_warnings", []),
+        )
+        if assessment is None:
+            updates["growth_assessment"] = "LLM 定性失败，保留确定性判断"
+        else:
+            updates["growth_assessment"] = assessment.get("rationale", "")
+            if assessment.get("growth_quality") == "deteriorating":
+                updates["profit_quality_ok"] = False
+                warnings = updates.setdefault("profit_quality_warnings", [])
+                msg = "经营质量恶化：营收/扣非增长疲软（LLM 定性）"
+                if msg not in warnings:
+                    warnings.append(msg)
         _merge(context, updates)
         ok = updates.get("profit_quality_ok")
-        text = f"利润质量: {'良好' if ok else '存疑'}。警示: {updates.get('profit_quality_warnings') or '无'}"
+        trend = updates.get("growth_metrics", {}).get("trend", "N/A")
+        text = f"利润质量: {'良好' if ok else '存疑'}。增长趋势: {trend}。警示: {updates.get('profit_quality_warnings') or '无'}"
         return ToolResult(output=text, metadata={"state_updates": updates})
+
+    async def _llm_qualitative(self, context, st: dict, growth: dict, warnings: list) -> dict | None:
+        llm = context.metadata.get("llm_provider")
+        if llm is None:
+            return None
+        rows = []
+        for f in st.get("financials", []):
+            rows.append(
+                f"{f.report_period}: 营收{f.revenue or '—'}亿, 归母{f.net_profit_parent or '—'}亿, 扣非{f.net_profit_deducted or '—'}亿"
+            )
+        table = "\n".join(rows) if rows else "无财报数据"
+        prompt = (
+            f"你是资深价值投资者。基于以下财报与增长数据判断经营质量。\n"
+            f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})\n"
+            f"近8期财报（最新在前）:\n{table}\n"
+            f"增长指标（同比%): 最新期 {growth.get('latest')}，趋势: {growth.get('trend')}\n"
+            f"现有质量警示: {warnings or '无'}\n"
+            f'请以 JSON 返回: {{"growth_quality": "good|warning|deteriorating", '
+            f'"rationale": "经营质量判断一段话", "confidence": 0.0-1.0}}'
+        )
+        try:
+            resp = await llm.json_chat([{"role": "user", "content": prompt}])
+        except Exception:
+            logger.warning("assess_profit_quality LLM 定性失败，保留确定性判断")
+            return None
+        gq = resp.get("growth_quality")
+        if gq not in ("good", "warning", "deteriorating"):
+            gq = "warning"
+        return {"growth_quality": gq, "rationale": resp.get("rationale", ""),
+                "confidence": resp.get("confidence", 0.5)}
 
 
 # ── estimate_annual_profit ──

@@ -127,6 +127,68 @@ async def test_assess_profit_quality_ok_when_clean():
     assert "良好" in res.output
 
 
+@pytest.mark.asyncio
+async def test_assess_profit_quality_writes_growth_metrics():
+    tool = AssessProfitQualityTool()
+    state = {
+        "financials": [
+            FinancialReport(code="600519", name="贵州茅台", report_period="2026H1",
+                            revenue=120.0, net_profit_parent=35.0, net_profit_deducted=32.0),
+            FinancialReport(code="600519", name="贵州茅台", report_period="2025H1",
+                            revenue=108.0, net_profit_parent=31.0, net_profit_deducted=29.0),
+        ],
+        "net_profit_parent": 35.0,
+        "net_profit_deducted": 32.0,
+    }
+    res = await tool.execute(tool.input_model(), _ctx(state))
+    updates = res.metadata["state_updates"]
+    assert updates["growth_metrics"]["latest"]["period"] == "2026H1"
+    assert updates["growth_metrics"]["latest"]["revenue_yoy"] == pytest.approx(11.1)
+
+
+@pytest.mark.asyncio
+async def test_assess_profit_quality_llm_deteriorating_downgrades():
+    tool = AssessProfitQualityTool()
+    state = {
+        "stock_name": "X", "stock_code": "600519",
+        "financials": [
+            FinancialReport(code="600519", name="X", report_period="2026H1",
+                            revenue=100.0, net_profit_parent=25.0, net_profit_deducted=24.0),
+            FinancialReport(code="600519", name="X", report_period="2025H1",
+                            revenue=110.0, net_profit_parent=30.0, net_profit_deducted=29.0),
+        ],
+        "net_profit_parent": 25.0,
+        "net_profit_deducted": 24.0,
+    }
+    ctx = _ctx_with_llm(state, {"growth_quality": "deteriorating", "rationale": "营收连续下滑", "confidence": 0.8})
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+    assert updates["profit_quality_ok"] is False
+    assert any("经营质量" in w for w in updates["profit_quality_warnings"])
+    assert updates["growth_assessment"] == "营收连续下滑"
+
+
+@pytest.mark.asyncio
+async def test_assess_profit_quality_llm_failure_keeps_deterministic():
+    tool = AssessProfitQualityTool()
+    state = {
+        "stock_name": "X", "stock_code": "600519",
+        "financials": [],
+        "net_profit_parent": 90.0,
+        "net_profit_deducted": 88.0,
+    }
+
+    class BoomLLM:
+        async def json_chat(self, messages):
+            raise RuntimeError("llm down")
+
+    ctx = ToolExecutionContext(cwd=Path("."), metadata={"analysis_state": state, "llm_provider": BoomLLM()})
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+    assert updates["profit_quality_ok"] is True  # LLM 失败不降级
+    assert "LLM 定性失败" in updates["growth_assessment"]
+
+
 # ── Task 5: LLM 定性工具 + build_investment_tools ──
 
 class FakeLLM:
