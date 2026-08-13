@@ -239,6 +239,43 @@ async def test_tool_output_conclusion_rating_guard(payload, expected):
 
 
 @pytest.mark.asyncio
+async def test_output_conclusion_produces_conclusion_and_unassessable():
+    """产出 conclusion/unassessable_risk，否决时覆盖 LLM 的 🟢"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = FakeQualitativeLLM({
+        "conclusion": "清单证伪充分，护城河被技术路线削弱，安全边际无法评估",
+        "recommendation": "可配置", "unassessable_risk": True,
+        "final_rating": "🟢", "action_items": ["x"],
+    })
+    state = make_state(distance_pct=-5.0, signal="green", signal_label="击球区",
+                       checklist_summary="存在重大担忧", moat_assessment="品牌护城河")
+    updates, text = await agent._tool_output_conclusion(state, {})
+
+    assert updates["conclusion"].startswith("清单证伪")
+    assert updates["unassessable_risk"] is True
+    assert updates["final_rating"] == "🔴"          # veto 覆盖 LLM 的 🟢
+    assert "坚决放弃" in updates["recommendation"]
+    assert "结论" in text
+
+
+@pytest.mark.asyncio
+async def test_output_conclusion_respects_llm_yellow_for_loss_growth():
+    """亏损但 LLM 判断壁垒深 → 尊重 🟡（不机械判 🔴）"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    agent.llm = FakeQualitativeLLM({
+        "conclusion": "技术壁垒深，虽当前亏损但成长性强，等待盈利验证",
+        "recommendation": "等待时机-观察区", "unassessable_risk": False,
+        "final_rating": "🟡", "action_items": ["关注订单"],
+    })
+    state = make_state(distance_pct=999.0, signal="unquantifiable", signal_label="无法量化",
+                       annual_profit_low=-2.0, annual_profit_high=-2.0)
+    updates, _ = await agent._tool_output_conclusion(state, {})
+
+    assert updates["final_rating"] == "🟡"
+    assert updates["unassessable_risk"] is False
+
+
+@pytest.mark.asyncio
 async def test_tool_validate_constraints_happy_path():
     """全部硬约束通过 → 无违规，text 含'通过'"""
     agent = OpenHarnessAgent(llm_provider=None)

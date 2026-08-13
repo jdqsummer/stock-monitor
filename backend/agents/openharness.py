@@ -279,27 +279,39 @@ class OpenHarnessAgent:
         return {"__constraint_violations__": violations}, text
 
     async def _tool_output_conclusion(self, state: dict, args: dict) -> tuple[dict, str]:
+        loss_note = "（当前亏损，年化利润不可得，请基于商业模式/技术壁垒判断）" if state.get("annual_profit_low", 0) <= 0 else ""
         prompt = (
-            f"基于以下分析结论给出投资综合结论（结论不输出过程）。\n"
+            f"你是价值投资者，请基于以下分析给出综合结论与投资建议（结论不输出过程，但需体现逆向清单审视）。\n"
+            f"股票: {state.get('stock_name', '')}({state.get('stock_code', '')})，"
+            f"行业: {state.get('industry_category', '未知')}{loss_note}\n"
             f"信号: {state.get('signal_label')}，距击球区: {state.get('distance_pct')}%，"
-            f"击球区股价: {state.get('swing_price_low')}-{state.get('swing_price_high')} 元，"
-            f"证伪结论: {state.get('checklist_summary', '未执行')}，"
-            f"护城河: {state.get('moat_assessment', '未评估')}。\n"
-            f"请以 JSON 返回: {{\"final_rating\": \"🟢/🟡/🔴\", "
-            f"\"recommendation\": \"一句话建议（可配置区/观察区/坚决放弃）\", "
-            f"\"action_items\": [\"行动1\", \"行动2\"]}}"
+            f"击球区股价: {state.get('swing_price_low')}-{state.get('swing_price_high')} 元，\n"
+            f"护城河: {state.get('moat_assessment', '未评估')}，\n"
+            f"风险因素: {state.get('risk_factors', [])}，\n"
+            f"逆向清单结论: {state.get('checklist_summary', '未执行')}，"
+            f"清单否决: {'是' if state.get('checklist_veto') else '否'}，\n"
+            f"最担忧点: {state.get('most_concerning', '无')}。\n"
+            f"请以 JSON 返回:\n"
+            f'{{"conclusion": "审视后的结论（2-4 句，体现证伪思维与风险权衡，先讲依据再下判断，不要直接给结论）", '
+            f'"recommendation": "买入-可配置区 / 等待时机-观察区 / 坚决放弃-太难（附一句话理由）", '
+            f'"unassessable_risk": false, '
+            f'"final_rating": "🟢/🟡/🔴", "action_items": ["行动1", "行动2"]}}'
         )
         resp = await self.llm.json_chat([{"role": "user", "content": prompt}])
-        final_rating = resp.get("final_rating", state.get("final_rating", "🟡"))
-        if final_rating not in ("🟢", "🟡", "🔴"):
-            final_rating = "🟡"
         updates = {
-            "final_rating": final_rating,
+            "conclusion": resp.get("conclusion", ""),
             "recommendation": resp.get("recommendation", ""),
+            "unassessable_risk": bool(resp.get("unassessable_risk", False)),
             "action_items": resp.get("action_items", []),
             "rating_confidence": 0.75,
         }
-        text = f"综合结论: {final_rating} — {updates['recommendation']}"
+        final_rating = resp.get("final_rating", state.get("final_rating", "🟡"))
+        if final_rating not in ("🟢", "🟡", "🔴"):
+            final_rating = "🟡"
+        updates["final_rating"] = final_rating
+        # 否决兜底：unassessable_risk / checklist_veto 强制 🔴（覆盖 LLM 结论）
+        updates.update(apply_veto({**state, **updates}))
+        text = f"综合结论: {updates.get('conclusion') or '（无结论）'}"
         return updates, text
 
     async def _execute_tool(self, name: str, args: dict, state: dict) -> tuple[dict, str]:
