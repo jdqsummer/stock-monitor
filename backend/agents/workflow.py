@@ -384,7 +384,7 @@ async def quantify_safety_margin_node(state: AnalysisState) -> dict:
     - ≤ 0% → 🟢 击球区
     - 0% ~ 50% → 🟡 观察区
     - > 50% → 🔴 高估区
-    - 亏损 → 🔴
+    - 亏损 → ⚫ 无法量化（unquantifiable，安全边际不可得）
     """
     logger.info("[Step 7] 安全边际量化")
 

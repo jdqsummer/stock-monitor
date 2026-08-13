@@ -503,11 +503,12 @@ class DisciplineRedlineConstraint(Constraint):
         distance_pct = state.get("distance_pct", 0.0)
         profit_quality_ok = state.get("profit_quality_ok", True)
         profit_method = state.get("profit_method", "")
+        signal = state.get("signal", "")
 
         violations = []
 
-        # 红线 1：不追高
-        if distance_pct > 50:
+        # 红线 1：不追高（亏损/无法量化时跳过——999.9 哨兵非真实高估，成长股不机械判红）
+        if signal != "unquantifiable" and distance_pct > 50:
             violations.append(f"距击球区 {distance_pct:.1f}% > 50%，触发不追高红线")
 
         # 红线 4：利润质量
@@ -561,6 +562,18 @@ class RatingConsistencyConstraint(Constraint):
     async def check(self, state: AnalysisState, llm: Optional[LLMProvider] = None) -> ConstraintResult:
         distance_pct = state.get("distance_pct", 0.0)
         final_rating = state.get("final_rating", "")
+        signal = state.get("signal", "")
+
+        # 安全边际无法量化（亏损）：跳过距离评级一致性校验（999.9 哨兵非真实高估，成长股不机械判红）
+        if signal == "unquantifiable":
+            return ConstraintResult(
+                constraint_name=self.name,
+                passed=True,
+                severity="info",
+                message=f"亏损/安全边际无法量化，跳过距离评级一致性校验（评级 {final_rating}）",
+                suggestion="",
+                auto_fixable=False,
+            )
 
         # 距击球区 > 50% → 🔴
         if distance_pct > 50:

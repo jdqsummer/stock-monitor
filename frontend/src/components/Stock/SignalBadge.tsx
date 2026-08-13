@@ -11,10 +11,12 @@ const SIGNAL_CONFIG: Record<Signal, { color: string; text: string; icon: string 
 
 export function SignalBadge({ signal, distancePct }: { signal: Signal; distancePct: number | null }) {
   const config = SIGNAL_CONFIG[signal];
+  // 亏损/无法量化时不展示距离后缀（后端哨兵 999.9 非真实高估）
+  const showDistance = distancePct !== null && distancePct !== undefined && signal !== 'unquantifiable';
   return (
     <Tag color={config.color}>
       {config.icon} {config.text}
-      {distancePct !== null && distancePct !== undefined && ` (${distancePct > 0 ? '+' : ''}${distancePct.toFixed(1)}%)`}
+      {showDistance && ` (${distancePct > 0 ? '+' : ''}${distancePct.toFixed(1)}%)`}
     </Tag>
   );
 }

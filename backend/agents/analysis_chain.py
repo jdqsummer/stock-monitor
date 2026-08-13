@@ -490,7 +490,7 @@ class AnalysisChain:
 
         # 信号
         if annual_profit_low <= 0:
-            signal, signal_label, recommendation = "red", "高估区（亏损）", "暂不配置"
+            signal, signal_label, recommendation = "unquantifiable", "无法量化", "等待时机-观察区：安全边际无法量化（亏损），需先验证商业模式与盈利拐点"
         elif distance_pct <= 0:
             signal, signal_label, recommendation = "green", "击球区", "可配置/买入区间"
         elif distance_pct <= 50:

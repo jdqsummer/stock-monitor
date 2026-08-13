@@ -476,3 +476,30 @@ async def test_rating_consistency_loss_not_forced_red():
         "annual_profit_low": -2.0, "final_rating": "🟡", "signal": "unquantifiable",
     })
     assert r["passed"] or r["severity"] == "warning"
+
+
+# ── Task 10 收尾：unquantifiable 跳过 distance 哨兵硬错误 ──
+
+@pytest.mark.asyncio
+async def test_unquantifiable_skips_distance_hard_errors():
+    """unquantifiable（亏损）跳过 distance 哨兵 999.9 硬错误，不机械压向 🔴"""
+    from backend.agents.constraints import DisciplineRedlineConstraint, RatingConsistencyConstraint
+
+    state = {"signal": "unquantifiable", "final_rating": "🟡", "distance_pct": 999.9,
+             "profit_quality_ok": True, "profit_method": "亏损不年化"}
+    r = await RatingConsistencyConstraint().check(state)
+    d = await DisciplineRedlineConstraint().check(state)
+    assert r["passed"] and r["severity"] == "info"
+    assert d["passed"]
+
+
+@pytest.mark.asyncio
+async def test_overvalued_still_triggers_distance_hard_error():
+    """正常高估（distance>50%）仍触发硬错误（回归防护）"""
+    from backend.agents.constraints import DisciplineRedlineConstraint, RatingConsistencyConstraint
+
+    state = {"signal": "red", "final_rating": "🟡", "distance_pct": 80.0,
+             "profit_quality_ok": True, "profit_method": "H1×2"}
+    r = await RatingConsistencyConstraint().check(state)
+    d = await DisciplineRedlineConstraint().check(state)
+    assert not r["passed"] and not d["passed"]
