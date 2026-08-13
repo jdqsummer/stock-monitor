@@ -99,6 +99,8 @@ class AnalysisReport:
     risk_factors: list[str] = field(default_factory=list)
     recommendation: str = ""
     action_items: list[str] = field(default_factory=list)
+    conclusion: str = ""
+    unassessable_risk: bool = False
 
     # 元数据
     errors: list[str] = field(default_factory=list)
@@ -143,6 +145,8 @@ class AnalysisReport:
             risk_factors=state.get("risk_factors", []),
             recommendation=state.get("recommendation", ""),
             action_items=state.get("action_items", []),
+            conclusion=state.get("conclusion", ""),
+            unassessable_risk=state.get("unassessable_risk", False),
             errors=state.get("errors", []),
             warnings_list=state.get("warnings", []),
             analysis_started=state.get("analysis_started", ""),
@@ -170,6 +174,8 @@ class AnalysisReport:
             "confidence": self.rating_confidence,
             "recommendation": self.recommendation,
             "action_items": self.action_items,
+            "conclusion": self.conclusion,
+            "unassessable_risk": self.unassessable_risk,
             "moat": self.moat_assessment,
             "risks": self.risk_factors,
             "errors": self.errors,

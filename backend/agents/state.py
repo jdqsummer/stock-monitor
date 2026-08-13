@@ -89,6 +89,8 @@ class AnalysisState(TypedDict, total=False):
     risk_factors: list[str]                  # 主要风险
     recommendation: str                      # 最终建议
     action_items: list[str]                  # 行动纲领
+    conclusion: str                          # 逆向清单审视后的结论（含依据与风险权衡）
+    unassessable_risk: bool                  # 重大风险使安全边际无法评估
 
     # ── 元数据 ──
     messages: Annotated[list, add_messages]  # Agent 对话历史
