@@ -113,3 +113,21 @@ async def test_collect_auto_analysis_users(db_session):
 
     result = await collect_auto_analysis_users(db_session)
     assert result == [(u1.id, "16:00")]
+
+
+@pytest.mark.asyncio
+async def test_refresh_financials_writes_multiple_periods(db_session):
+    from backend.models.stock import FinancialRecord
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="茅台"))
+    await db_session.commit()
+
+    count = await RefreshService.refresh_financials(db_session)
+    assert count == 8
+
+    rows = (await db_session.execute(
+        select(FinancialRecord).where(FinancialRecord.code == "600519")
+    )).scalars().all()
+    periods = {r.report_period for r in rows}
+    assert len(rows) == 8
+    assert "2026H1" in periods and "2024FY" in periods

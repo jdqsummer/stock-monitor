@@ -65,19 +65,20 @@ class RefreshService:
     async def refresh_financials(
         db: AsyncSession, codes: list[str] | None = None,
     ) -> int:
-        """刷新财报到 financials；单只失败保留旧数据不中断"""
+        """刷新财报到 financials（多期逐条 upsert）；单只失败保留旧数据不中断"""
         codes = codes or await RefreshService.collect_watchlist_codes(db)
         client = WestockClient()
         count = 0
         try:
             for code in codes:
                 try:
-                    fin = await client.fetch_financials(code)
+                    fin_list = await client.fetch_financials(code)
                 except Exception as e:
                     logger.warning(f"刷新财报失败 {code}: {e}")
                     continue
-                await RefreshService._upsert_financial(db, fin)
-                count += 1
+                for fin in fin_list:
+                    await RefreshService._upsert_financial(db, fin)
+                count += len(fin_list)
             await db.commit()
         finally:
             await client.close()
