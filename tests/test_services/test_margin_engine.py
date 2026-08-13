@@ -50,8 +50,8 @@ class TestMarginEngine:
         assert result.signal == Signal.RED
         assert result.distance_pct > 50
 
-    def test_red_signal_loss_making(self):
-        """亏损企业 → 红灯"""
+    def test_unquantifiable_signal_loss_making(self):
+        """亏损企业 → UNQUANTIFIABLE（无法量化，不再机械判红）"""
         input_data = AnalysisInput(
             code="000001", name="亏损股",
             current_price=10.0,
@@ -61,8 +61,8 @@ class TestMarginEngine:
             pe_range=(10, 15),
         )
         result = MarginEngine.calculate(input_data)
-        assert result.signal == Signal.RED
-        assert "亏损" in result.signal_label
+        assert result.signal == Signal.UNQUANTIFIABLE
+        assert "无法量化" in result.signal_label
 
     def test_profit_quality_warning_downgrades_green(self):
         """利润质量警告 → 绿灯降级为黄灯"""
@@ -103,3 +103,14 @@ class TestMarginEngine:
         expected_high = round(770.0 / total_shares, 2)
         assert result.swing_price_low == pytest.approx(expected_low, rel=0.01)
         assert result.swing_price_high == pytest.approx(expected_high, rel=0.01)
+
+
+def test_determine_signal_loss_is_unquantifiable():
+    """亏损 → UNQUANTIFIABLE（不再机械判 RED），前端显示 N/A"""
+    from backend.schemas.stock import Signal
+    from backend.services.margin_engine import MarginEngine
+
+    sig, label, action = MarginEngine.determine_signal(0.0, -5.0)
+    assert sig == Signal.UNQUANTIFIABLE
+    assert label == "无法量化"
+    assert "安全边际无法量化" in action

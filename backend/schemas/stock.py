@@ -12,6 +12,7 @@ class Signal(str, Enum):
     YELLOW = "yellow"  # 观察区
     RED = "red"        # 高估区
     NONE = "none"      # 未分析
+    UNQUANTIFIABLE = "unquantifiable"  # 亏损：安全边际无法量化
 
 
 # ── 行情数据 ──

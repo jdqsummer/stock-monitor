@@ -17,14 +17,14 @@ class MarginEngine:
     - 距击球区 ≤ 0% → 🟢 绿灯（击球区内）
     - 0% < 距击球区 ≤ 50% → 🟡 黄灯（等待时机）
     - 距击球区 > 50% → 🔴 红灯（坚决放弃）
-    - 亏损（年化利润下限 < 0）→ 🔴
+    - 亏损（年化利润下限 < 0）→ ⚪ 无法量化（需先验证商业模式与盈利拐点）
     """
 
     @staticmethod
     def determine_signal(distance_pct: float, annual_profit_low: float) -> tuple[Signal, str, str]:
         """根据距击球区和利润情况确定信号灯"""
         if annual_profit_low <= 0:
-            return Signal.RED, "亏损", "暂不配置（亏损企业）"
+            return Signal.UNQUANTIFIABLE, "无法量化", "安全边际无法量化（亏损），需先验证商业模式与盈利拐点"
 
         if distance_pct <= 0:
             return Signal.GREEN, "击球区", "可配置/买入区间"
