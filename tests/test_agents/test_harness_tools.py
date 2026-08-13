@@ -113,8 +113,8 @@ async def test_build_investment_tools_registers_expected():
     expected = {"read_context", "analyze_qualitative", "run_reverse_checklist",
                 "anchor_industry_pe", "output_conclusion",
                 "estimate_annual_profit", "calc_swing_zone", "calc_safety_margin"}
-    # 精确相等：旧 9 工具含 assess_profit_quality，新 8 工具不含；
+    # 子集断言：stages/ 零代码扩展（新增阶段 skill）不应破坏本测试；
     # skill 工具由 harness_component.run_analysis_agent 单独注册（需 extra_skill_dirs）。
-    assert set(names) == expected
+    assert expected <= set(names)
     assert "validate_constraints" not in names
     assert "assess_profit_quality" not in names

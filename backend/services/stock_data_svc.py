@@ -146,7 +146,9 @@ class StockDataService:
             "profit_quality_warnings": _safe_json_list(snapshot.profit_quality_warnings),
             "stage_results": _safe_json_dict(snapshot.stage_results),
             "financials_8p": _safe_json_list(snapshot.financials_8p),
-            "reverse_analysis": _safe_json_dict(snapshot.checklist_results),  # 兼容：reverse_analysis 暂映射 checklist_results
+            # 逆向四类结论 + 重大风险：取自五段式 stage_results（run_reverse_checklist 子块），
+            # 而非 checklist_results（Q1-Q14 逐题回答），与前端消费的四类结构对齐。
+            "reverse_analysis": _safe_json_dict(snapshot.stage_results).get("run_reverse_checklist", {}),
         }
 
     @staticmethod

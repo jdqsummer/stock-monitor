@@ -13,7 +13,7 @@ description: 价值投资安全边际分析框架 — 五段式工作流、逆�
 1. **基本数据**：调用 `read_context` 读取行情/近 8 期财报明细
 2. **定性分析**：`analyze_qualitative`（内部按 stages/qualitative/blocks/ 子块逐块分析）
 3. **逆向分析**：`run_reverse_checklist`（四类结论 + 重大风险，证伪）
-4. **安全边际分析**：`anchor_industry_pe`（先查行业锚点，结合 1-3 定击球 PE 区间+理由）→ `estimate_annual_profit` → `calc_swing_zone` → `calc_safety_margin`（定量，数值不可手工改）
+4. **安全边际分析**：`anchor_industry_pe`（先查行业锚点，结合 1-3 定击球 PE 区间+理由，内部自动完成「保守年化 → 击球区 → 安全边际」定量计算，无需另调定量工具）
 5. **结论与建议**：`output_conclusion`（结合 1-4 全部信息，三档 + 理由）
 
 ## 扩展说明

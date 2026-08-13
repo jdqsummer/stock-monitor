@@ -56,13 +56,6 @@ def test_new_skill_auto_registers(tmp_path, monkeypatch):
 from backend.schemas.stock import FinancialReport  # noqa: E402
 
 
-class FakeLLM:
-    def __init__(self, payload): self.payload = payload
-    async def json_chat(self, messages):
-        assert len(messages) == 1
-        return self.payload
-
-
 @pytest.mark.asyncio
 async def test_qualitative_stage_writes_blocks_and_stage_results():
     from backend.agents.stage_tools import StageTool, _load_stages
@@ -243,3 +236,83 @@ async def test_conclusion_loss_exception_requires_rationale_and_basis():
     tool2 = StageTool(c, llm_provider=LossLLM(include_fields=False))
     with pytest.raises(OutputValidationError):
         await tool2.execute(tool2.input_model(), _ctx(loss_state(), LossLLM(include_fields=False)))
+
+
+@pytest.mark.asyncio
+async def test_stage_orchestration_end_to_end_cross_stage_state():
+    """端到端：五段式 stage 工具按 workflow 顺序驱动，跨阶段状态贯通。
+
+    定性 → 逆向 → 安全边际 → 结论，验证 stage_results / qualitative_analysis /
+    reverse_analysis 落到最终 state，且结论阶段读到安全边际阶段的定量输出
+    （击球区股价、距击球区、profit_method），不依赖真实 LLM。
+    """
+    from backend.agents.stage_tools import StageTool, _load_stages
+
+    class OrchestrationLLM:
+        """按调用顺序脚本化：3 定性块 → 逆向 → 击球 → 结论。
+
+        结论阶段 prompt 会内嵌前序阶段输出（含 pe_rationale/checklist_results 等键），
+        故不能用内容标记分发，改用 workflow 固定的 6 次调用顺序。
+        """
+
+        def __init__(self):
+            self.calls = 0
+            self.conclusion_prompt = None
+
+        async def json_chat(self, messages):
+            self.calls += 1
+            content = messages[0]["content"]
+            if self.calls <= 2:              # business-model / moat 子块
+                return {"text": "定性结论"}
+            if self.calls == 3:              # operating-quality handler
+                return {"growth_quality": "good", "rationale": "营收与扣非稳健增长"}
+            if self.calls == 4:              # run_reverse_checklist
+                return {
+                    "conclusions": {"about_company": "c1", "about_valuation": "c2",
+                                    "about_market": "c3", "about_self": "c4"},
+                    "major_risks": ["r1", "r2"],
+                    "checklist_veto": False,
+                    "overall_assessment": "综合判断",
+                }
+            if self.calls == 5:              # anchor_industry_pe（swing-zone PE）
+                return {"pe_low": 20, "pe_high": 35, "pe_rationale": "白酒锚点"}
+            self.conclusion_prompt = content  # output_conclusion
+            return {"conclusion": "壁垒深，等待估值回归", "recommendation": "等待时机-观察区",
+                    "unassessable_risk": False, "final_rating": "🟡", "action_items": ["关注"]}
+
+    llm = OrchestrationLLM()
+    stages = {s.name: s for s in _load_stages()}
+    state = {
+        "stock_name": "贵州茅台", "stock_code": "600519", "industry_category": "白酒",
+        "financials": [
+            FinancialReport(code="600519", name="贵州茅台", report_period="2026H1",
+                            revenue=120.0, net_profit_parent=35.0, net_profit_deducted=32.0),
+            FinancialReport(code="600519", name="贵州茅台", report_period="2025H1",
+                            revenue=108.0, net_profit_parent=31.0, net_profit_deducted=29.0),
+        ],
+        "net_profit_parent": 35.0, "net_profit_deducted": 32.0,
+        "current_price": 50.0, "total_market_cap": 750.0, "total_shares": 15.0, "pe_dynamic": 22.0,
+    }
+
+    for name in ("analyze_qualitative", "run_reverse_checklist", "anchor_industry_pe", "output_conclusion"):
+        tool = StageTool(stages[name], llm_provider=llm)
+        # execute 经 _merge 就地写回 analysis_state（stage_results 深合并累积）
+        await tool.execute(tool.input_model(), _ctx(state, llm))
+
+    # 四阶段结果均落库 stage_results
+    for name in ("analyze_qualitative", "run_reverse_checklist", "anchor_industry_pe", "output_conclusion"):
+        assert name in state["stage_results"]
+    # 定性子块与逆向四类结论贯通
+    assert state["qualitative_analysis"]["business_model"]["title"] == "商业模式"
+    assert set(state["reverse_analysis"]["conclusions"]) == {
+        "about_company", "about_valuation", "about_market", "about_self"}
+    # 安全边际阶段内部自动完成定量（跨阶段：结论依赖这些输出）
+    assert state["swing_price_low"] > 0
+    assert "distance_pct" in state
+    assert "H1×2" in state["profit_method"]
+    # 结论阶段确实读到了安全边际定量输出（击球区股价 + 距击球区注入 prompt）
+    assert llm.conclusion_prompt is not None
+    assert "击球区股价" in llm.conclusion_prompt
+    assert str(state["swing_price_low"]) in llm.conclusion_prompt
+    assert "距击球区" in llm.conclusion_prompt
+    assert state["final_rating"] == "🟡"

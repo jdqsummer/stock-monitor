@@ -190,13 +190,18 @@ def build_system_prompt(state: dict) -> str:
     """系统提示 = 主 skill 全文 + Available Skills 列表（子 skill 供 skill 工具读取）"""
     from pathlib import Path
 
-    from openharness.prompts.context import _build_skills_section
+    from backend.agents.stage_tools import _load_stages
 
     skill = Path(__file__).resolve().parent / "skills" / "investment-framework" / "SKILL.md"
     skill_text = skill.read_text(encoding="utf-8") if skill.exists() else ""
-    cwd = Path(__file__).resolve().parent.parent  # backend/
-    extra = [str(Path(__file__).resolve().parent / "skills" / "stages")]
-    skills_section = _build_skills_section(cwd, extra_skill_dirs=extra)
+    # 仅列出 stages/ 注册的阶段 skill，避免把整个 skill 注册表（bundled + 用户
+    # ~/.claude/skills、~/.agents/skills、项目、插件）注入分析 LLM 系统提示
+    # （噪音 + 泄露用户 skill 清单），也不再经 load_plugins 产生目录写副作用。
+    stages = _load_stages()
+    lines = ["# Available Skills", "",
+             "The following stage skills are available via the `skill` tool (read them for stage methodology).", ""]
+    lines += [f"- **{s.name}**: {s.description}" for s in stages]
+    skills_section = "\n".join(lines)
     summary = (
         f"分析标的: {state.get('stock_name', '')}({state.get('stock_code', '')})，"
         f"行业: {state.get('industry_category', '未知')}。严格按框架阶段推进，先定性后定量。"

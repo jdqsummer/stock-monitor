@@ -170,7 +170,7 @@ class StageTool(BaseTool):
                 return {}
             from backend.agents.harness_output import validate_output_shape
             from backend.agents.openharness import apply_veto
-            loss_note = "（当前亏损，年化利润不可得，请基于商业模式/技术壁垒判断）" if st.get("annual_profit_low", 0) <= 0 else ""
+            loss_note = "（当前亏损，年化利润不可得，请基于商业模式/技术壁垒判断）" if st.get("annual_profit_low") is not None and st.get("annual_profit_low") <= 0 else ""
             prompt = (
                 f"{self.stage.skill_content}\n\n"
                 f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，行业: {st.get('industry_category', '未知')}{loss_note}\n"
@@ -204,9 +204,12 @@ class StageTool(BaseTool):
                 updates["loss_exception_rationale"] = resp.get("loss_exception_rationale")
             if resp.get("forward_valuation_basis"):
                 updates["forward_valuation_basis"] = resp.get("forward_valuation_basis")
-            payload = {**st, **updates, "annual_profit_low": st.get("annual_profit_low")}
-            validate_output_shape(payload)               # 仅守卫：亏损非🔴缺字段时抛 OutputValidationError
+            # 先否决后校验：apply_veto 会把 unassessable_risk / checklist_veto 强制为 🔴，
+            # 免除亏损特例字段要求；否则亏损非🔴会在 validate_output_shape 抛
+            # OutputValidationError，导致整轮 LLM 分析被丢弃、降级规则子链。
             updates.update(apply_veto({**st, **updates}))
+            payload = {**st, **updates, "annual_profit_low": st.get("annual_profit_low")}
+            validate_output_shape(payload)               # 仅守卫：否决后仍亏损非🔴且缺字段时抛边界拒绝
             return {"stage_results": {self.name: {"title": self.name, **updates}},
                     self.output_field: updates, **updates}
         if self.blocks:
@@ -313,6 +316,7 @@ class StageTool(BaseTool):
         updates.update({
             "annual_profit_low": st.get("annual_profit_low"),
             "annual_profit_high": st.get("annual_profit_high"),
+            "profit_method": st.get("profit_method"),
             "swing_market_cap_low": st.get("swing_market_cap_low"),
             "swing_market_cap_high": st.get("swing_market_cap_high"),
             "swing_price_low": st.get("swing_price_low"),
@@ -331,7 +335,23 @@ class _EmptyInput(BaseModel):
 
 
 def _merge(context: ToolExecutionContext, updates: dict) -> None:
-    context.metadata["analysis_state"].update(updates)
+    """合并 state_updates 到 analysis_state；stage_results 键深合并。
+
+    stage_results 契约是 {stage_name: {title, ...}}（五段结构化结果），
+    浅 update 会让后执行阶段覆盖前序阶段，导致详情页只渲染最后一段、
+    且 run_reverse_checklist 四类结论丢失（Fix 3 依赖该键累积）。
+    """
+    state = context.metadata["analysis_state"]
+    stage_updates = updates.get("stage_results")
+    if stage_updates:
+        existing = state.get("stage_results")
+        if isinstance(existing, dict):
+            existing.update(stage_updates)
+        else:
+            state["stage_results"] = dict(stage_updates)
+        state.update({k: v for k, v in updates.items() if k != "stage_results"})
+    else:
+        state.update(updates)
 
 
 def _inject(st: dict, depends_on: list[str]) -> dict:
