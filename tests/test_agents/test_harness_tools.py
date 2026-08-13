@@ -118,3 +118,71 @@ async def test_assess_profit_quality_ok_when_clean():
     updates = res.metadata["state_updates"]
     assert updates["profit_quality_ok"] is True
     assert "良好" in res.output
+
+
+# ── Task 5: LLM 定性工具 + build_investment_tools ──
+
+class FakeLLM:
+    def __init__(self, payload): self.payload = payload
+    async def json_chat(self, messages): return self.payload
+
+
+def _ctx_with_llm(state: dict, payload: dict) -> ToolExecutionContext:
+    return ToolExecutionContext(cwd=Path("."), metadata={"analysis_state": state, "llm_provider": FakeLLM(payload)})
+
+
+@pytest.mark.asyncio
+async def test_analyze_qualitative():
+    from backend.agents.harness_tools import AnalyzeQualitativeTool
+    tool = AnalyzeQualitativeTool()
+    ctx = _ctx_with_llm({"stock_name": "贵州茅台", "stock_code": "600519", "industry_category": "白酒", "current_price": 50.0},
+                        {"moat_assessment": "品牌护城河极深", "risk_factors": ["消费降级"]})
+    res = await tool.execute(tool.input_model(), ctx)
+    assert res.metadata["state_updates"]["moat_assessment"] == "品牌护城河极深"
+    assert res.metadata["state_updates"]["risk_factors"] == ["消费降级"]
+
+
+@pytest.mark.asyncio
+async def test_anchor_industry_pe_uses_anchor_as_fallback():
+    from backend.agents.harness_tools import AnchorIndustryPeTool
+    tool = AnchorIndustryPeTool()
+    ctx = _ctx_with_llm({"stock_name": "X", "stock_code": "0001", "industry_category": "白酒", "current_price": 50.0},
+                        {"pe_low": 18, "pe_high": 22, "pe_rationale": "白酒增速放缓"})
+    res = await tool.execute(tool.input_model(), ctx)
+    assert res.metadata["state_updates"]["pe_low"] == 18
+
+
+@pytest.mark.asyncio
+async def test_output_conclusion_guards_rating():
+    from backend.agents.harness_tools import OutputConclusionTool
+    tool = OutputConclusionTool()
+    ctx = _ctx_with_llm({"annual_profit_low": -2.0, "distance_pct": 999.0, "signal_label": "无法量化",
+                         "swing_price_low": 0, "swing_price_high": 0, "moat_assessment": "m", "risk_factors": [],
+                         "checklist_summary": "s", "checklist_veto": False},
+                        {"conclusion": "壁垒深，等待盈利验证", "recommendation": "等待时机-观察区",
+                         "unassessable_risk": False, "final_rating": "🟡", "action_items": ["关注订单"]})
+    res = await tool.execute(tool.input_model(), ctx)
+    assert res.metadata["state_updates"]["final_rating"] == "🟡"
+
+
+@pytest.mark.asyncio
+async def test_output_conclusion_veto_forces_red():
+    from backend.agents.harness_tools import OutputConclusionTool
+    from backend.agents.openharness import apply_veto
+    tool = OutputConclusionTool()
+    ctx = _ctx_with_llm({"annual_profit_low": 10.0, "distance_pct": -5.0, "signal_label": "击球区",
+                         "swing_price_low": 1, "swing_price_high": 2, "moat_assessment": "m", "risk_factors": [],
+                         "checklist_summary": "重大担忧", "checklist_veto": True},
+                        {"conclusion": "c", "recommendation": "可配置", "unassessable_risk": False,
+                         "final_rating": "🟢", "action_items": []})
+    res = await tool.execute(tool.input_model(), ctx)
+    assert res.metadata["state_updates"]["final_rating"] == "🔴"
+
+
+@pytest.mark.asyncio
+async def test_build_investment_tools_registers_9():
+    from backend.agents.harness_tools import build_investment_tools
+    tools = build_investment_tools(None)
+    names = [t.name for t in tools]
+    assert len(names) == 9
+    assert "calc_swing_zone" in names and "output_conclusion" in names

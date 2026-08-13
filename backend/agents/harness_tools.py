@@ -1,25 +1,17 @@
-"""开源 harness 投资分析工具 — 确定性部分
+"""开源 harness 投资分析工具 — 确定性 + LLM 定性
 
 状态约定：工具从 context.metadata["analysis_state"] 读、写 state_updates，
-适配层负责合并。LLM 定性工具见 Task 5。
+适配层负责合并。LLM 经 context.metadata["llm_provider"] 获取。
 """
 from __future__ import annotations
-
-import logging
-from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
 
 from backend.agents.workflow import (
-    calculate_swing_zone_node,
     check_profit_quality_node,
     estimate_annual_profit_node,
-    quantify_safety_margin_node,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class _EmptyInput(BaseModel):
@@ -161,3 +153,150 @@ class CalcSafetyMarginTool(BaseTool):
         _merge(context, updates)
         text = f"距击球区: {distance_pct}%，信号: {signal_label}"
         return ToolResult(output=text, metadata={"state_updates": updates})
+
+
+# ── LLM 定性工具（经 context.metadata["llm_provider"] 获取 LLM） ──
+
+def _llm(context: ToolExecutionContext):
+    return context.metadata["llm_provider"]
+
+
+class AnalyzeQualitativeTool(BaseTool):
+    name = "analyze_qualitative"
+    description = "定性分析：商业模式+护城河+重大风险，必须在估值前调用"
+    input_model = _EmptyInput
+
+    async def execute(self, arguments, context: ToolExecutionContext) -> ToolResult:
+        st = _state(context)
+        prompt = (
+            f"你是一个资深价值投资分析师。分析以下股票的商业模式与护城河：\n"
+            f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，"
+            f"行业: {st.get('industry_category')}，现价: {st.get('current_price')} 元\n"
+            f'请以 JSON 返回: {{"moat_assessment": "商业模式与护城河一段文字", '
+            f'"risk_factors": ["风险1", "风险2", "风险3"]}}'
+        )
+        resp = await _llm(context).json_chat([{"role": "user", "content": prompt}])
+        updates = {
+            "moat_assessment": resp.get("moat_assessment", st.get("moat_assessment", "")),
+            "risk_factors": resp.get("risk_factors", st.get("risk_factors", [])),
+        }
+        _merge(context, updates)
+        return ToolResult(output=f"定性结论: {updates['moat_assessment']}。风险: {updates['risk_factors']}",
+                          metadata={"state_updates": updates})
+
+
+class RunReverseChecklistTool(BaseTool):
+    name = "run_reverse_checklist"
+    description = "执行 14 道逆向投资反问清单，证伪买入逻辑，必须在估值前调用"
+    input_model = _EmptyInput
+
+    async def execute(self, arguments, context: ToolExecutionContext) -> ToolResult:
+        from backend.agents.analysis_chain import run_reverse_checklist
+        st = _state(context)
+        stock_info = (
+            f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，"
+            f"现价: {st.get('current_price')} 元，动态PE: {st.get('pe_dynamic')}，"
+            f"扣非净利: {st.get('net_profit_deducted')} 亿，行业: {st.get('industry_category')}"
+        )
+        result = await run_reverse_checklist(_llm(context), stock_info)
+        updates = {
+            "checklist_results": result.get("checklist_results", {}),
+            "checklist_veto": bool(result.get("checklist_veto", False)),
+            "checklist_summary": result.get("overall_assessment", ""),
+        }
+        _merge(context, updates)
+        text = f"证伪结论: {'存在否决项' if updates['checklist_veto'] else '无否决项'}。{updates['checklist_summary']}"
+        return ToolResult(output=text, metadata={"state_updates": updates})
+
+
+class AnchorIndustryPeTool(BaseTool):
+    name = "anchor_industry_pe"
+    description = "结合定性结论给定行业 PE 合理区间（高成长上修/稳定偏低/重大风险下修），必须给出理由"
+    input_model = _EmptyInput
+
+    async def execute(self, arguments, context: ToolExecutionContext) -> ToolResult:
+        from backend.agents.constraints import resolve_pe_anchor
+        st = _state(context)
+        industry = st.get("industry_category", "")
+        _, anchor = resolve_pe_anchor(industry)
+        anchor_text = f"{anchor[0]}-{anchor[1]}" if anchor else "默认 15-25"
+        prompt = (
+            f"你是价值投资者。请为 {st.get('stock_name', '')}({st.get('stock_code', '')}) 设定合理 PE 区间。\n"
+            f"行业: {industry}，行业参考锚点: {anchor_text}（仅参考，可基于基本面偏离）\n"
+            f"规则: 高成长→PE 上修；稳定→PE 合理偏低；重大风险→PE 下修。\n"
+            f'请以 JSON 返回: {{"pe_low": 数字, "pe_high": 数字, "pe_rationale": "设定理由"}}'
+        )
+        resp = await _llm(context).json_chat([{"role": "user", "content": prompt}])
+        default_low, default_high = (anchor if anchor else (15.0, 25.0))
+        try:
+            pe_low = float(resp.get("pe_low", default_low))
+        except (TypeError, ValueError):
+            pe_low = default_low
+        try:
+            pe_high = float(resp.get("pe_high", default_high))
+        except (TypeError, ValueError):
+            pe_high = default_high
+        if pe_low <= 0 or pe_high < pe_low:
+            pe_low, pe_high = (anchor if anchor else (15.0, 25.0))
+        updates = {
+            "pe_low": pe_low,
+            "pe_high": pe_high,
+            "pe_rationale": resp.get("pe_rationale", f"行业锚定 {anchor_text}"),
+            "industry_category": industry,
+        }
+        _merge(context, updates)
+        return ToolResult(output=f"PE 区间: {pe_low}-{pe_high}。理由: {updates['pe_rationale']}",
+                          metadata={"state_updates": updates})
+
+
+class OutputConclusionTool(BaseTool):
+    name = "output_conclusion"
+    description = "综合全部结论输出最终评级与投资建议（受 SKILL.md 输出 schema 约束）"
+    input_model = _EmptyInput
+
+    async def execute(self, arguments, context: ToolExecutionContext) -> ToolResult:
+        from backend.agents.openharness import apply_veto
+        st = _state(context)
+        loss_note = "（当前亏损，年化利润不可得，请基于商业模式/技术壁垒判断）" if st.get("annual_profit_low", 0) <= 0 else ""
+        prompt = (
+            f"你是价值投资者，请基于以下分析给出综合结论与投资建议（结论不输出过程）。\n"
+            f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，行业: {st.get('industry_category', '未知')}{loss_note}\n"
+            f"信号: {st.get('signal_label')}，距击球区: {st.get('distance_pct')}%，"
+            f"击球区股价: {st.get('swing_price_low')}-{st.get('swing_price_high')} 元，\n"
+            f"护城河: {st.get('moat_assessment', '未评估')}，风险: {st.get('risk_factors', [])}，\n"
+            f"逆向清单结论: {st.get('checklist_summary', '未执行')}，清单否决: {'是' if st.get('checklist_veto') else '否'}。\n"
+            f'请以 JSON 返回: {{"conclusion": "审视后的结论（2-4 句，证伪思维，先依据后判断）", '
+            f'"recommendation": "买入-可配置区 / 等待时机-观察区 / 坚决放弃-太难", '
+            f'"unassessable_risk": false, "final_rating": "🟢/🟡/🔴", "action_items": ["行动1", "行动2"]}}'
+        )
+        resp = await _llm(context).json_chat([{"role": "user", "content": prompt}])
+        updates = {
+            "conclusion": resp.get("conclusion", ""),
+            "recommendation": resp.get("recommendation", ""),
+            "unassessable_risk": bool(resp.get("unassessable_risk", False)),
+            "action_items": resp.get("action_items", []),
+            "rating_confidence": 0.75,
+        }
+        final_rating = resp.get("final_rating", st.get("final_rating", "🟡"))
+        if final_rating not in ("🟢", "🟡", "🔴"):
+            final_rating = "🟡"
+        updates["final_rating"] = final_rating
+        updates.update(apply_veto({**st, **updates}))
+        _merge(context, updates)
+        return ToolResult(output=f"综合结论: {updates.get('conclusion') or '（无结论）'}",
+                          metadata={"state_updates": updates})
+
+
+def build_investment_tools(llm_provider) -> list[BaseTool]:
+    """构建 9 个投资工具；llm_provider 注入到工具依赖（经适配层放入 tool_metadata）"""
+    return [
+        ReadContextTool(),
+        AssessProfitQualityTool(),
+        EstimateAnnualProfitTool(),
+        AnalyzeQualitativeTool(),
+        RunReverseChecklistTool(),
+        AnchorIndustryPeTool(),
+        CalcSwingZoneTool(),
+        CalcSafetyMarginTool(),
+        OutputConclusionTool(),
+    ]
