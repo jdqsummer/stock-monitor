@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agents.data_agent import DataAgent
+from backend.agents.openharness import OpenHarnessAgent
 
 from backend.agents.state import AnalysisState
 from backend.agents.workflow import (
@@ -378,7 +379,7 @@ class TestNodeFunctions:
 
     @pytest.mark.asyncio
     async def test_quantify_safety_margin_loss(self):
-        """亏损 → 🔴"""
+        """亏损 → unquantifiable（无法量化，不再机械判红）"""
         state = make_state(
             current_price=40.0,
             swing_price_high=50.0,
@@ -386,8 +387,8 @@ class TestNodeFunctions:
         )
         result = await quantify_safety_margin_node(state)
 
-        assert result["signal"] == "red"
-        assert "亏损" in result["signal_label"]
+        assert result["signal"] == "unquantifiable"
+        assert result["signal_label"] == "无法量化"
 
     # Step 8a: 机械评级
 
@@ -468,7 +469,7 @@ class TestNodeFunctions:
 
     @pytest.mark.asyncio
     async def test_cross_check_red_signal(self):
-        """🔴 → 建议暂不配置"""
+        """🔴 → 建议坚决放弃，并产出 conclusion"""
         state = make_state(
             signal="red",
             final_rating="🔴",
@@ -476,7 +477,8 @@ class TestNodeFunctions:
         )
         result = await cross_check_and_output_node(state)
 
-        assert "暂不配置" in result["recommendation"]
+        assert "坚决放弃" in result["recommendation"]
+        assert result["conclusion"]
         assert result["analysis_completed"] is not None
 
     @pytest.mark.asyncio
@@ -641,3 +643,48 @@ class TestDataToState:
         assert state["errors"] == ["无数据"]
         # 无 quote 时 current_price 不存在于 state
         assert state.get("current_price") is None
+
+
+# ── Task 6: 纯规则路径（亏损 unquantifiable + 结论生成 + apply_veto） ──
+
+@pytest.mark.asyncio
+async def test_quantify_loss_signal_unquantifiable():
+    """亏损 → signal=unquantifiable，不再机械 red"""
+    updates = await quantify_safety_margin_node({
+        "current_price": 10.0, "swing_price_high": 0.0, "annual_profit_low": -2.0,
+    })
+    assert updates["signal"] == "unquantifiable"
+    assert updates["signal_label"] == "无法量化"
+
+
+@pytest.mark.asyncio
+async def test_cross_check_loss_yellow_with_honest_conclusion():
+    """纯规则：亏损 → 🟡 观察区 + conclusion 诚实标注未执行清单"""
+    updates = await cross_check_and_output_node({
+        "signal": "unquantifiable", "signal_label": "无法量化",
+        "final_rating": "", "distance_pct": 999.0,
+        "stock_name": "测试股", "current_price": 10.0,
+        "swing_price_low": 0.0, "swing_price_high": 0.0,
+    })
+    assert updates["final_rating"] == "🟡"
+    assert "观察区" in updates["recommendation"]
+    assert "逆向清单" in updates["conclusion"]
+
+
+@pytest.mark.asyncio
+async def test_rule_based_applies_veto():
+    """纯规则路径尾部执行 apply_veto"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    state = {
+        "stock_code": "600519", "stock_name": "测试股",
+        "current_price": 50.0, "total_market_cap": 750.0, "total_shares": 15.0,
+        "pe_dynamic": 22.0, "net_profit_parent": 35.0, "net_profit_deducted": 34.0,
+        "annual_profit_low": 32.0, "annual_profit_high": 35.0, "profit_method": "H1×2",
+        "pe_low": 20.0, "pe_high": 35.0, "industry_category": "白酒",
+        "signal": "green", "signal_label": "击球区", "distance_pct": -5.0,
+        "unassessable_risk": True, "checklist_veto": False,
+        "errors": [], "warnings": [], "financials": [], "news": [],
+    }
+    result = await agent.analyze(state)
+    assert result["final_rating"] == "🔴"
+    assert "坚决放弃" in result["recommendation"]

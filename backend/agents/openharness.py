@@ -149,6 +149,7 @@ class OpenHarnessAgent:
 
         updates = await cross_check_and_output_node(state)
         state.update(updates)
+        state.update(apply_veto(state))   # 否决兜底（无 LLM 时通常不触发，保持行为一致）
         return state
 
     # ── 确定性计算工具（纯公式，数值不漂移） ──

@@ -399,9 +399,9 @@ async def quantify_safety_margin_node(state: AnalysisState) -> dict:
 
     # 信号灯判定
     if annual_profit_low <= 0:
-        signal = "red"
-        signal_label = "高估区（亏损）"
-        action = "暂不配置（亏损企业）"
+        signal = "unquantifiable"
+        signal_label = "无法量化"
+        action = "安全边际无法量化（亏损），需先验证商业模式与盈利拐点"
     elif distance_pct <= 0:
         signal = "green"
         signal_label = "击球区"
@@ -489,54 +489,53 @@ async def manual_adjust_node(state: AnalysisState) -> dict:
 
 
 async def cross_check_and_output_node(state: AnalysisState) -> dict:
-    """
-    清单对照 & 输出归档节点（Step 9）。
-
-    - 与投资清单对照
-    - 生成最终结论
-    - 输出归档格式
-    """
+    """清单对照 & 输出归档节点（Step 9）。生成审视结论 + 三分类建议。"""
     logger.info("[Step 4/4] 清单对照 & 输出")
 
     signal = state.get("signal", "red")
     final_rating = state.get("final_rating", "")
     distance_pct = state.get("distance_pct", 0)
 
+    # 亏损：无法量化 → 🟡 观察区 + 诚实标注（不机械判红）
+    if signal == "unquantifiable":
+        stock_name = state.get("stock_name", "")
+        conclusion = (
+            f"{stock_name} 当前亏损，安全边际无法量化。本评估为纯量化规则结果，"
+            "未执行逆向清单，无法判断商业模式/技术壁垒深度，建议启用 LLM 深度分析后再决策。"
+        )
+        recommendation = "等待时机-观察区：安全边际无法量化（亏损），需先验证商业模式与盈利拐点。"
+        action_items = ["等待盈利转正或正式财报验证", "启用 LLM 深度分析商业模式与技术壁垒"]
+        return {
+            "conclusion": conclusion,
+            "recommendation": recommendation,
+            "action_items": action_items,
+            "final_rating": "🟡",
+            "analysis_completed": datetime.now().isoformat(),
+            "rating_confidence": 0.5,
+        }
+
+    # 正常路径：基于信号的三分类（原逻辑）
     recommendation = ""
     action_items = []
-
     if signal == "red":
-        recommendation = "暂不配置。当前估值过高或基本面存在问题，安全边际不足。"
-        action_items = [
-            "移除关注列表",
-            "等待基本面改善或估值回归",
-            f"距击球区 {distance_pct}%，远超安全边际范围",
-        ]
+        conclusion = f"距击球区 {distance_pct}%，安全边际不足，按纪律坚决放弃。"
+        recommendation = "坚决放弃-太难：当前估值过高或基本面存在问题，安全边际不足。"
+        action_items = ["移除关注列表", "等待基本面改善或估值回归", f"距击球区 {distance_pct}%，远超安全边际范围"]
     elif signal == "green":
         stock_name = state.get("stock_name", "")
-        recommendation = f"已进入击球区，安全边际为正。可考虑分批建仓，但需确认清单无否决项。"
-        price_info = f"当前价 {state.get('current_price', 0)} 元，击球区 {state.get('swing_price_low', 0)}-{state.get('swing_price_high', 0)} 元"
-        action_items = [
-            "执行 14 道逆向清单",
-            "确认无清单否决项后，可分 3 批建仓",
-            price_info,
-            "仓位上限 10%",
-            "关注正式中报数据修正",
-        ]
+        conclusion = f"{stock_name} 已进入击球区，安全边际为正；需对照 14 道逆向清单确认无否决项后再执行买入。"
+        recommendation = "买入-可配置区：已进入击球区，安全边际为正。可考虑分批建仓，但需确认清单无否决项。"
+        action_items = ["执行 14 道逆向清单", "确认无清单否决项后，可分 3 批建仓", f"当前价 {state.get('current_price', 0)} 元，击球区 {state.get('swing_price_low', 0)}-{state.get('swing_price_high', 0)} 元", "仓位上限 10%", "关注正式中报数据修正"]
     else:
         stock_name = state.get("stock_name", "")
-        swing_price = state.get("swing_price_high", 0)
-        recommendation = f"距击球区 {distance_pct}%，处于观察区。保持耐心，等待更好时机。"
-        action_items = [
-            f"设定击球点提醒：跌至 {swing_price} 元时触发",
-            "持续跟踪基本面变化",
-            "提前研究行业和公司，做好准备",
-            "不因市场情绪追高买入",
-        ]
+        conclusion = f"{stock_name} 距击球区 {distance_pct}%，处于观察区；安全边际不足但未到坚决放弃，保持耐心并持续跟踪。"
+        recommendation = f"等待时机-观察区：距击球区 {distance_pct}%，安全边际不足，保持耐心。"
+        action_items = [f"设定击球点提醒：跌至 {state.get('swing_price_high', 0)} 元时触发", "持续跟踪基本面变化", "提前研究行业和公司，做好准备", "不因市场情绪追高买入"]
 
     logger.info(f"  建议: {recommendation}")
 
     return {
+        "conclusion": conclusion,
         "recommendation": recommendation,
         "action_items": action_items,
         "analysis_completed": datetime.now().isoformat(),
