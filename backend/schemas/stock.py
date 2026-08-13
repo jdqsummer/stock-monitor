@@ -108,6 +108,7 @@ class DashboardPositionRow(BaseModel):
     distance_pct: float | None = None
     signal: Signal | None = None
     industry: str | None = None
+    pe_dynamic: float | None = None       # 动态 PE（来自实时行情）
 
 
 class WatchlistBoardRow(BaseModel):

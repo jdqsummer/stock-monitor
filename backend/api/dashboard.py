@@ -139,5 +139,6 @@ async def dashboard_positions(
             distance_pct=None,
             signal=None,
             industry=None,
+            pe_dynamic=quote.pe_dynamic if quote else None,
         ))
     return ApiResponse(data=items)

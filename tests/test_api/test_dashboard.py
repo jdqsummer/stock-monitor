@@ -69,7 +69,7 @@ class TestDashboardAPI:
             shares=100, cost_price=1400.0,
         ))
         db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=1560.0,
-                                     total_market_cap=19500.0))
+                                     total_market_cap=19500.0, pe_dynamic=25.3))
         await db_session.commit()
 
         resp = await client.get("/api/dashboard/overview", headers=headers)
@@ -83,3 +83,4 @@ class TestDashboardAPI:
         positions = resp.json()["data"]
         assert len(positions) == 1
         assert positions[0]["current_price"] == 1560.0
+        assert positions[0]["pe_dynamic"] == 25.3

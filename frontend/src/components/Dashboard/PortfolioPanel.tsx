@@ -9,6 +9,8 @@ const columns: ColumnsType<PositionInfo> = [
   { title: '持有数量', dataIndex: 'shares', key: 'shares', width: 80 },
   { title: '成本价', dataIndex: 'cost_price', key: 'cost_price', width: 80, render: (v: number) => `¥${v.toFixed(2)}` },
   { title: '现价', dataIndex: 'current_price', key: 'current_price', width: 80, render: (v: number) => `¥${v.toFixed(2)}` },
+  { title: '动态PE', dataIndex: 'pe_dynamic', key: 'pe_dynamic', width: 80,
+    render: (v: number | null) => (v == null ? '—' : v.toFixed(1)) },
   { title: '盈亏金额', dataIndex: 'profit_loss', key: 'profit_loss', width: 100,
     render: (v: number) => <span style={{ color: v >= 0 ? '#3f8600' : '#cf1322' }}>{v.toFixed(2)}万</span> },
   { title: '盈亏比例', dataIndex: 'profit_loss_pct', key: 'profit_loss_pct', width: 90,

@@ -100,6 +100,7 @@ export interface PositionInfo {
   distance_pct: number | null;
   signal: Signal | null;
   industry: string | null;
+  pe_dynamic: number | null;
 }
 
 // ── 仪表盘总览 ──
