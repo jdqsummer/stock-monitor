@@ -1,0 +1,71 @@
+# stock-monitor/tests/test_migrations.py
+"""验证 alembic 迁移链与模型同步。
+
+背景：commit 2516bc0 给模型 AnalysisSnapshot 新增 checklist 三字段但漏写 Alembic 迁移，
+生产库经 alembic 逐级升级后表缺这三列，导致看板接口查询 AnalysisSnapshot 抛
+`OperationalError: no such column`，自选股无法在仪表盘展示。
+本测试在临时 sqlite 库上重放迁移链，确保任一版本表结构与模型一致。
+"""
+import os
+import sqlite3
+
+from alembic import command
+from alembic.config import Config
+
+from backend.config import settings
+
+PROD_REVISION = "d9f1a3b5c7e1"  # 生产当前版本（缺 checklist 列）
+CHECKLIST_COLS = ["checklist_results", "checklist_veto", "checklist_summary"]
+
+ALEMBIC_INI = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+
+
+def _run_alembic(db_path: str, target: str) -> None:
+    """把临时 sqlite 库升级到指定版本；临时改写 settings.DATABASE_URL 指向该库。"""
+    original = settings.DATABASE_URL
+    settings.DATABASE_URL = f"sqlite+aiosqlite:///{db_path}"
+    cfg = Config(ALEMBIC_INI)
+    try:
+        command.upgrade(cfg, target)
+    finally:
+        settings.DATABASE_URL = original
+
+
+def _snapshot_cols(db_path: str) -> set[str]:
+    conn = sqlite3.connect(db_path)
+    try:
+        return {r[1] for r in conn.execute("PRAGMA table_info(analysis_snapshots)")}
+    finally:
+        conn.close()
+
+
+def test_prod_revision_lacks_checklist_columns(tmp_path):
+    """前置条件：d9f1a3b5c7e1（生产当前）确实缺 checklist 列，否则本测试无意义。"""
+    db_path = str(tmp_path / "prod.db")
+    _run_alembic(db_path, PROD_REVISION)
+    cols = _snapshot_cols(db_path)
+    missing = set(CHECKLIST_COLS) - cols
+    assert missing, "前置条件失败：生产版本不应含 checklist 列"
+    assert all(c not in cols for c in CHECKLIST_COLS)
+
+
+def test_head_has_checklist_columns(tmp_path):
+    """修复目标：alembic 升到 head 后 analysis_snapshots 必须含 checklist 三列。"""
+    db_path = str(tmp_path / "head.db")
+    _run_alembic(db_path, "head")
+    cols = _snapshot_cols(db_path)
+    missing = set(CHECKLIST_COLS) - cols
+    assert not missing, f"head 版本缺列: {missing}"
+
+
+def test_migration_from_prod_revision_adds_checklist_columns(tmp_path):
+    """模拟生产升级：从 d9f1a3b5c7e1 升到 head 必须补齐 checklist 三列。"""
+    db_path = str(tmp_path / "upgrade.db")
+    _run_alembic(db_path, PROD_REVISION)
+    before = _snapshot_cols(db_path)
+    assert not any(c in before for c in CHECKLIST_COLS)
+
+    _run_alembic(db_path, "head")
+    after = _snapshot_cols(db_path)
+    missing = set(CHECKLIST_COLS) - after
+    assert not missing, f"升级后仍缺列: {missing}"
