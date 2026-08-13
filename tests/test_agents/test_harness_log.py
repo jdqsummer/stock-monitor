@@ -31,13 +31,18 @@ def test_log_writes_jsonl_and_final_text(tmp_path):
         final_text='{"final_rating": "🟡"}',
         framework_version="hash-abc",
         started_at="2026-08-13T00:00:00",
+        input_summary={"stock": "600519"},
+        usage_summary={"input_tokens": 100},
     )
     path = log_harness_run(log, tmp_path)
     assert path.exists()
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     assert json.loads(lines[0])["tool_name"] == "calc_swing_zone"
-    assert json.loads(lines[-1])["kind"] == "final_text"
-    assert json.loads(lines[-1])["text"] == '{"final_rating": "🟡"}'
+    last = json.loads(lines[-1])
+    assert last["kind"] == "final_text"
+    assert last["text"] == '{"final_rating": "🟡"}'
+    assert last["input_summary"] == log.input_summary
+    assert last["usage_summary"] == log.usage_summary
 
 
 def test_event_to_dict_round_trips_tool_events():

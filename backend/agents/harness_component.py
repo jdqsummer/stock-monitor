@@ -268,9 +268,14 @@ def log_harness_run(log: HarnessExecutionLog, base_dir: Path) -> Path:
     with out.open("w", encoding="utf-8") as f:
         for ev in log.events:
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")
-        f.write(json.dumps({"kind": "final_text", "text": log.final_text,
-                            "framework_version": log.framework_version,
-                            "started_at": log.started_at}, ensure_ascii=False) + "\n")
+        f.write(json.dumps({
+            "kind": "final_text",
+            "text": log.final_text,
+            "framework_version": log.framework_version,
+            "started_at": log.started_at,
+            "input_summary": log.input_summary,
+            "usage_summary": log.usage_summary,
+        }, ensure_ascii=False) + "\n")
     return out
 
 
