@@ -53,7 +53,7 @@ async def test_calc_safety_margin_deterministic():
         _ctx({}),
     )
     updates = res.metadata["state_updates"]
-    assert updates["distance_pct"] == -1.96
+    assert updates["distance_pct"] == -2.0
     assert updates["signal"] == "green"
 
 
@@ -64,7 +64,7 @@ async def test_calc_safety_margin_loss_returns_unquantifiable():
         tool.input_model(current_price=50.0, swing_price_high=51.0, annual_profit_low=-2.0),
         _ctx({}),
     )
-    assert res.metadata["state_updates"]["signal"] == "red"
+    assert res.metadata["state_updates"]["signal"] == "unquantifiable"
 
 
 @pytest.mark.asyncio

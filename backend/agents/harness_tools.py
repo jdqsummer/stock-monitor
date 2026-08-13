@@ -139,18 +139,18 @@ class CalcSafetyMarginInput(BaseModel):
 
 class CalcSafetyMarginTool(BaseTool):
     name = "calc_safety_margin"
-    description = "确定性计算距击球区与信号灯（≤0%绿/≤50%黄/>50%红；亏损红）"
+    description = "确定性计算距击球区与信号灯（≤0%绿/≤50%黄/>50%红；亏损无法量化）"
     input_model = CalcSafetyMarginInput
 
     async def execute(self, arguments: CalcSafetyMarginInput, context: ToolExecutionContext) -> ToolResult:
         if arguments.swing_price_high > 0:
             distance_pct = round(
-                (arguments.current_price - arguments.swing_price_high) / arguments.swing_price_high * 100, 2
+                (arguments.current_price - arguments.swing_price_high) / arguments.swing_price_high * 100, 1
             )
         else:
             distance_pct = 999.9
         if arguments.annual_profit_low <= 0:
-            signal, signal_label = "red", "高估区（亏损）"
+            signal, signal_label = "unquantifiable", "无法量化"
         elif distance_pct <= 0:
             signal, signal_label = "green", "击球区"
         elif distance_pct <= 50:
