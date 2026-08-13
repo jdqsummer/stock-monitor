@@ -20,7 +20,7 @@ export interface TokenResponse {
 }
 
 // ── 信号灯 ──
-export type Signal = 'green' | 'yellow' | 'red' | 'none';
+export type Signal = 'green' | 'yellow' | 'red' | 'none' | 'unquantifiable';
 
 // ── 自选股 ──
 export interface WatchlistItem {
@@ -73,6 +73,8 @@ export interface WatchlistBoardRow {
   recommendation?: string | null;
   profit_quality_ok?: boolean;
   profit_quality_warnings?: string[];
+  unassessable_risk?: boolean;
+  conclusion?: string | null;
 }
 
 // ── 自选股自动分析任务 ──

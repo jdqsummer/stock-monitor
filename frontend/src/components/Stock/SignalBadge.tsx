@@ -6,6 +6,7 @@ const SIGNAL_CONFIG: Record<Signal, { color: string; text: string; icon: string 
   yellow: { color: '#faad14', text: '观察区', icon: '🟡' },
   red:    { color: '#ff4d4f', text: '高估区', icon: '🔴' },
   none:   { color: '#bfbfbf', text: '未分析', icon: '⚪' },
+  unquantifiable: { color: '#bfbfbf', text: 'N/A', icon: '⚫' },
 };
 
 export function SignalBadge({ signal, distancePct }: { signal: Signal; distancePct: number | null }) {

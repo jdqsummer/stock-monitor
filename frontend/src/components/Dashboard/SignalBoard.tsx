@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
-import { Button, Space, Table, message } from 'antd';
+import { Button, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
@@ -22,8 +22,13 @@ const columns: ColumnsType<WatchlistBoardRow> = [
     render: (v: number) => `¥${v.toFixed(2)}` },
   { title: '动态PE', dataIndex: 'pe_dynamic', key: 'pe_dynamic', width: 80,
     render: (v: number | null) => (v == null ? '—' : v.toFixed(1)) },
-  { title: '距击球区', dataIndex: 'distance_pct', key: 'distance_pct', width: 130,
-    render: (v: number | null, record: WatchlistBoardRow) => <SignalBadge signal={record.signal} distancePct={v} /> },
+  { title: '距击球区', dataIndex: 'distance_pct', key: 'distance_pct', width: 180,
+    render: (v: number | null, record: WatchlistBoardRow) => (
+      <Space size={4}>
+        <SignalBadge signal={record.signal} distancePct={v} />
+        {record.unassessable_risk && <Tag color="red">风险否决</Tag>}
+      </Space>
+    ) },
 ];
 
 export function SignalBoard({ data, loading, onRefresh }: {

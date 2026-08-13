@@ -95,7 +95,15 @@ export function StockDetail() {
         )}
       </Card>
 
-      <Card title="结论与建议">
+      <Card title="结论与建议" style={{ marginBottom: 16 }}>
+        {snap.unassessable_risk && (
+          <div style={{ color: '#ff4d4f', fontWeight: 600, marginBottom: 8 }}>
+            ⚠️ 安全边际无法评估，即使价格低廉也坚决放弃
+          </div>
+        )}
+        {snap.conclusion && (
+          <p style={{ fontSize: 14, color: '#666', lineHeight: 1.8 }}>{snap.conclusion}</p>
+        )}
         <p style={{ fontSize: 16 }}>{snap.recommendation || '（未给出）'}</p>
       </Card>
     </div>
