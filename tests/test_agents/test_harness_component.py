@@ -1,4 +1,5 @@
 """harness_component 骨架测试（fake engine，不调真实 LLM）"""
+import json
 import sys
 from pathlib import Path
 
@@ -141,3 +142,56 @@ async def test_run_analysis_agent_missing_annual_profit_not_treated_as_loss(monk
     assert result["final_rating"] == "🟡"
     assert result["recommendation"] == "观察区"
     assert result["annual_profit_low"] is None   # 保持缺失语义，不物化为 0
+
+
+@pytest.mark.asyncio
+async def test_run_analysis_agent_writes_log_when_enabled(monkeypatch, tmp_path):
+    """启用日志时 run_analysis_agent 写 JSONL 日志文件"""
+    from backend.agents import harness_component as hc
+    from openharness.engine.stream_events import ToolExecutionStarted
+
+    fake_text = '{"final_rating": "🟡", "recommendation": "观察区", "action_items": []}'
+    events = [ToolExecutionStarted(tool_name="calc_swing_zone", tool_input={})]
+
+    async def _fake_collect(engine, prompt):
+        return fake_text, events
+
+    monkeypatch.setattr(hc, "collect_final_text", _fake_collect)
+    monkeypatch.setattr(hc, "_build_api_client", lambda model: object())
+    monkeypatch.setattr(hc, "_analysis_settings", lambda: None)
+    monkeypatch.setenv("OPENHARNESS_LOG_ENABLED", "1")
+    monkeypatch.setenv("OPENHARNESS_LOG_DIR", str(tmp_path))
+
+    state = {"stock_code": "600519", "stock_name": "贵州茅台", "annual_profit_low": 10.0,
+             "industry_category": "白酒", "errors": []}
+    result = await hc.run_analysis_agent(state, llm_provider=None)
+    assert result["final_rating"] == "🟡"
+
+    log_files = list((tmp_path / "openharness").glob("600519-*.jsonl"))
+    assert log_files, "启用日志时应生成 JSONL 日志文件"
+    lines = log_files[0].read_text(encoding="utf-8").strip().splitlines()
+    assert json.loads(lines[0])["kind"] == "tool_start"
+    assert json.loads(lines[-1])["kind"] == "final_text"
+
+
+@pytest.mark.asyncio
+async def test_run_analysis_agent_skips_log_when_disabled(monkeypatch, tmp_path):
+    """禁用日志时 run_analysis_agent 不写日志且仍正常返回 state"""
+    from backend.agents import harness_component as hc
+
+    fake_text = '{"final_rating": "🟡", "recommendation": "观察区", "action_items": []}'
+
+    async def _fake_collect(engine, prompt):
+        return fake_text, []
+
+    monkeypatch.setattr(hc, "collect_final_text", _fake_collect)
+    monkeypatch.setattr(hc, "_build_api_client", lambda model: object())
+    monkeypatch.setattr(hc, "_analysis_settings", lambda: None)
+    monkeypatch.setenv("OPENHARNESS_LOG_ENABLED", "0")
+    monkeypatch.setenv("OPENHARNESS_LOG_DIR", str(tmp_path))
+
+    state = {"stock_code": "600519", "stock_name": "贵州茅台", "annual_profit_low": 10.0,
+             "industry_category": "白酒", "errors": []}
+    result = await hc.run_analysis_agent(state, llm_provider=None)
+    assert result["final_rating"] == "🟡"
+    assert not (tmp_path / "openharness").exists()

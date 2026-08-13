@@ -20,6 +20,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time as _time
+from dataclasses import dataclass, field
 
 from openharness.config.settings import PermissionSettings
 from openharness.engine.query_engine import QueryEngine
@@ -149,7 +151,20 @@ async def run_analysis_agent(state: dict, *, llm_provider, model: str = "deepsee
         settings=_analysis_settings(),               # 禁内存子系统
         tool_metadata=tool_metadata,
     )
-    final_text, _ = await collect_final_text(engine, _build_user_prompt(state))
+    final_text, events = await collect_final_text(engine, _build_user_prompt(state))
+    if os.getenv("OPENHARNESS_LOG_ENABLED", "1") == "1":
+        log = HarnessExecutionLog(
+            analysis_id=state.get("stock_code", "unknown") + "-" + _time.strftime("%Y%m%d%H%M%S"),
+            events=[event_to_dict(e) for e in events],
+            final_text=final_text,
+            framework_version=_framework_version(),
+            started_at=_time.strftime("%Y-%m-%dT%H:%M:%S"),
+            input_summary={"stock": state.get("stock_code", "")},
+        )
+        try:
+            log_harness_run(log, _log_dir())
+        except Exception:
+            logger.exception("harness 日志落盘失败")
     payload = parse_output_json(final_text)
     if "raw_output" in payload:
         raise HarnessRunError(f"agent 输出非 JSON: {final_text[:200]}")
@@ -211,3 +226,71 @@ def _analysis_settings():
             auto_extract_enabled=False,
         ),
     )
+
+
+# ── harness 执行日志（Phase 4） ──
+
+@dataclass
+class HarnessExecutionLog:
+    analysis_id: str
+    events: list[dict]
+    final_text: str
+    framework_version: str
+    started_at: str
+    input_summary: dict = field(default_factory=dict)
+    usage_summary: dict = field(default_factory=dict)
+
+
+def _framework_version() -> str:
+    """SKILL.md 内容哈希，支撑评级可追溯"""
+    from hashlib import sha1
+    from pathlib import Path
+
+    skill = Path(__file__).resolve().parent / "skills" / "investment-framework" / "SKILL.md"
+    if not skill.exists():
+        return "no-skill"
+    return sha1(skill.read_bytes()).hexdigest()[:12]
+
+
+def _log_dir() -> Path:
+    """日志基目录：默认 logs/，可用 OPENHARNESS_LOG_DIR 覆盖"""
+    from pathlib import Path
+
+    return Path(os.getenv("OPENHARNESS_LOG_DIR", "logs"))
+
+
+def log_harness_run(log: HarnessExecutionLog, base_dir: Path) -> Path:
+    """把事件流 + 最终文本写成 JSONL 文件；返回路径"""
+    from pathlib import Path
+
+    out = Path(base_dir) / "openharness" / f"{log.analysis_id}.jsonl"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as f:
+        for ev in log.events:
+            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        f.write(json.dumps({"kind": "final_text", "text": log.final_text,
+                            "framework_version": log.framework_version,
+                            "started_at": log.started_at}, ensure_ascii=False) + "\n")
+    return out
+
+
+def event_to_dict(event) -> dict:
+    """StreamEvent → 可序列化 dict（用于日志）"""
+    from openharness.engine.stream_events import (
+        AssistantTurnComplete, AssistantTextDelta, ErrorEvent,
+        StatusEvent, ToolExecutionCompleted, ToolExecutionStarted,
+    )
+    if isinstance(event, ToolExecutionStarted):
+        return {"kind": "tool_start", "tool_name": event.tool_name, "input": event.tool_input}
+    if isinstance(event, ToolExecutionCompleted):
+        return {"kind": "tool_end", "tool_name": event.tool_name, "output": event.output,
+                "is_error": event.is_error}
+    if isinstance(event, AssistantTurnComplete):
+        return {"kind": "assistant_turn", "text": event.message.text}
+    if isinstance(event, AssistantTextDelta):
+        return {"kind": "text_delta", "text": event.text}
+    if isinstance(event, StatusEvent):
+        return {"kind": "status", "message": event.message}
+    if isinstance(event, ErrorEvent):
+        return {"kind": "error", "message": event.message, "recoverable": event.recoverable}
+    return {"kind": "other", "type": type(event).__name__}
