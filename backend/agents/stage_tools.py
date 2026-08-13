@@ -141,9 +141,11 @@ class StageTool(BaseTool):
     async def _run_qualitative(self, context, st: dict) -> dict:
         llm = context.metadata.get("llm_provider")
         results: dict[str, dict] = {}
+        top: dict[str, str] = {}
         if self.blocks:
             for block in self.blocks:
-                if block.handler and block.handler in _HANDLERS:
+                is_handler = block.handler and block.handler in _HANDLERS
+                if is_handler:
                     handler = globals()[_HANDLERS[block.handler]]
                     block_updates = await handler(context, st, block.skill_content)
                 elif llm is not None:
@@ -152,16 +154,18 @@ class StageTool(BaseTool):
                     block_updates = {"text": f"（无 LLM，{block.title} 未评估）", "title": block.title}
                 results[block.output_field] = {"title": block.title, **block_updates}
                 st.update(block_updates)  # 兼容顶层字段
+                if not is_handler:
+                    # 普通 LLM 块：顶层兼容字段写字符串结论
+                    # （handler 块顶层键由 handler 自身权威写入，勿用 results 的 dict 覆盖）
+                    top[block.output_field] = block_updates.get("text", "")
         else:
             if llm is None:
                 results = {"text": "（无 LLM，定性分析未执行）"}
             else:
                 results = await self._llm_single(context, st)
         updates = {"stage_results": {self.name: {"title": self.name, **results}}, self.output_field: results}
-        if self.blocks:
-            # 兼容顶层字段：每个子块的 output_field 名也写入顶层（供反向依赖 stage 注入）
-            for key in results:
-                updates.setdefault(key, results[key])
+        if top:
+            updates.update(top)
         return updates
 
     async def _llm_block(self, context, st: dict, block: BlockDef) -> dict:
