@@ -45,8 +45,8 @@ class StockDataProvider(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def fetch_financials(self, code: str) -> FinancialReport:
-        """获取最新财报（单报告期）"""
+    async def fetch_financials(self, code: str) -> list[FinancialReport]:
+        """获取最近多期财报（降序，最新在前；单期即列表长度 1）"""
         ...
 
     @abc.abstractmethod

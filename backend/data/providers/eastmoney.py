@@ -110,7 +110,7 @@ class EastMoneyProvider(StockDataProvider):
     async def fetch_news(self, code: str, limit: int = 10) -> list[CompanyNews]:
         return []
 
-    async def fetch_financials(self, code: str) -> FinancialReport:
+    async def fetch_financials(self, code: str) -> list[FinancialReport]:
         secucode = f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
         client = await self._get_client()
         try:
@@ -120,7 +120,7 @@ class EastMoneyProvider(StockDataProvider):
                     "reportName": "RPT_F10_FINANCE_MAINFINADATA",
                     "columns": "ALL", "quoteColumns": "",
                     "filter": f'(SECUCODE="{secucode}")',
-                    "pageNumber": "1", "pageSize": "1",
+                    "pageNumber": "1", "pageSize": "8",
                     "sortTypes": "-1", "sortColumns": "REPORT_DATE",
                     "source": "HSF10", "client": "PC",
                 },
@@ -131,7 +131,7 @@ class EastMoneyProvider(StockDataProvider):
             rows = (((data or {}).get("result") or {}).get("data")) or []
             if not rows:
                 raise ProviderError(f"东财财报无数据: {code}")
-            return self._parse_financial(rows[0], code)
+            return [self._parse_financial(row, code) for row in rows]
         except ProviderError:
             raise
         except (httpx.HTTPError, ValueError) as e:

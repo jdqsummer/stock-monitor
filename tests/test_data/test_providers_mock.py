@@ -28,10 +28,13 @@ async def test_mock_quote():
 @pytest.mark.asyncio
 async def test_mock_financials():
     provider = MockProvider()
-    report = await provider.fetch_financials("600519")
+    reports = await provider.fetch_financials("600519")
+    assert len(reports) == 8
+    report = reports[0]
     assert report.report_period == "2026H1"
     assert report.net_profit_deducted == 32.0
     assert report.is_official is False
+    assert reports[-1].report_period == "2024Q3"
 
 
 @pytest.mark.asyncio

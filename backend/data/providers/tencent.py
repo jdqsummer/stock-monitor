@@ -80,7 +80,7 @@ class TencentProvider(StockDataProvider):
             update_time=update_time,
         )
 
-    async def fetch_financials(self, code: str) -> FinancialReport:
+    async def fetch_financials(self, code: str) -> list[FinancialReport]:
         """腾讯公开接口无稳定财报源，降级抛错（由链切换）"""
         raise ProviderError(f"腾讯无财报接口: {code}")
 

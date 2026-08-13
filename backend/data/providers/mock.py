@@ -39,7 +39,7 @@ class MockProvider(StockDataProvider):
     async def fetch_quote(self, code: str) -> StockQuote:
         return self._mock_quote(code)
 
-    async def fetch_financials(self, code: str) -> FinancialReport:
+    async def fetch_financials(self, code: str) -> list[FinancialReport]:
         return self._mock_financials(code)
 
     async def fetch_news(self, code: str, limit: int = 10) -> list[CompanyNews]:
@@ -73,9 +73,23 @@ class MockProvider(StockDataProvider):
             change_pct=1.5, total_market_cap=800.0, pe_dynamic=25.0, total_shares=16.0,
         )
 
-    def _mock_financials(self, code: str) -> FinancialReport:
-        return FinancialReport(
-            code=code, name=f"模拟股票{code}", report_period="2026H1",
-            revenue=120.0, net_profit_parent=35.0, net_profit_deducted=32.0,
-            roe=15.5, is_official=False,
-        )
+    def _mock_financials(self, code: str) -> list[FinancialReport]:
+        name = f"模拟股票{code}"
+        return [
+            FinancialReport(code=code, name=name, report_period="2026H1", revenue=120.0,
+                            net_profit_parent=35.0, net_profit_deducted=32.0, roe=15.5, is_official=False),
+            FinancialReport(code=code, name=name, report_period="2026Q1", revenue=58.0,
+                            net_profit_parent=17.0, net_profit_deducted=15.5, roe=7.2, is_official=True),
+            FinancialReport(code=code, name=name, report_period="2025FY", revenue=230.0,
+                            net_profit_parent=66.0, net_profit_deducted=62.0, roe=30.0, is_official=True),
+            FinancialReport(code=code, name=name, report_period="2025Q3", revenue=172.0,
+                            net_profit_parent=50.0, net_profit_deducted=47.0, roe=22.0, is_official=True),
+            FinancialReport(code=code, name=name, report_period="2025H1", revenue=108.0,
+                            net_profit_parent=31.0, net_profit_deducted=29.0, roe=14.0, is_official=True),
+            FinancialReport(code=code, name=name, report_period="2025Q1", revenue=52.0,
+                            net_profit_parent=15.0, net_profit_deducted=13.5, roe=6.5, is_official=True),
+            FinancialReport(code=code, name=name, report_period="2024FY", revenue=205.0,
+                            net_profit_parent=58.0, net_profit_deducted=55.0, roe=28.0, is_official=True),
+            FinancialReport(code=code, name=name, report_period="2024Q3", revenue=150.0,
+                            net_profit_parent=42.0, net_profit_deducted=40.0, roe=20.0, is_official=True),
+        ]

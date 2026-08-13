@@ -25,12 +25,14 @@ def _search_fixture() -> dict:
 
 
 def _financial_fixture() -> dict:
-    # 真实 RPT_F10_FINANCE_MAINFINADATA 响应：扣非字段是 KCFJCXSYJLR，
-    # 而非 DEDUCTPARENTNETPROFIT（后者在该接口恒为 null）
+    # 真实 RPT_F10_FINANCE_MAINFINADATA 响应：扣非字段是 KCFJCXSYJLR
     return {"result": {"data": [
         {"SECUCODE": "600519.SH", "SECURITY_NAME_ABBR": "贵州茅台", "REPORT_DATE": "2026-06-30",
          "TOTALOPERATEREVE": 1.2e11, "PARENTNETPROFIT": 3.5e10,
          "KCFJCXSYJLR": 3.2e10, "ROEJQ": 15.5},
+        {"SECUCODE": "600519.SH", "SECURITY_NAME_ABBR": "贵州茅台", "REPORT_DATE": "2025-12-31",
+         "TOTALOPERATEREVE": 2.3e11, "PARENTNETPROFIT": 6.6e10,
+         "KCFJCXSYJLR": 6.2e10, "ROEJQ": 30.0},
     ], "pages": 1}}
 
 
@@ -72,12 +74,15 @@ async def test_eastmoney_search():
 @pytest.mark.asyncio
 async def test_eastmoney_financials():
     provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_financial_fixture())))
-    report = await provider.fetch_financials("600519")
+    reports = await provider.fetch_financials("600519")
+    assert len(reports) == 2
+    report = reports[0]
     assert report.report_period == "2026H1"
     assert report.net_profit_parent == pytest.approx(3.5e10 / 1e8)
     assert report.net_profit_deducted == pytest.approx(3.2e10 / 1e8)
     assert report.roe == pytest.approx(15.5)
     assert report.is_official is True
+    assert reports[1].report_period == "2025FY"
 
 
 def _basicinfo_fixture() -> dict:
