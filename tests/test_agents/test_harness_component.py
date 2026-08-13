@@ -84,3 +84,28 @@ async def test_collect_final_text_raises_on_error_event():
     engine = FakeEngine([ErrorEvent(message="API error", recoverable=True)])
     with pytest.raises(HarnessRunError):
         await collect_final_text(engine, "请分析")
+
+
+@pytest.mark.asyncio
+async def test_run_analysis_agent_backfills_state(monkeypatch):
+    """run_analysis_agent 端到端：注入→循环→解析→校验→回填（fake api_client）"""
+    from backend.agents import harness_component as hc
+    from backend.agents.harness_output import validate_output_shape
+
+    # stub 掉真实 DeepSeek 构造与循环，只验适配编排
+    fake_text = '{"final_rating": "🟡", "recommendation": "观察区", "action_items": [], "annual_profit_low": 10}'
+    calls = {}
+
+    async def _fake_collect(engine, prompt):
+        calls["prompt"] = prompt
+        return fake_text, []
+
+    monkeypatch.setattr(hc, "collect_final_text", _fake_collect)
+    monkeypatch.setattr(hc, "_build_api_client", lambda model: object())
+    monkeypatch.setattr(hc, "_analysis_settings", lambda: None)
+
+    state = {"stock_code": "600519", "stock_name": "贵州茅台", "annual_profit_low": 10.0,
+             "industry_category": "白酒", "errors": []}
+    result = await hc.run_analysis_agent(state, llm_provider=None)
+    assert result["final_rating"] == "🟡"
+    assert result["recommendation"] == "观察区"
