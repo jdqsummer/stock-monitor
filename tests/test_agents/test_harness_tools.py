@@ -25,6 +25,7 @@ from backend.agents.harness_tools import (  # noqa: E402
     EstimateAnnualProfitTool,
     ReadContextTool,
 )
+from backend.schemas.stock import FinancialReport  # noqa: E402
 
 
 def _ctx(state: dict) -> ToolExecutionContext:
@@ -77,7 +78,7 @@ async def test_estimate_annual_profit_writes_method():
 
 
 @pytest.mark.asyncio
-async def test_read_context_concise_summary():
+async def test_read_context_shows_multiperiod_financials():
     tool = ReadContextTool()
     state = {
         "stock_name": "贵州茅台",
@@ -89,14 +90,20 @@ async def test_read_context_concise_summary():
         "net_profit_parent": 747.0,
         "net_profit_deducted": 745.0,
         "industry_category": "白酒",
-        "financials": [1, 2, 3],
+        "financials": [
+            FinancialReport(code="600519", name="贵州茅台", report_period="2026H1",
+                            revenue=120.0, net_profit_parent=35.0, net_profit_deducted=32.0),
+            FinancialReport(code="600519", name="贵州茅台", report_period="2025FY",
+                            revenue=230.0, net_profit_parent=66.0, net_profit_deducted=62.0),
+        ],
         "news": ["a", "b"],
     }
     res = await tool.execute(tool.input_model(), _ctx(state))
-    assert "贵州茅台" in res.output
-    assert "600519" in res.output
-    assert "财报期数: 3" in res.output
+    assert "贵州茅台" in res.output and "600519" in res.output
+    assert "财报期数: 2" in res.output
     assert "新闻条数: 2" in res.output
+    assert "2026H1" in res.output and "2025FY" in res.output
+    assert "120.0" in res.output and "62.0" in res.output
 
 
 @pytest.mark.asyncio

@@ -37,7 +37,7 @@ def _merge(context: ToolExecutionContext, updates: dict) -> None:
 
 class ReadContextTool(BaseTool):
     name = "read_context"
-    description = "读取当前分析所需的全部数据上下文（行情/财报/新闻/股本/净利润）——精简摘要，控制长度"
+    description = "读取当前分析所需的全部数据上下文（行情/财报明细/股本/净利润）——精简摘要+近8期财报，控制长度"
     input_model = _EmptyInput
 
     async def execute(self, arguments, context: ToolExecutionContext) -> ToolResult:
@@ -50,6 +50,16 @@ class ReadContextTool(BaseTool):
             f"行业: {st.get('industry_category')}，"
             f"财报期数: {len(st.get('financials', []))}，新闻条数: {len(st.get('news', []))}"
         )
+        rows = []
+        for f in st.get("financials", []):
+            rows.append(
+                f"{f.report_period} | 营收{f.revenue or '—'}亿 | "
+                f"归母{f.net_profit_parent or '—'}亿 | 扣非{f.net_profit_deducted or '—'}亿"
+            )
+        if rows:
+            text += "\n近8期财报明细（最新在前）:\n" + "\n".join(rows)
+        else:
+            text += "\n财报明细: 无"
         return ToolResult(output=text)
 
 
