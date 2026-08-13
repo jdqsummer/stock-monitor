@@ -109,3 +109,35 @@ async def test_run_analysis_agent_backfills_state(monkeypatch):
     result = await hc.run_analysis_agent(state, llm_provider=None)
     assert result["final_rating"] == "🟡"
     assert result["recommendation"] == "观察区"
+
+
+@pytest.mark.asyncio
+async def test_run_analysis_agent_missing_annual_profit_not_treated_as_loss(monkeypatch):
+    """回归：state 缺失 annual_profit_low 键时不得物化为 0。
+
+    修复前 `state.get("annual_profit_low", 0)` 将缺失键物化为 0，
+    validate_output_shape 会把 0 当作亏损（<= 0）触发亏损特例校验，
+    因缺 loss_exception_rationale / forward_valuation_basis 而抛 OutputValidationError。
+    """
+    from backend.agents import harness_component as hc
+    from backend.agents.harness_output import OutputValidationError
+
+    # stub 掉真实 DeepSeek 构造与循环，只验适配编排
+    fake_text = '{"final_rating": "🟡", "recommendation": "观察区", "action_items": []}'
+
+    async def _fake_collect(engine, prompt):
+        return fake_text, []
+
+    monkeypatch.setattr(hc, "collect_final_text", _fake_collect)
+    monkeypatch.setattr(hc, "_build_api_client", lambda model: object())
+    monkeypatch.setattr(hc, "_analysis_settings", lambda: None)
+
+    state = {"stock_code": "600519", "stock_name": "贵州茅台",
+             "industry_category": "白酒", "errors": []}   # 无 annual_profit_low 键
+    try:
+        result = await hc.run_analysis_agent(state, llm_provider=None)
+    except OutputValidationError as exc:
+        pytest.fail(f"缺失 annual_profit_low 不应触发亏损边界校验: {exc}")
+    assert result["final_rating"] == "🟡"
+    assert result["recommendation"] == "观察区"
+    assert result["annual_profit_low"] is None   # 保持缺失语义，不物化为 0

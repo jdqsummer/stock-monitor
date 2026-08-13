@@ -153,7 +153,7 @@ async def run_analysis_agent(state: dict, *, llm_provider, model: str = "deepsee
     payload = parse_output_json(final_text)
     if "raw_output" in payload:
         raise HarnessRunError(f"agent 输出非 JSON: {final_text[:200]}")
-    payload["annual_profit_low"] = state.get("annual_profit_low", 0)
+    payload["annual_profit_low"] = state.get("annual_profit_low")
     validated = validate_output_shape(payload)
     validated.update(apply_veto({**state, **validated}))   # 否决兜底
     state.update(validated)
