@@ -346,3 +346,29 @@ async def test_react_loop_hard_constraint_rejected(monkeypatch):
     result = await agent._react_loop(state)
 
     assert any("年化" in e or "评级" in e for e in result["errors"])
+
+
+from backend.agents.openharness import apply_veto
+
+
+def test_apply_veto_unassessable_risk_forces_red():
+    """unassessable_risk → 强制 🔴 坚决放弃，且不改 signal"""
+    updates = apply_veto({"unassessable_risk": True, "checklist_veto": False, "signal": "green"})
+    assert updates["final_rating"] == "🔴"
+    assert "坚决放弃" in updates["recommendation"]
+    assert "signal" not in updates
+
+
+def test_apply_veto_checklist_veto_forces_red():
+    updates = apply_veto({"unassessable_risk": False, "checklist_veto": True})
+    assert updates["final_rating"] == "🔴"
+    assert "否决项" in updates["recommendation"]
+
+
+def test_apply_veto_none_returns_empty():
+    assert apply_veto({"unassessable_risk": False, "checklist_veto": False}) == {}
+
+
+def test_apply_veto_priority_unassessable_over_checklist():
+    updates = apply_veto({"unassessable_risk": True, "checklist_veto": True})
+    assert "无法评估" in updates["recommendation"]
