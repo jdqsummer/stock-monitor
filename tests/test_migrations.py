@@ -69,3 +69,27 @@ def test_migration_from_prod_revision_adds_checklist_columns(tmp_path):
     after = _snapshot_cols(db_path)
     missing = set(CHECKLIST_COLS) - after
     assert not missing, f"升级后仍缺列: {missing}"
+
+
+NEW_COLS = ["conclusion", "unassessable_risk"]
+
+
+def test_head_has_new_conclusion_columns(tmp_path):
+    """head 版本 analysis_snapshots 必须含 conclusion/unassessable_risk 列"""
+    db_path = str(tmp_path / "head.db")
+    _run_alembic(db_path, "head")
+    cols = _snapshot_cols(db_path)
+    missing = set(NEW_COLS) - cols
+    assert not missing, f"head 版本缺列: {missing}"
+
+
+def test_migration_from_head_adds_new_columns(tmp_path):
+    """从 f1a3b5c7d9e1 升到 head 补齐新列，且 signal 列宽 ≥ 20"""
+    db_path = str(tmp_path / "up.db")
+    _run_alembic(db_path, "f1a3b5c7d9e1")
+    before = _snapshot_cols(db_path)
+    assert "conclusion" not in before
+
+    _run_alembic(db_path, "head")
+    after = _snapshot_cols(db_path)
+    assert "conclusion" in after and "unassessable_risk" in after

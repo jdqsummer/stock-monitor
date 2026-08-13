@@ -86,7 +86,7 @@ class AnalysisSnapshot(Base):
     current_market_cap: Mapped[float] = mapped_column(Float, default=0.0)
     current_price: Mapped[float] = mapped_column(Float, default=0.0)
     distance_pct: Mapped[float] = mapped_column(Float, default=0.0)
-    signal: Mapped[str] = mapped_column(String(10), default="none")
+    signal: Mapped[str] = mapped_column(String(20), default="none")
     rating: Mapped[str] = mapped_column(String(10), default="")
     data_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     industry_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -100,6 +100,8 @@ class AnalysisSnapshot(Base):
     checklist_results: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON 字符串：Q1-Q14 逐题回答
     checklist_veto: Mapped[bool] = mapped_column(Boolean, default=False)
     checklist_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conclusion: Mapped[str | None] = mapped_column(Text, nullable=True)          # 逆向清单审视后的结论
+    unassessable_risk: Mapped[bool] = mapped_column(Boolean, default=False)      # 安全边际无法评估
     analysis_source: Mapped[str] = mapped_column(String(20), default="manual")
     analysis_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
