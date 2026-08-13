@@ -1,4 +1,13 @@
 # stock-monitor/backend/main.py
+import sys
+from pathlib import Path
+
+# 防御性引导：确保 vendored openharness（仓库根 vendor/）在 sys.path 上，
+# 使 harness_component 的 `import openharness.*` 在开发/非 Docker 环境同样可解析。
+_VENDOR = Path(__file__).resolve().parents[1] / "vendor"
+if str(_VENDOR) not in sys.path:
+    sys.path.insert(0, str(_VENDOR))
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI

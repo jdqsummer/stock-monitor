@@ -91,6 +91,8 @@ class AnalysisState(TypedDict, total=False):
     action_items: list[str]                  # 行动纲领
     conclusion: str                          # 逆向清单审视后的结论（含依据与风险权衡）
     unassessable_risk: bool                  # 重大风险使安全边际无法评估
+    loss_exception_rationale: str             # 亏损特例理由（LLM 路径，OpenHarness 输出）
+    forward_valuation_basis: str              # 前瞻估值依据（LLM 路径，OpenHarness 输出）
 
     # ── 元数据 ──
     messages: Annotated[list, add_messages]  # Agent 对话历史

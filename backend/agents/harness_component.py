@@ -122,13 +122,15 @@ def parse_output_json(final_text: str) -> dict:
 
 # ── 适配层完整流程（Phase 2） ──
 
-async def run_analysis_agent(state: dict, *, llm_provider, model: str = "deepseek-chat",
+async def run_analysis_agent(state: dict, *, llm_provider, model: str | None = None,
                              cwd=None, max_turns: int = 8) -> dict:
     """完整分析：构造 engine → 注入 → 跑循环 → 解析 → 校验 → 回填。
 
     编排顺序：注册 9 工具 → 注入 analysis_state/llm_provider 到 tool_metadata →
     collect_final_text → parse_output_json → 非 JSON 抛 HarnessRunError →
     validate_output_shape → apply_veto 否决兜底 → 回填 state。
+
+    model 缺省读取 OPENHARNESS_MODEL（默认 deepseek-chat），便于非 DeepSeek 部署切换模型。
     """
     from pathlib import Path
 
@@ -136,13 +138,15 @@ async def run_analysis_agent(state: dict, *, llm_provider, model: str = "deepsee
     from backend.agents.harness_tools import build_investment_tools
     from backend.agents.openharness import apply_veto
 
+    model = model or os.environ.get("OPENHARNESS_MODEL", "deepseek-chat")
+
     tools = ToolRegistry()
     for t in build_investment_tools(llm_provider):
         tools.register(t)
 
     tool_metadata = {"analysis_state": state, "llm_provider": llm_provider}
     engine = create_harness_engine(
-        api_client=_build_api_client(model=model),   # Task 3 已验证的 DeepSeek 构造
+        api_client=_build_api_client(model=model),   # OpenAI 兼容客户端（默认 DeepSeek，可配置）
         tools=tools,
         model=model,
         system_prompt=build_system_prompt(state),
@@ -193,19 +197,21 @@ def _build_user_prompt(state: dict) -> str:
 
 
 def _build_api_client(model: str):
-    """按 Task 3 PoC 验证的 vendored 构造：DeepSeek OpenAI 兼容客户端。
+    """构造 OpenAI 兼容客户端（默认 DeepSeek，可用环境变量切换端点）。
 
-    复用 scripts/harness_poc.py::_build_deepseek_client 的已验证模式
+    复用 scripts/harness_poc.py 的已验证模式
     （vendor/openharness/api/openai_client.py 的 OpenAICompatibleClient）。
-    model 在此不用于客户端构造——模型在每次请求的 ApiMessageRequest.model 指定，
-    保留参数以稳定 run_analysis_agent 的签名。
+    端点可配置：OPENHARNESS_API_BASE（默认 https://api.deepseek.com/v1）；
+    密钥读取 DEEPSEEK_API_KEY。model 在此不用于客户端构造——模型在每次请求的
+    ApiMessageRequest.model 指定，由 run_analysis_agent 经 OPENHARNESS_MODEL 解析。
     """
     from openharness.api.openai_client import OpenAICompatibleClient
 
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
-        raise RuntimeError("未设置 DEEPSEEK_API_KEY 环境变量，无法构造 DeepSeek api_client")
-    return OpenAICompatibleClient(api_key=api_key, base_url="https://api.deepseek.com/v1")
+        raise RuntimeError("未设置 DEEPSEEK_API_KEY 环境变量，无法构造 api_client")
+    api_base = os.environ.get("OPENHARNESS_API_BASE", "https://api.deepseek.com/v1")
+    return OpenAICompatibleClient(api_key=api_key, base_url=api_base)
 
 
 def _analysis_settings():
