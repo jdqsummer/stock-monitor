@@ -118,3 +118,30 @@ async def test_operating_quality_handler_deterministic_plus_llm():
     assert out["growth_metrics"]["coverage"] >= 1
     assert "LLM 定性失败" in out["growth_assessment"]
     assert "经营质量" in out["text"]
+
+
+@pytest.mark.asyncio
+async def test_reverse_checklist_stage_maps_four_conclusions():
+    from backend.agents.stage_tools import StageTool, _load_stages
+    r = next(s for s in _load_stages() if s.name == "run_reverse_checklist")
+
+    class ReverseLLM:
+        async def json_chat(self, messages):
+            return {
+                "conclusions": {"about_company": "c1", "about_valuation": "c2",
+                                "about_market": "c3", "about_self": "c4"},
+                "major_risks": ["r1", "r2"],
+                "checklist_veto": False,
+                "overall_assessment": "综合判断",
+            }
+
+    tool = StageTool(r, llm_provider=ReverseLLM())
+    state = {"stock_name": "X", "stock_code": "1", "industry_category": "白酒",
+             "current_price": 50.0, "pe_dynamic": 22.0, "net_profit_deducted": 34.0,
+             "financials": []}
+    res = await tool.execute(tool.input_model(), _ctx(state, ReverseLLM()))
+    updates = res.metadata["state_updates"]
+    rv = updates["stage_results"]["run_reverse_checklist"]
+    assert rv["conclusions"]["about_company"] == "c1"
+    assert rv["major_risks"] == ["r1", "r2"]
+    assert "about_valuation" in rv["conclusions"]

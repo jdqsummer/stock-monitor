@@ -142,6 +142,29 @@ class StageTool(BaseTool):
         llm = context.metadata.get("llm_provider")
         results: dict[str, dict] = {}
         top: dict[str, str] = {}
+        if self.name == "run_reverse_checklist":
+            if llm is None:
+                return {"stage_results": {self.name: {"title": self.name, "error": "无 LLM"}},
+                        self.output_field: {}}
+            from backend.agents.analysis_chain import run_reverse_checklist
+            stock_info = (
+                f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，"
+                f"现价: {st.get('current_price')} 元，动态PE: {st.get('pe_dynamic')}，"
+                f"扣非净利: {st.get('net_profit_deducted')} 亿，行业: {st.get('industry_category')}"
+            )
+            rv = await run_reverse_checklist(llm, stock_info)
+            compat = {
+                "checklist_results": rv["checklist_results"],
+                "checklist_veto": rv["checklist_veto"],
+                "checklist_summary": rv["overall_assessment"],
+                "risk_factors": rv["major_risks"],
+            }
+            st.update(compat)
+            return {
+                "stage_results": {self.name: {"title": self.name, **rv}},
+                self.output_field: rv,
+                **compat,
+            }
         if self.blocks:
             for block in self.blocks:
                 is_handler = block.handler and block.handler in _HANDLERS

@@ -564,12 +564,16 @@ REVERSE_CHECKLIST_PROMPT = """你是一个逆向投资分析师。请以"证伪"
 ```json
 {{
     "checklist_results": {{
-        "Q1": "回答",
-        ...
-        "Q14": "回答"
+        "Q1": "回答", ..., "Q14": "回答"
     }},
+    "conclusions": {{
+        "about_company": "关于公司本身的结论",
+        "about_valuation": "关于估值的结论",
+        "about_market": "关于市场共识的结论",
+        "about_self": "关于自己的结论"
+    }},
+    "major_risks": ["可能颠覆商业模式或竞争力的重大风险1", "风险2"],
     "checklist_veto": false,
-    "most_concerning": "最令人担忧的问题",
     "overall_assessment": "综合证伪判断"
 }}
 ```"""
@@ -580,17 +584,14 @@ async def run_reverse_checklist(
     stock_info: str,
 ) -> dict:
     """
-    运行 14 道逆向反问清单。
-
-    Args:
-        llm: LLM Provider
-        stock_info: 股票关键信息描述
+    运行 14 道逆向反问清单，输出四类结论 + 重大风险。
 
     Returns:
         {
-            "checklist_results": dict,
+            "checklist_results": dict,   # Q1-Q14（兼容保留）
+            "conclusions": {"about_company", "about_valuation", "about_market", "about_self"},
+            "major_risks": list[str],
             "checklist_veto": bool,
-            "most_concerning": str,
             "overall_assessment": str,
         }
     """
@@ -598,15 +599,24 @@ async def run_reverse_checklist(
 
     try:
         result = await llm.json_chat([{"role": "user", "content": prompt}])
-        return result
+        if not isinstance(result, dict):
+            result = {}
     except Exception as e:
         logger.error(f"清单评估失败: {e}")
-        return {
-            "checklist_results": {},
-            "checklist_veto": False,
-            "most_concerning": f"清单评估异常: {str(e)}",
-            "overall_assessment": "无法完成清单评估",
-        }
+        result = {}
+    conclusions = result.get("conclusions") or {}
+    return {
+        "checklist_results": result.get("checklist_results", {}),
+        "conclusions": {
+            "about_company": conclusions.get("about_company", ""),
+            "about_valuation": conclusions.get("about_valuation", ""),
+            "about_market": conclusions.get("about_market", ""),
+            "about_self": conclusions.get("about_self", ""),
+        },
+        "major_risks": result.get("major_risks", []) or [],
+        "checklist_veto": bool(result.get("checklist_veto", False)),
+        "overall_assessment": result.get("overall_assessment", ""),
+    }
 
 
 # ═══════════════════════════════════════════
