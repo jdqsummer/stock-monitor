@@ -102,11 +102,11 @@ class TestConservativeAnnualizationConstraint:
     """原则二：保守年化"""
 
     def test_fails_when_loss_making(self):
-        """亏损企业应报 error"""
+        """亏损企业应报 warning（不机械判死）"""
         c = ConservativeAnnualizationConstraint()
         result = run_check(c, annual_profit_low=-2.0)
         assert result["passed"] is False
-        assert result["severity"] == "error"
+        assert result["severity"] == "warning"
         assert "≤ 0" in result["message"]
 
     def test_fails_seasonal_industry_q1x4(self):
@@ -321,17 +321,6 @@ class TestDisciplineRedlineConstraint:
 class TestRatingConsistencyConstraint:
     """评级一致性"""
 
-    def test_fails_loss_not_red(self):
-        """亏损未评 🔴 → error"""
-        c = RatingConsistencyConstraint()
-        result = run_check(c,
-            annual_profit_low=-1.0,
-            final_rating="🟡",
-            signal="yellow",
-        )
-        assert result["passed"] is False
-        assert "🔴" in result["message"]
-
     def test_fails_overvalued_not_red(self):
         """距离 > 50% 未评 🔴 → error"""
         c = RatingConsistencyConstraint()
@@ -341,17 +330,6 @@ class TestRatingConsistencyConstraint:
         )
         assert result["passed"] is False
         assert "🔴" in result["message"]
-
-    def test_passes_loss_rated_red(self):
-        """亏损评 🔴 → 通过"""
-        c = RatingConsistencyConstraint()
-        result = run_check(c,
-            annual_profit_low=-1.0,
-            final_rating="🔴",
-            signal="red",
-            signal_label="高估区",
-        )
-        assert result["passed"] is True
 
     def test_passes_green_when_in_swing_zone(self):
         """距击球区 ≤ 0% → 🟢"""
@@ -473,3 +451,28 @@ class TestConstraintEngine:
         engine = create_constraint_engine()
         assert isinstance(engine, ConstraintEngine)
         assert len(engine.constraints) == 6
+
+
+# ── Task 7: 约束引擎移除"亏损必🔴"（降为提示） ──
+
+@pytest.mark.asyncio
+async def test_conservative_annualization_loss_is_warning_not_error():
+    """亏损不再触发 error 硬约束（成长股不机械判死），降为 warning 提示"""
+    from backend.agents.constraints import ConservativeAnnualizationConstraint
+
+    r = await ConservativeAnnualizationConstraint().check({
+        "annual_profit_low": -2.0, "industry_category": "白酒", "profit_method": "亏损不年化",
+    })
+    assert r["severity"] == "warning"
+    assert "无法量化" in r["message"] or "亏损" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_rating_consistency_loss_not_forced_red():
+    """亏损时若评级非 🔴（如 LLM 判 🟡），评级一致性不强制报错"""
+    from backend.agents.constraints import RatingConsistencyConstraint
+
+    r = await RatingConsistencyConstraint().check({
+        "annual_profit_low": -2.0, "final_rating": "🟡", "signal": "unquantifiable",
+    })
+    assert r["passed"] or r["severity"] == "warning"

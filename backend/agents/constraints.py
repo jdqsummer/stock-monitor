@@ -143,14 +143,14 @@ class ConservativeAnnualizationConstraint(Constraint):
         industry = state.get("industry_category", "")
         annual_profit_low = state.get("annual_profit_low", 0.0)
 
-        # 亏损检查
+        # 亏损检查（降级为提示，不机械判死：当前亏损不代表成长性差）
         if annual_profit_low <= 0:
             return ConstraintResult(
                 constraint_name=self.name,
                 passed=False,
-                severity="error",
-                message=f"年化利润下限 {annual_profit_low:.2f}亿 ≤ 0，不计算击球区",
-                suggestion="直接评 🔴 坚决放弃/太难。亏损企业年化无意义。",
+                severity="warning",
+                message=f"年化利润下限 {annual_profit_low:.2f}亿 ≤ 0，安全边际无法量化",
+                suggestion="由 LLM 综合判断商业模式/技术壁垒；若存在重大风险应评 🔴 坚决放弃。",
                 auto_fixable=False,
             )
 
@@ -550,8 +550,7 @@ class RatingConsistencyConstraint(Constraint):
     1. 距击球区 ≤ 0% → 🟢
     2. 0% < 距击球区 ≤ 50% → 🟡
     3. 距击球区 > 50% → 🔴
-    4. 亏损 → 🔴
-    5. 利润含非经常性"水分" → 人工下调
+    4. 利润含非经常性"水分" → 人工下调
     """
 
     name = "评级一致性"
@@ -561,23 +560,10 @@ class RatingConsistencyConstraint(Constraint):
 
     async def check(self, state: AnalysisState, llm: Optional[LLMProvider] = None) -> ConstraintResult:
         distance_pct = state.get("distance_pct", 0.0)
-        annual_profit_low = state.get("annual_profit_low", 0.0)
         final_rating = state.get("final_rating", "")
-        signal = state.get("signal", "")
 
-        # 亏损 → 🔴
-        if annual_profit_low <= 0:
-            if "🔴" not in final_rating and signal != "red":
-                return ConstraintResult(
-                    constraint_name=self.name,
-                    passed=False,
-                    severity="error",
-                    message="亏损企业必须评为 🔴，当前评级不匹配",
-                    suggestion="设置 final_rating='🔴'，signal='red'",
-                    auto_fixable=True,
-                )
         # 距击球区 > 50% → 🔴
-        elif distance_pct > 50:
+        if distance_pct > 50:
             if "🔴" not in final_rating:
                 return ConstraintResult(
                     constraint_name=self.name,
