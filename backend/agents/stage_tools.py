@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 _STAGES_DIR = Path(__file__).resolve().parent / "skills" / "stages"
 
-# 专用处理函数注册表：output_field → handler（含确定性逻辑的 block）
+# 专用处理函数注册表：handler 值 → handler 函数（含确定性逻辑的 block）
 _HANDLERS = {
-    "operating_quality": "_handle_operating_quality",
+    "dedicated_operating_quality": "_handle_operating_quality",
 }
 
 
@@ -157,7 +157,12 @@ class StageTool(BaseTool):
                 results = {"text": "（无 LLM，定性分析未执行）"}
             else:
                 results = await self._llm_single(context, st)
-        return {"stage_results": {self.name: {"title": self.name, **results}}, self.output_field: results}
+        updates = {"stage_results": {self.name: {"title": self.name, **results}}, self.output_field: results}
+        if self.blocks:
+            # 兼容顶层字段：每个子块的 output_field 名也写入顶层（供反向依赖 stage 注入）
+            for key in results:
+                updates.setdefault(key, results[key])
+        return updates
 
     async def _llm_block(self, context, st: dict, block: BlockDef) -> dict:
         llm = context.metadata["llm_provider"]
@@ -215,3 +220,46 @@ def _inject(st: dict, depends_on: list[str]) -> dict:
 def build_stage_tools(llm_provider) -> list[StageTool]:
     """扫描 stages/ 目录生成全部阶段工具"""
     return [StageTool(stage, llm_provider=llm_provider) for stage in _load_stages()]
+
+
+async def _handle_operating_quality(context: ToolExecutionContext, st: dict, skill_content: str) -> dict:
+    """经营质量子块：确定性利润质量检查（check_profit_quality_node）+ LLM 定性补充。
+
+    返回 dict 兼容顶层字段（profit_quality_ok/profit_quality_warnings/growth_metrics/
+    growth_assessment）+ qualitative 展示字段（text/operating_quality）。
+    LLM 失败不降级，保留确定性结果。
+    """
+    from backend.agents.workflow import check_profit_quality_node
+
+    updates = await check_profit_quality_node(st)
+    llm = context.metadata.get("llm_provider")
+    assessment_text = "LLM 定性失败，保留确定性判断"
+    if llm is not None:
+        data = _inject(st, ["financials", "net_profit_parent", "net_profit_deducted"])
+        prompt = (
+            f"{skill_content}\n\n"
+            f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})\n"
+            f"近8期财报与增长指标: {updates.get('growth_metrics', {})}\n"
+            f"确定性警示: {updates.get('profit_quality_warnings') or '无'}\n"
+            f'请以 JSON 返回 {{"growth_quality": "good|warning|deteriorating", "rationale": "经营质量判断一段话"}}'
+        )
+        try:
+            resp = await llm.json_chat([{"role": "user", "content": prompt}])
+        except Exception:
+            logger.warning("operating_quality LLM 定性失败，保留确定性判断")
+            resp = None
+        if isinstance(resp, dict) and resp.get("growth_quality") == "deteriorating":
+            updates["profit_quality_ok"] = False
+            warnings = updates.setdefault("profit_quality_warnings", [])
+            msg = "经营质量恶化：营收/扣非增长疲软（LLM 定性）"
+            if msg not in warnings:
+                warnings.append(msg)
+            assessment_text = resp.get("rationale", "") or assessment_text
+        elif isinstance(resp, dict):
+            assessment_text = resp.get("rationale", "") or assessment_text
+    trend = updates.get("growth_metrics", {}).get("trend", "N/A")
+    text = f"经营质量: {'良好' if updates.get('profit_quality_ok') else '存疑'}。增长趋势: {trend}。{assessment_text}"
+    updates["text"] = text
+    updates["operating_quality"] = assessment_text
+    updates["growth_assessment"] = assessment_text
+    return updates
