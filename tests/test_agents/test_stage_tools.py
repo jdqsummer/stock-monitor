@@ -144,4 +144,10 @@ async def test_reverse_checklist_stage_maps_four_conclusions():
     rv = updates["stage_results"]["run_reverse_checklist"]
     assert rv["conclusions"]["about_company"] == "c1"
     assert rv["major_risks"] == ["r1", "r2"]
+    assert rv["checklist_veto"] is False
     assert "about_valuation" in rv["conclusions"]
+    # 以下断言仅映射分支会写（fake 省略 checklist_results，改动前透传路径会 KeyError）
+    assert updates["checklist_summary"] == "综合判断"           # compat 顶层键
+    assert updates["risk_factors"] == ["r1", "r2"]             # compat 顶层键
+    assert updates["reverse_analysis"]["checklist_results"] == {}   # 归一化默认值
+    assert updates["reverse_analysis"]["overall_assessment"] == "综合判断"
