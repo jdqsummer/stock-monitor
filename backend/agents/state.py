@@ -51,6 +51,8 @@ class AnalysisState(TypedDict, total=False):
     profit_quality_ok: bool
     profit_quality_warnings: list[str]
     non_recurring_ratio: float               # 非经常性损益占比
+    growth_metrics: dict                     # 近8期营收/归母/扣非同比（compute_growth_metrics 输出）
+    growth_assessment: str                   # 经营质量 LLM 定性文本（harness LLM 路径）
 
     # ── Step 4: 年化利润估算 ──
     annual_profit_low: float                 # 亿元

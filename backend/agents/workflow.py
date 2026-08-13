@@ -36,6 +36,7 @@ from backend.agents.constraints import (
     resolve_pe_anchor,
 )
 from backend.agents.data_agent import DataAgent, data_to_state
+from backend.agents.growth import compute_growth_metrics
 from backend.agents.state import AnalysisState, DataCollectionState
 from backend.data.westock_client import WestockClient
 from backend.llm.provider import LLMProvider
@@ -237,6 +238,7 @@ async def check_profit_quality_node(state: AnalysisState) -> dict:
         "profit_quality_ok": profit_quality_ok,
         "profit_quality_warnings": warnings,
         "non_recurring_ratio": non_recurring_ratio,
+        "growth_metrics": compute_growth_metrics(financials),
     }
 
 

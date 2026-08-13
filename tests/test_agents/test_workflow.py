@@ -187,6 +187,26 @@ class TestNodeFunctions:
         assert result["non_recurring_ratio"] < 0.1
 
     @pytest.mark.asyncio
+    async def test_check_profit_quality_writes_growth_metrics(self):
+        """确定性节点输出 growth_metrics（规则降级路径供 read_context 展示）"""
+        from backend.agents.growth import compute_growth_metrics
+        mock_fin = MagicMock()
+        mock_fin.report_period = "2026H1"
+        mock_fin.revenue = 120.0
+        mock_fin.net_profit_parent = 35.0
+        mock_fin.net_profit_deducted = 32.0
+
+        state = make_state(
+            financials=[mock_fin],
+            net_profit_parent=35.0,
+            net_profit_deducted=32.0,
+        )
+        result = await check_profit_quality_node(state)
+
+        assert result["growth_metrics"]["coverage"] >= 1
+        assert result["growth_metrics"]["latest"]["period"] == "2026H1"
+
+    @pytest.mark.asyncio
     async def test_check_profit_quality_warning(self):
         """非经常性占比超 20% 触发警告"""
         state = make_state(
