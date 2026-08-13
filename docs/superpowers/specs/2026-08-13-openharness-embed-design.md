@@ -20,6 +20,7 @@
 
 - 用开源 harness 接管 LLM 判断层（定性分析、清单、评级、结论）
 - 投资框架从 `投资分析框架.md` 生成 SKILL.md
+- **框架 SKILL.md 化迭代**：用户基于经验持续完善投资框架时，只需修改 SKILL.md 即可演进判断方法与输出格式，无需改代码、无需重新部署
 - 纯算术保留确定性工具，结果作为 LLM 输入
 - 全自动化（无确认、无交互），作为后端组件运行
 - 无 LLM / harness 异常时降级到现有规则子链，永不阻断
@@ -206,6 +207,36 @@ analyze_qualitative（护城河/成长/风险） → anchor_industry_pe → calc
   - **必须输出 `loss_exception_rationale` + `forward_valuation_basis` 字段**，否则边界校验拒绝
 - **输出 JSON schema**：约束 `output_conclusion` 的最终输出结构与字段类型
 
+### 框架迭代机制（核心动机）
+
+框架演进 = 只改 SKILL.md，不改代码：
+
+```
+用户经验/复盘 → 编辑 SKILL.md（新增原则、改清单、调输出 schema）
+  → 重新触发分析 → 新框架生效（无需部署）
+```
+
+**SKILL.md 能覆盖的（判断方法与输出格式）**：
+
+- 新增/修改分析原则、14 道清单问题、纪律红线提示
+- 修改输出 JSON 结构、字段含义、评级参考
+- 调整定性分析提示词
+
+**SKILL.md 覆盖不了的（数据与计算，需代码）**：
+
+- 需要新数据字段（如"新增 ROE 门槛"但 state 里无 ROE）→ 需改数据采集 + 适配层注入映射
+- 需要新分析工具（如"计算股息率"）→ 需新增 `BaseTool`
+- 公式本身变更（如"距击球区改用中值而非上限"）→ 需改 `calc_swing_zone`/`calc_safety_margin`
+- 新的纯算术结果 → 需新增确定性工具
+
+**校准预期**：方法论与输出可"只改 SKILL.md"；数据面与计算面变更仍需代码。设计上把判断逻辑尽量收敛进 SKILL.md，最大化"可演进面"。
+
+**配套设计（输入/输出灵活性 + 可追溯）**：
+
+1. **输入注入配置化**：适配层用 `state 字段 → 上下文章节` 映射表驱动注入。SKILL.md 新增引用字段时，只需在映射表登记，不改序列化代码。
+2. **输出校验对齐 SKILL.md schema**：边界只强制核心字段（`final_rating`/`recommendation`/`action_items`），SKILL.md 新增的可选字段放行透传，避免"框架加了字段但边界校验拒绝"。
+3. **框架版本盖章**：适配层在分析结果写 `framework_version`（SKILL.md 内容哈希或版本字段），支撑"评级可修正"与历史结论可追溯。
+
 **文档一致性要求**：`投资分析框架.md` 需同步修改（"亏损必🔴" → "亏损默认🔴，高成长+强壁垒例外须说明"），否则文档与 skill 实现不一致。
 
 ## 十一、工具接口契约（`harness_tools.py`）
@@ -229,11 +260,11 @@ analyze_qualitative（护城河/成长/风险） → anchor_industry_pe → calc
 ## 十二、适配层 `harness_component.py` 职责
 
 1. 构造/复用 `QueryEngine`（DeepSeek provider、Settings 关内存、权限 auto-allow、`permission_prompt=None`、`ask_user_prompt=None`、`hook_executor=None`）
-2. `AnalysisState` → 序列化为上下文注入（skill + 数据摘要）
+2. `AnalysisState` → 序列化为上下文注入（skill + 数据摘要）；注入**配置驱动**（`state 字段 → 上下文章节` 映射表），SKILL.md 新增引用字段只需登记映射，不改序列化代码
 3. `submit_message()` 收集 `StreamEvent`
 4. 提取**最后一条** `AssistantTurnComplete`，解析其文本中的 JSON
-5. **Pydantic 边界校验输出形状**（`final_rating ∈ {🟢,🟡,🔴}`、数值类型、亏损特例必填字段）——校验"形状对"，不校验"对错"
-6. 回填 `AnalysisState`
+5. **Pydantic 边界校验输出形状**（`final_rating ∈ {🟢,🟡,🔴}`、数值类型、亏损特例必填字段）——只强制核心字段，SKILL.md 新增的可选字段放行透传；校验"形状对"，不校验"对错"
+6. 回填 `AnalysisState`，并盖章 `framework_version`（SKILL.md 内容哈希），支撑评级可追溯
 7. 异常处理：`ErrorEvent` / `MaxTurnsExceeded` / 解析失败 → 回退规则子链
 
 ## 十三、降级路径（铁律：永不阻断）
