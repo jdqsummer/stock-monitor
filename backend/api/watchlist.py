@@ -16,7 +16,6 @@ from backend.schemas.stock import StockQuote
 from backend.schemas.watchlist import (
     WatchlistAddRequest,
     WatchlistItemOut,
-    WatchlistUpdateRequest,
 )
 from backend.services.watchlist_svc import DuplicateStockError, WatchlistService
 
@@ -63,9 +62,11 @@ async def add_watchlist(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 添加即提取智能分类（数据源失败降级为 None，不阻断添加）
+    industry = await WatchlistService.classify_stock(_client, req.stock_code)
     try:
         item = await WatchlistService.add_item(
-            db, current_user.id, req.stock_code, req.stock_name, req.industry,
+            db, current_user.id, req.stock_code, req.stock_name, industry,
         )
     except DuplicateStockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -85,19 +86,6 @@ async def remove_watchlist(
     if not removed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="自选股不存在")
     return ApiResponse(message="已删除")
-
-
-@router.patch("/{item_id}", response_model=ApiResponse[WatchlistItemOut])
-async def update_watchlist(
-    item_id: str,
-    req: WatchlistUpdateRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    item = await WatchlistService.update_industry(db, current_user.id, item_id, req.industry)
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="自选股不存在")
-    return ApiResponse(data=_to_out(item), message="已更新")
 
 
 @router.post("/auto-classify", response_model=ApiResponse)

@@ -82,3 +82,8 @@ penHarness 智能体内部如何执行分析（集成 LLM + 清单的方式）�
 问题：
 当前使用的OpenHarness框架是开源的还是自研的
 开源链接： https://github.com/HKUDS/OpenHarness
+
+---
+添加需求：自选股管理列表中增加和删除字段
+增加：现价、总市值、动态PE
+删除：添加时间

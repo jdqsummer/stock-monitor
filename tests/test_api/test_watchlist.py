@@ -50,6 +50,8 @@ class TestWatchlistAPI:
         }, headers=headers)
         assert resp.status_code == 200
         assert resp.json()["message"] == "添加成功"
+        # 添加即提取智能分类（内置映射命中，无需数据源）
+        assert resp.json()["data"]["industry"] == "白酒"
 
         resp = await client.get("/api/watchlist", headers=headers)
         assert resp.status_code == 200
@@ -57,6 +59,7 @@ class TestWatchlistAPI:
         assert len(items) == 1
         assert items[0]["stock_code"] == "600519"
         assert items[0]["stock_name"] == "贵州茅台"
+        assert items[0]["industry"] == "白酒"
 
     @pytest.mark.asyncio
     async def test_add_duplicate_409(self, client, mock_redis):
@@ -94,21 +97,6 @@ class TestWatchlistAPI:
         headers = {"Authorization": f"Bearer {token}"}
         resp = await client.delete("/api/watchlist/not-exist", headers=headers)
         assert resp.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_update_industry(self, client, mock_redis):
-        token = await _auth_token(client)
-        headers = {"Authorization": f"Bearer {token}"}
-        added = await client.post("/api/watchlist", json={
-            "stock_code": "600519", "stock_name": "贵州茅台",
-        }, headers=headers)
-        item_id = added.json()["data"]["id"]
-
-        resp = await client.patch(f"/api/watchlist/{item_id}", json={
-            "industry": "白酒",
-        }, headers=headers)
-        assert resp.status_code == 200
-        assert resp.json()["data"]["industry"] == "白酒"
 
     @pytest.mark.asyncio
     async def test_list_enriched_with_quote(self, client, mock_redis):
@@ -153,7 +141,8 @@ class TestWatchlistAPI:
         assert item["pe_dynamic"] is None
 
     @pytest.mark.asyncio
-    async def test_auto_classify(self, client, mock_redis):
+    async def test_auto_classify_idempotent(self, client, mock_redis):
+        """添加已提取分类，一键分类再跑无变化：更新数为 0"""
         token = await _auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
         await client.post("/api/watchlist", json={
@@ -162,30 +151,64 @@ class TestWatchlistAPI:
 
         resp = await client.post("/api/watchlist/auto-classify", headers=headers)
         assert resp.status_code == 200
-        assert resp.json()["data"]["updated"] == 1
+        assert resp.json()["data"]["updated"] == 0
 
         resp = await client.get("/api/watchlist", headers=headers)
         assert resp.json()["data"][0]["industry"] == "白酒"
 
     @pytest.mark.asyncio
-    async def test_auto_classify_unknown_via_provider(self, client, mock_redis):
-        """内置映射未收录的股票：智能分类经 provider 链补全行业"""
+    async def test_add_classifies_via_provider(self, client, mock_redis):
+        """内置映射未收录的股票：添加时经 provider 链补全行业"""
         token = await _auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}
-        await client.post("/api/watchlist", json={
-            "stock_code": "300750", "stock_name": "宁德时代",
-        }, headers=headers)
+        with patch(
+            "backend.api.watchlist._client.fetch_industry",
+            AsyncMock(return_value="电气设备-电源设备-储能设备"),
+        ):
+            resp = await client.post("/api/watchlist", json={
+                "stock_code": "300750", "stock_name": "宁德时代",
+            }, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["industry"] == "电气设备-电源设备-储能设备"
+
+    @pytest.mark.asyncio
+    async def test_add_classify_failure_degrades(self, client, mock_redis):
+        """添加时行业提取失败：添加仍成功，industry 为 None，不阻断"""
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        with patch(
+            "backend.api.watchlist._client.fetch_industry",
+            AsyncMock(side_effect=ProviderError("无行业数据")),
+        ):
+            resp = await client.post("/api/watchlist", json={
+                "stock_code": "300750", "stock_name": "宁德时代",
+            }, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["industry"] is None
+
+    @pytest.mark.asyncio
+    async def test_auto_classify_fills_after_provider_recovers(self, client, mock_redis):
+        """添加时数据源不可用（industry 为 None），后续一键分类补全"""
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        with patch(
+            "backend.api.watchlist._client.fetch_industry",
+            AsyncMock(side_effect=ProviderError("无行业数据")),
+        ):
+            await client.post("/api/watchlist", json={
+                "stock_code": "300750", "stock_name": "宁德时代",
+            }, headers=headers)
 
         with patch(
             "backend.api.watchlist._client.fetch_industry",
-            AsyncMock(return_value="电气设备"),
+            AsyncMock(return_value="电气设备-电源设备-储能设备"),
         ):
             resp = await client.post("/api/watchlist/auto-classify", headers=headers)
         assert resp.status_code == 200
         assert resp.json()["data"]["updated"] == 1
 
         resp = await client.get("/api/watchlist", headers=headers)
-        assert resp.json()["data"][0]["industry"] == "电气设备"
+        assert resp.json()["data"][0]["industry"] == "电气设备-电源设备-储能设备"
 
     @pytest.mark.asyncio
     async def test_search(self, client, mock_redis):

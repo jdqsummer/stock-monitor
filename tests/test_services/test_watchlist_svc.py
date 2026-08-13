@@ -43,12 +43,25 @@ async def test_remove_other_user_returns_false(db_session):
 
 
 @pytest.mark.asyncio
-async def test_update_industry(db_session):
-    item = await WatchlistService.add_item(db_session, "u1", "600519", "贵州茅台")
-    updated = await WatchlistService.update_industry(db_session, "u1", item.id, "白酒")
-    assert updated is not None
-    assert updated.industry == "白酒"
-    assert await WatchlistService.update_industry(db_session, "u2", item.id, "白酒") is None
+async def test_classify_stock_in_map(db_session):
+    """内置映射命中：无需数据源客户端，直接返回短名"""
+    assert await WatchlistService.classify_stock(None, "600519") == "白酒"
+
+
+@pytest.mark.asyncio
+async def test_classify_stock_via_client(db_session):
+    """内置映射未收录：经数据源客户端补全"""
+    client = AsyncMock()
+    client.fetch_industry = AsyncMock(return_value="电气设备-电源设备-储能设备")
+    assert await WatchlistService.classify_stock(client, "300750") == "电气设备-电源设备-储能设备"
+
+
+@pytest.mark.asyncio
+async def test_classify_stock_failure_returns_none(db_session):
+    """数据源失败：返回 None，不抛错"""
+    client = AsyncMock()
+    client.fetch_industry = AsyncMock(side_effect=ProviderError("无行业数据"))
+    assert await WatchlistService.classify_stock(client, "300750") is None
 
 
 @pytest.mark.asyncio
@@ -88,20 +101,8 @@ async def test_auto_classify_provider_fail_skips(db_session):
 
 
 @pytest.mark.asyncio
-async def test_auto_classify_preserves_manual(db_session):
-    """已手动分类的股票不被智能分类覆盖"""
-    await WatchlistService.add_item(db_session, "u1", "603986", "兆易创新", "半导体")
-    client = AsyncMock()
-    client.fetch_industry = AsyncMock(return_value="电子设备-半导体-集成电路")
-    count = await WatchlistService.auto_classify(db_session, "u1", client)
-    assert count == 0
-    items = await WatchlistService.list_items(db_session, "u1")
-    assert items[0].industry == "半导体"
-
-
-@pytest.mark.asyncio
-async def test_auto_classify_upgrades_old_top_level(db_session):
-    """旧自动分类（一级行业）升级为完整链"""
+async def test_auto_classify_syncs_existing_to_chain(db_session):
+    """已有旧值（含历史手动/粗分类）被智能结果全量覆盖为完整链"""
     await WatchlistService.add_item(db_session, "u1", "300750", "宁德时代", "电气设备")
     client = AsyncMock()
     client.fetch_industry = AsyncMock(return_value="电气设备-电源设备-储能设备")
@@ -109,3 +110,13 @@ async def test_auto_classify_upgrades_old_top_level(db_session):
     assert count == 1
     items = await WatchlistService.list_items(db_session, "u1")
     assert items[0].industry == "电气设备-电源设备-储能设备"
+
+
+@pytest.mark.asyncio
+async def test_auto_classify_idempotent(db_session):
+    """值已是最新：不更新，计数为 0"""
+    await WatchlistService.add_item(db_session, "u1", "600519", "贵州茅台", "白酒")
+    count = await WatchlistService.auto_classify(db_session, "u1")
+    assert count == 0
+    items = await WatchlistService.list_items(db_session, "u1")
+    assert items[0].industry == "白酒"

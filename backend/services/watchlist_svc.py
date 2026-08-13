@@ -85,56 +85,40 @@ class WatchlistService:
         return True
 
     @staticmethod
-    async def update_industry(
-        db: AsyncSession, user_id: str, item_id: str, industry: str | None,
-    ) -> WatchlistItem | None:
-        result = await db.execute(
-            select(WatchlistItem).where(
-                WatchlistItem.id == item_id,
-                WatchlistItem.user_id == user_id,
-            )
-        )
-        item = result.scalar_one_or_none()
-        if not item:
-            return None
-        item.industry = industry
-        await db.commit()
-        await db.refresh(item)
-        return item
+    async def classify_stock(client: WestockClient | None, code: str) -> str | None:
+        """提取单只股票的智能行业分类：内置映射快路径 → 数据源链补全。
+
+        数据源不可用时返回 None（由调用方降级，不阻断主流程）。
+        """
+        industry = _INDUSTRY_MAP.get(code)  # 离线快路径（覆盖 mock 库）
+        if industry:
+            return industry
+        if client:
+            try:
+                return await client.fetch_industry(code)
+            except ProviderError:
+                return None  # 数据源不可用 → 降级，不阻断
+        return None
 
     @staticmethod
     async def auto_classify(
         db: AsyncSession, user_id: str, client: WestockClient | None = None,
     ) -> int:
-        """智能分类：为未分类的自选股填行业，并把旧「一级行业」自动分类升级为完整链。
+        """智能分类：唯一权威写入源，全量同步所有自选股行业。
 
-        内置代码→行业映射优先（离线快路径，短名如 白酒/家电），未收录代码经数据源链
-        补全完整 EM2016 链（一级-二级-三级）。规则：
-          - 未分类 → 填分类
-          - 旧自动分类（行业 == 新链的一级段）→ 升级为完整链
-          - 手动/自定义分类（不等于新链一级段）→ 保留不覆盖
+        对每只自选股提取最新行业（内置映射 → 数据源 EM2016 链），与现值不同才更新；
+        数据源失败保留现值，不阻断整批。幂等：值已最新时计数为 0。
         返回更新数量。
         """
         items = await WatchlistService.list_items(db, user_id)
         updated = 0
         for item in items:
-            industry = _INDUSTRY_MAP.get(item.stock_code)  # 离线快路径（覆盖 mock 库）
-            if not industry and client:
-                try:
-                    industry = await client.fetch_industry(item.stock_code)
-                except ProviderError:
-                    industry = None  # 数据源不可用 → 跳过该股，不阻断整批
+            industry = await WatchlistService.classify_stock(client, item.stock_code)
             if not industry:
                 continue
-            top = industry.split("-")[0].strip()
-            if item.industry:
-                # 已有分类：仅当旧值是同一来源的一级段且新值是完整链时升级，手动/自定义保留
-                if "-" in industry and item.industry == top:
-                    item.industry = industry
-                    updated += 1
-                continue
-            item.industry = industry
-            updated += 1
+            if item.industry != industry:
+                item.industry = industry
+                updated += 1
         if updated:
             await db.commit()
         return updated

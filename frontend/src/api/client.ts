@@ -62,8 +62,6 @@ export const watchlistApi = {
   add: (stockCode: string, stockName: string) =>
     client.post<ApiResponse<WatchlistItem>>('/watchlist', { stock_code: stockCode, stock_name: stockName }),
   remove: (id: string) => client.delete<ApiResponse>(`/watchlist/${id}`),
-  update: (id: string, data: Record<string, unknown>) =>
-    client.patch<ApiResponse<WatchlistItem>>(`/watchlist/${id}`, data),
   autoClassify: () => client.post<ApiResponse<{ updated: number }>>('/watchlist/auto-classify'),
   search: (keyword: string) =>
     client.get<ApiResponse<StockQuote[]>>('/watchlist/search', { params: { keyword } }),
