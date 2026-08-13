@@ -128,3 +128,4 @@ class WatchlistBoardRow(BaseModel):
     signal: Signal = Signal.NONE
     industry: str | None = None
     analysis_date: date | None = None
+    unassessable_risk: bool = False          # 重大风险使安全边际无法评估（看板 Tag）

@@ -129,6 +129,8 @@ class StockDataService:
             "risk_factors": _safe_json_list(snapshot.risk_factors),
             "pe_rationale": snapshot.pe_rationale,
             "recommendation": snapshot.recommendation,
+            "conclusion": snapshot.conclusion,
+            "unassessable_risk": snapshot.unassessable_risk,
             "profit_quality_ok": snapshot.profit_quality_ok,
             "profit_quality_warnings": _safe_json_list(snapshot.profit_quality_warnings),
         }
@@ -204,5 +206,6 @@ class StockDataService:
                 signal=signal,
                 industry=item.industry,
                 analysis_date=snapshot.data_date,
+                unassessable_risk=snapshot.unassessable_risk,
             ))
         return rows

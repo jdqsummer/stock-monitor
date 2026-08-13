@@ -63,6 +63,8 @@ class SnapshotService:
         )
         existing.checklist_veto = report.checklist_veto
         existing.checklist_summary = report.checklist_summary or None
+        existing.conclusion = report.conclusion or None
+        existing.unassessable_risk = report.unassessable_risk
         existing.analysis_source = source
         existing.analysis_completed_at = datetime.now()
         try:

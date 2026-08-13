@@ -135,3 +135,35 @@ class TestSnapshotAPI:
         assert data["risk_factors"] == ["宏观风险"]
         assert data["recommendation"] == "可分批建仓"
         assert data["analysis_source"] == "scheduled"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_returns_conclusion_and_unassessable(self, client, db_session, mock_redis):
+        token = await _auth_token(client)
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+
+        db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=1560.0,
+                                     total_market_cap=19500.0))
+        db_session.add(AnalysisSnapshot(
+            user_id=user_id, stock_code="600519",
+            annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
+            pe_low=20, pe_high=35,
+            swing_market_cap_low=13760, swing_market_cap_high=29470,
+            swing_price_low=1147, swing_price_high=2456,
+            current_market_cap=19500, current_price=1560,
+            distance_pct=-38.9, signal="green", signal_label="击球区",
+            rating="🟢", data_date=date(2026, 8, 12),
+            industry_category="白酒", moat_assessment="品牌护城河",
+            risk_factors='["宏观风险"]', recommendation="可分批建仓",
+            conclusion="清单审视后护城河深但需确认估值", unassessable_risk=False,
+            analysis_source="scheduled",
+        ))
+        await db_session.commit()
+
+        resp = await client.get(
+            "/api/analysis/snapshot/600519", headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["conclusion"] == "清单审视后护城河深但需确认估值"
+        assert data["unassessable_risk"] is False
