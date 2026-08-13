@@ -140,11 +140,18 @@ async def run_analysis_agent(state: dict, *, llm_provider, model: str | None = N
 
     model = model or os.environ.get("OPENHARNESS_MODEL", "deepseek-chat")
 
+    from openharness.tools.skill_tool import SkillTool
+
     tools = ToolRegistry()
     for t in build_investment_tools(llm_provider):
         tools.register(t)
+    tools.register(SkillTool())   # LLM 可按需 skill(name=...) 读子 skill
 
-    tool_metadata = {"analysis_state": state, "llm_provider": llm_provider}
+    tool_metadata = {
+        "analysis_state": state,
+        "llm_provider": llm_provider,
+        "extra_skill_dirs": [str(Path(__file__).resolve().parent / "skills" / "stages")],
+    }
     engine = create_harness_engine(
         api_client=_build_api_client(model=model),   # OpenAI 兼容客户端（默认 DeepSeek，可配置）
         tools=tools,
@@ -180,16 +187,24 @@ async def run_analysis_agent(state: dict, *, llm_provider, model: str | None = N
 
 
 def build_system_prompt(state: dict) -> str:
-    """系统提示 = 投资框架 SKILL.md 全文 + 简要状态"""
+    """系统提示 = 主 skill 全文 + Available Skills 列表（子 skill 供 skill 工具读取）"""
     from pathlib import Path
+
+    from openharness.prompts.context import _build_skills_section
 
     skill = Path(__file__).resolve().parent / "skills" / "investment-framework" / "SKILL.md"
     skill_text = skill.read_text(encoding="utf-8") if skill.exists() else ""
+    cwd = Path(__file__).resolve().parent.parent  # backend/
+    extra = [str(Path(__file__).resolve().parent / "skills" / "stages")]
+    skills_section = _build_skills_section(cwd, extra_skill_dirs=extra)
     summary = (
         f"分析标的: {state.get('stock_name', '')}({state.get('stock_code', '')})，"
         f"行业: {state.get('industry_category', '未知')}。严格按框架阶段推进，先定性后定量。"
     )
-    return f"{skill_text}\n\n## 本次分析\n{summary}"
+    parts = [skill_text, f"## 本次分析\n{summary}"]
+    if skills_section:
+        parts.append(skills_section)
+    return "\n\n".join(parts)
 
 
 def _build_user_prompt(state: dict) -> str:

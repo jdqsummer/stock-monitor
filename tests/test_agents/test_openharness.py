@@ -100,12 +100,12 @@ async def test_analyze_component_failure_falls_back(monkeypatch):
 
 
 def test_build_investment_tools_excludes_validate_constraints():
-    """validate_constraints 工具已从 9 工具移除（硬约束软化）"""
+    """validate_constraints 工具已移除（硬约束软化）；8 工具 = 只读 + 4 阶段 + 3 定量"""
     from backend.agents.harness_tools import build_investment_tools
 
     names = [t.name for t in build_investment_tools(None)]
     assert "validate_constraints" not in names
-    assert len(names) == 9
+    assert len(names) == 8
 
 
 # ── 硬约束校验（规则子链兜底用） ──
