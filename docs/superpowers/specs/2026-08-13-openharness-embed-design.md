@@ -98,6 +98,38 @@ backend/agents/
 | state 序列化注入、事件收集、输出 JSON 解析、边界校验、回填 | **我们**（`harness_component.py`） |
 | LangGraph 编排、数据采集、规则子链降级 | **我们**（现有代码） |
 
+### ReAct 循环机制对比
+
+开源 harness 的核心 `engine/query.py` 的 `run_query` 就是标准 ReAct 循环，与自研 `_react_loop`（`openharness.py:305-346`）同一范式，仅加固程度不同：
+
+```python
+while turn_count < context.max_turns:
+    turn_count += 1
+    # ① 自动压缩检查（上下文过长时先压缩）
+    # ② 图片预处理（非多模态模型转文本）
+    # ③ 调 LLM，流式收集回复（含重试/退避）
+    messages.append(final_message)
+    yield AssistantTurnComplete(...)
+    if not final_message.tool_uses:   # 模型不再要工具 → 结束
+        return
+    # ④ 执行工具调用（单工具串行 / 多工具并发）
+    tool_results = execute_tools(final_message.tool_uses)
+    messages.append(ConversationMessage(role="user", content=tool_results))
+    # ⑤ 循环继续 → 模型看到结果，决定下一步
+```
+
+| 维度 | 自研 `_react_loop` | 开源 `run_query` |
+|:--|:--|:--|
+| 核心循环 | 相同（LLM→tool→回填→再问） | 相同 |
+| 重试/退避 | 无 | ✅ 内置（`ApiRetryEvent`） |
+| 上下文自动压缩 | 无（超长会断） | ✅ 自动 + 反应式压缩 |
+| 工具并行 | 无（逐个执行） | ✅ 多 tool_use 并发执行 |
+| 流式事件 | 无（一次性拿结果） | ✅ `StreamEvent` 流 |
+| 错误恢复 | 简单 try/except | ✅ 识别 prompt-too-long、token 上限并自动降级重试 |
+| 轮次上限 | 硬编码 10 | 可配置 `max_turns`，超限抛 `MaxTurnsExceeded` |
+
+**迁移含义**：`_react_loop` 被 `run_query` 替代，外部行为（工具名、状态字段、输出 JSON）不变，内部循环换成加固版。这也是方案价值所在——同一 ReAct 范式，从 40 行手写版升级为社区加固版。
+
 ## 八、Harness 执行输出契约（适配层核心输入）
 
 `QueryEngine.submit_message()` 产出 **`StreamEvent` 异步事件流**，不是结构化结果对象。事件类型（`stream_events.py`）：
