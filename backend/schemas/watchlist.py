@@ -1,6 +1,4 @@
 # stock-monitor/backend/schemas/watchlist.py
-from datetime import datetime
-
 from pydantic import BaseModel, Field
 
 
@@ -19,4 +17,6 @@ class WatchlistItemOut(BaseModel):
     stock_code: str
     stock_name: str
     industry: str | None
-    added_at: datetime
+    current_price: float = 0.0              # 现价（元）；行情不可用时为 0
+    total_market_cap: float = 0.0           # 总市值（亿元）
+    pe_dynamic: float | None = None         # 动态 PE

@@ -111,6 +111,48 @@ class TestWatchlistAPI:
         assert resp.json()["data"]["industry"] == "白酒"
 
     @pytest.mark.asyncio
+    async def test_list_enriched_with_quote(self, client, mock_redis):
+        """列表应并行富化实时行情：现价/总市值/动态PE"""
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.post("/api/watchlist", json={
+            "stock_code": "600519", "stock_name": "贵州茅台",
+        }, headers=headers)
+
+        with patch(
+            "backend.api.watchlist._client.fetch_quote",
+            AsyncMock(return_value=_mock_quote()),
+        ):
+            resp = await client.get("/api/watchlist", headers=headers)
+        assert resp.status_code == 200
+        item = resp.json()["data"][0]
+        assert item["current_price"] == 1560.0
+        assert item["total_market_cap"] == 19500.0
+        assert item["pe_dynamic"] == 25.3
+        assert "added_at" not in item
+
+    @pytest.mark.asyncio
+    async def test_list_quote_failure_degrades(self, client, mock_redis):
+        """行情拉取失败时列表仍返回，现价/市值/PE 降级为占位值，不中断"""
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.post("/api/watchlist", json={
+            "stock_code": "600519", "stock_name": "贵州茅台",
+        }, headers=headers)
+
+        with patch(
+            "backend.api.watchlist._client.fetch_quote",
+            AsyncMock(side_effect=ProviderError("行情失败")),
+        ):
+            resp = await client.get("/api/watchlist", headers=headers)
+        assert resp.status_code == 200
+        item = resp.json()["data"][0]
+        assert item["stock_code"] == "600519"
+        assert item["current_price"] == 0.0
+        assert item["total_market_cap"] == 0.0
+        assert item["pe_dynamic"] is None
+
+    @pytest.mark.asyncio
     async def test_auto_classify(self, client, mock_redis):
         token = await _auth_token(client)
         headers = {"Authorization": f"Bearer {token}"}

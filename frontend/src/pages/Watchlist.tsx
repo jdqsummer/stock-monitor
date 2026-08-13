@@ -85,8 +85,12 @@ export function Watchlist() {
           options={INDUSTRY_OPTIONS.map(o => ({ value: o, label: o }))}
           onChange={(val) => handleClassify(record.id, val)} />
       ) },
-    { title: '添加时间', dataIndex: 'added_at', width: 180,
-      render: (v: string) => new Date(v).toLocaleString() },
+    { title: '现价', dataIndex: 'current_price', width: 100,
+      render: (v: number) => (v ? `¥${v.toFixed(2)}` : '-') },
+    { title: '总市值', dataIndex: 'total_market_cap', width: 110,
+      render: (v: number) => (v ? `${v.toFixed(1)}亿` : '-') },
+    { title: '动态PE', dataIndex: 'pe_dynamic', width: 100,
+      render: (v: number | null) => (v != null ? v.toFixed(1) : '-') },
     { title: '操作', key: 'action', width: 80,
       render: (_: unknown, record: WatchlistItem) => (
         <Popconfirm title="确定删除？" onConfirm={() => handleRemove(record.id)}>

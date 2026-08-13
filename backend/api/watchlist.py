@@ -26,14 +26,24 @@ router = APIRouter(prefix="/api/watchlist", tags=["自选股"])
 _client = WestockClient()
 
 
-def _to_out(item: WatchlistItem) -> WatchlistItemOut:
+def _to_out(item: WatchlistItem, quote: StockQuote | None = None) -> WatchlistItemOut:
     return WatchlistItemOut(
         id=item.id,
         stock_code=item.stock_code,
         stock_name=item.stock_name,
         industry=item.industry,
-        added_at=item.added_at,
+        current_price=quote.current_price if quote else 0.0,
+        total_market_cap=quote.total_market_cap if quote else 0.0,
+        pe_dynamic=quote.pe_dynamic if quote else None,
     )
+
+
+async def _fetch_quote_safe(code: str) -> StockQuote | None:
+    """拉取单只行情；失败返回 None，不阻断整批"""
+    try:
+        return await _client.fetch_quote(code)
+    except ProviderError:
+        return None
 
 
 @router.get("", response_model=ApiResponse[list[WatchlistItemOut]])
@@ -42,7 +52,9 @@ async def list_watchlist(
     db: AsyncSession = Depends(get_db),
 ):
     items = await WatchlistService.list_items(db, current_user.id)
-    return ApiResponse(data=[_to_out(i) for i in items])
+    # 并行富化实时行情（现价/总市值/动态PE）；单只失败降级为占位值，不中断整批
+    quotes = await asyncio.gather(*(_fetch_quote_safe(i.stock_code) for i in items))
+    return ApiResponse(data=[_to_out(i, q) for i, q in zip(items, quotes)])
 
 
 @router.post("", response_model=ApiResponse[WatchlistItemOut])

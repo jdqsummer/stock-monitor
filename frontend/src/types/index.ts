@@ -28,7 +28,9 @@ export interface WatchlistItem {
   stock_code: string;
   stock_name: string;
   industry: string | null;
-  added_at: string;
+  current_price: number;
+  total_market_cap: number;
+  pe_dynamic: number | null;
 }
 
 // ── 股票行情 ──
