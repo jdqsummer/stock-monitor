@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from uuid import uuid4
 
-from backend.agents.analysis_chain import AnalysisChain
+from backend.agents.analysis_chain import create_analysis_chain
 from backend.db.database import async_session_factory
 from backend.llm.provider import is_llm_available
 from backend.services.snapshot_svc import SnapshotService
@@ -94,7 +94,9 @@ class AnalysisJobService:
                 if not self._llm_available():
                     job["codes"][code] = STATUS_SKIPPED
                     return
-                chain = self._chain or AnalysisChain()
+                # create_analysis_chain 注入 LLM（has_real_llm=True → OpenHarness 走 LLM 定性路径）；
+                # 若用无参 AnalysisChain()（llm_provider=None），批量/自选分析只跑纯规则，缺定性/风险/清单
+                chain = self._chain or create_analysis_chain()
                 name = item.stock_name if item else ""
                 industry = item.industry if item else ""
                 report = await asyncio.wait_for(

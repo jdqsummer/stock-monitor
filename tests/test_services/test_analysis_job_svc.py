@@ -11,6 +11,39 @@ from backend.services.analysis_job_svc import (
 )
 
 
+@pytest.mark.asyncio
+async def test_default_chain_uses_llm_aware_constructor(db_session, test_session_factory, monkeypatch):
+    """默认 chain 必须用 create_analysis_chain（带 LLM），不能用无 LLM 的 AnalysisChain()
+
+    AnalysisChain() 默认 llm_provider=None → OpenHarnessAgent.has_real_llm=False →
+    走纯规则子链，moat_assessment/risk_factors/checklist_summary 全空（生产定性分析缺失的根因）。
+    """
+    from sqlalchemy import select
+
+    from backend.models.stock import WatchlistItem
+    from backend.services import analysis_job_svc as svc_mod
+
+    calls = []
+
+    def fake_create():
+        calls.append(1)
+        return FakeChain()
+
+    monkeypatch.setattr(svc_mod, "create_analysis_chain", fake_create)
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="贵州茅台", industry="白酒"))
+    await db_session.commit()
+
+    svc = AnalysisJobService(llm_available=lambda: True, session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "manual")
+    await svc._run(job_id)
+
+    assert calls, "默认 chain 应通过 create_analysis_chain 构造（带 LLM），否则批量分析无定性结论"
+    assert svc.get_status(job_id)["results"]["600519"] == STATUS_DONE
+    rows = (await db_session.execute(select(WatchlistItem))).scalars().all()
+    assert len(rows) == 1
+
+
 def _report(code: str, name: str = "测试股", industry: str = "") -> AnalysisReport:
     return AnalysisReport(
         code=code, name=name, data_date="2026-08-12",

@@ -144,7 +144,7 @@ async def analyze_batch(
     最多支持 20 只股票同时分析。
     """
     try:
-        chain = AnalysisChain()
+        chain = create_analysis_chain()
         reports = await chain.analyze_batch(req.codes)
         for report in reports:
             await SnapshotService.save_snapshot(db, current_user.id, report)
@@ -212,7 +212,7 @@ async def get_report(
     获取分析报告（Markdown 格式）。
     """
     try:
-        chain = AnalysisChain()
+        chain = create_analysis_chain()
         report = await chain.analyze(code=code, industry=industry)
         return {
             "code": 0,
