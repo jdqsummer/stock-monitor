@@ -165,6 +165,41 @@ class StageTool(BaseTool):
                 self.output_field: rv,
                 **compat,
             }
+        if self.name == "output_conclusion":
+            if llm is None:
+                return {}
+            from backend.agents.openharness import apply_veto
+            loss_note = "（当前亏损，年化利润不可得，请基于商业模式/技术壁垒判断）" if st.get("annual_profit_low", 0) <= 0 else ""
+            prompt = (
+                f"{self.stage.skill_content}\n\n"
+                f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，行业: {st.get('industry_category', '未知')}{loss_note}\n"
+                f"信号: {st.get('signal_label')}，距击球区: {st.get('distance_pct')}%，"
+                f"击球区股价: {st.get('swing_price_low')}-{st.get('swing_price_high')} 元\n"
+                f"定性分析: {st.get('qualitative_analysis', {})}\n"
+                f"逆向分析: {st.get('reverse_analysis', {})}\n"
+                f"安全边际分析: {st.get('swing_zone_analysis', {})}\n"
+                f"清单否决: {'是' if st.get('checklist_veto') else '否'}\n"
+                f'请以 JSON 返回 {{"conclusion": "审视后的结论（证伪思维，先依据后判断）", '
+                f'"recommendation": "买入-可配置区 / 等待时机-观察区 / 坚决放弃-太难", '
+                f'"unassessable_risk": false, "final_rating": "🟢/🟡/🔴", "action_items": ["行动1"]}}'
+            )
+            resp = await llm.json_chat([{"role": "user", "content": prompt}])
+            if not isinstance(resp, dict):
+                resp = {}
+            final_rating = resp.get("final_rating", st.get("final_rating", "🟡"))
+            if final_rating not in ("🟢", "🟡", "🔴"):
+                final_rating = "🟡"
+            updates = {
+                "conclusion": resp.get("conclusion", ""),
+                "recommendation": resp.get("recommendation", ""),
+                "unassessable_risk": bool(resp.get("unassessable_risk", False)),
+                "action_items": resp.get("action_items", []),
+                "final_rating": final_rating,
+                "rating_confidence": 0.75,
+            }
+            updates.update(apply_veto({**st, **updates}))
+            return {"stage_results": {self.name: {"title": self.name, **updates}},
+                    self.output_field: updates, **updates}
         if self.blocks:
             for block in self.blocks:
                 is_handler = block.handler and block.handler in _HANDLERS
@@ -218,7 +253,67 @@ class StageTool(BaseTool):
     # ── hybrid：LLM 定 PE 区间 + 引导确定性工具（Task 5 细化）──
 
     async def _run_hybrid(self, context, st: dict) -> dict:
-        return {}
+        """swing-zone：LLM 定击球 PE（结合前序结论）→ 定量节点；非法/解析失败回退行业锚点"""
+        llm = context.metadata.get("llm_provider")
+        from backend.agents.constraints import resolve_pe_anchor
+        from backend.agents.workflow import (
+            calculate_swing_zone_node,
+            estimate_annual_profit_node,
+            quantify_safety_margin_node,
+        )
+
+        industry = st.get("industry_category", "")
+        _, anchor = resolve_pe_anchor(industry)
+        default_low, default_high = (anchor if anchor else (15.0, 25.0))
+
+        pe_low, pe_high = default_low, default_high
+        rationale = f"行业锚定: {industry} {default_low}-{default_high} 倍"
+        if llm is not None:
+            qual = st.get("qualitative_analysis", {})
+            rev = st.get("reverse_analysis", {})
+            prompt = (
+                f"{self.stage.skill_content}\n\n"
+                f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，行业: {industry}\n"
+                f"行业锚点: {default_low}-{default_high}（仅参考）\n"
+                f"定性分析: {qual}\n逆向分析: {rev}\n"
+                f"年化利润: {st.get('annual_profit_low')}-{st.get('annual_profit_high')}亿，"
+                f"现价: {st.get('current_price')}，总股本: {st.get('total_shares')} 亿股\n"
+                f'请以 JSON 返回 {{"pe_low": 数字, "pe_high": 数字, "pe_rationale": "设定理由"}}'
+            )
+            try:
+                resp = await llm.json_chat([{"role": "user", "content": prompt}])
+            except Exception:
+                resp = None
+            if isinstance(resp, dict):
+                try:
+                    cand_low = float(resp.get("pe_low", default_low))
+                    cand_high = float(resp.get("pe_high", default_high))
+                    if cand_low > 0 and cand_high >= cand_low:
+                        pe_low, pe_high = cand_low, cand_high
+                        rationale = resp.get("pe_rationale", rationale)
+                except (TypeError, ValueError):
+                    pass   # 解析失败 → 保留锚点
+
+        updates = {"pe_low": pe_low, "pe_high": pe_high, "pe_rationale": rationale,
+                   "industry_category": industry}
+        st.update(updates)
+        # 定量节点（确定性）：年化 → 击球区 → 安全边际
+        st.update(await estimate_annual_profit_node(st))
+        st.update(await calculate_swing_zone_node(st))
+        st.update(await quantify_safety_margin_node(st))
+        updates.update({
+            "annual_profit_low": st.get("annual_profit_low"),
+            "annual_profit_high": st.get("annual_profit_high"),
+            "swing_market_cap_low": st.get("swing_market_cap_low"),
+            "swing_market_cap_high": st.get("swing_market_cap_high"),
+            "swing_price_low": st.get("swing_price_low"),
+            "swing_price_high": st.get("swing_price_high"),
+            "distance_pct": st.get("distance_pct"),
+            "signal": st.get("signal"),
+            "signal_label": st.get("signal_label"),
+        })
+        return {"stage_results": {self.name: {"title": self.name, **updates}}, self.output_field: updates,
+                **updates}
 
 
 class _EmptyInput(BaseModel):

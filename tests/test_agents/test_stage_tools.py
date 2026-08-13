@@ -151,3 +151,54 @@ async def test_reverse_checklist_stage_maps_four_conclusions():
     assert updates["risk_factors"] == ["r1", "r2"]             # compat 顶层键
     assert updates["reverse_analysis"]["checklist_results"] == {}   # 归一化默认值
     assert updates["reverse_analysis"]["overall_assessment"] == "综合判断"
+
+
+@pytest.mark.asyncio
+async def test_swing_zone_hybrid_falls_back_to_anchor():
+    """swing-zone：LLM 给非法 PE → 回退行业锚点；并执行定量节点"""
+    from backend.agents.stage_tools import StageTool, _load_stages
+    s = next(x for x in _load_stages() if x.name == "anchor_industry_pe")
+
+    class SwingLLM:
+        async def json_chat(self, messages):
+            return {"pe_low": 0, "pe_high": 0, "pe_rationale": "无效"}   # 触发 fallback
+
+    tool = StageTool(s, llm_provider=SwingLLM())
+    state = {"stock_name": "X", "stock_code": "1", "industry_category": "白酒",
+             "current_price": 50.0, "total_shares": 15.0,
+             "annual_profit_low": 32.0, "annual_profit_high": 35.0,
+             "net_profit_deducted": 34.0, "financials": [],
+             "qualitative_analysis": {}, "reverse_analysis": {}}
+    res = await tool.execute(tool.input_model(), _ctx(state, SwingLLM()))
+    updates = res.metadata["state_updates"]
+    assert updates["pe_low"] == 20.0          # 白酒行业锚点 20-35
+    assert updates["pe_high"] == 35.0
+    assert updates["swing_price_low"] > 0     # 定量节点已执行
+    assert "distance_pct" in updates
+
+
+@pytest.mark.asyncio
+async def test_conclusion_stage_injects_prior_stages():
+    """conclusion：prompt 含前序定性/逆向/安全边际结论，输出三档字段"""
+    from backend.agents.stage_tools import StageTool, _load_stages
+    c = next(x for x in _load_stages() if x.name == "output_conclusion")
+
+    class ConLLM:
+        async def json_chat(self, messages):
+            prompt = messages[0]["content"]
+            assert "商业模式" in prompt and "逆向" in prompt and "距击球区" in prompt
+            return {"conclusion": "壁垒深，等待估值回归", "recommendation": "等待时机-观察区",
+                    "unassessable_risk": False, "final_rating": "🟡", "action_items": ["关注"]}
+
+    tool = StageTool(c, llm_provider=ConLLM())
+    state = {"stock_name": "X", "stock_code": "1",
+             "qualitative_analysis": {"business_model": {"title": "商业模式", "text": "t"}},
+             "reverse_analysis": {"conclusions": {"about_company": "c"}},
+             "swing_zone_analysis": {"pe_low": 20, "pe_high": 35, "pe_rationale": "r"},
+             "distance_pct": 15.0, "signal_label": "观察区",
+             "annual_profit_low": 32.0, "swing_price_low": 10, "swing_price_high": 20,
+             "moat_assessment": "m", "risk_factors": [], "checklist_summary": "s", "checklist_veto": False}
+    res = await tool.execute(tool.input_model(), _ctx(state, ConLLM()))
+    updates = res.metadata["state_updates"]
+    assert updates["final_rating"] == "🟡"
+    assert updates["recommendation"] == "等待时机-观察区"
