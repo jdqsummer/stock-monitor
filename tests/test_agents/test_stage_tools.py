@@ -202,3 +202,44 @@ async def test_conclusion_stage_injects_prior_stages():
     updates = res.metadata["state_updates"]
     assert updates["final_rating"] == "🟡"
     assert updates["recommendation"] == "等待时机-观察区"
+
+
+@pytest.mark.asyncio
+async def test_conclusion_loss_exception_requires_rationale_and_basis():
+    """conclusion：亏损 + 非🔴评级必须携带 loss_exception_rationale/forward_valuation_basis"""
+    from backend.agents.harness_output import OutputValidationError
+    from backend.agents.stage_tools import StageTool, _load_stages
+    c = next(x for x in _load_stages() if x.name == "output_conclusion")
+
+    def loss_state():
+        return {"stock_name": "X", "stock_code": "1", "industry_category": "白酒",
+                "qualitative_analysis": {}, "reverse_analysis": {},
+                "swing_zone_analysis": {}, "distance_pct": 999.9, "signal_label": "无法量化",
+                "annual_profit_low": -5.0, "annual_profit_high": -5.0,
+                "swing_price_low": 0, "swing_price_high": 0,
+                "moat_assessment": "m", "risk_factors": [], "checklist_summary": "s",
+                "checklist_veto": False}
+
+    class LossLLM:
+        def __init__(self, include_fields: bool):
+            self.include_fields = include_fields
+
+        async def json_chat(self, messages):
+            payload = {"conclusion": "亏损但高成长，等待盈利拐点", "recommendation": "等待时机-观察区",
+                       "unassessable_risk": False, "final_rating": "🟡", "action_items": ["关注"]}
+            if self.include_fields:
+                payload["loss_exception_rationale"] = "高成长+强技术壁垒"
+                payload["forward_valuation_basis"] = "远期盈利折现"
+            return payload
+
+    # 带两字段 → 校验通过，透传
+    tool = StageTool(c, llm_provider=LossLLM(include_fields=True))
+    res = await tool.execute(tool.input_model(), _ctx(loss_state(), LossLLM(include_fields=True)))
+    updates = res.metadata["state_updates"]
+    assert updates["loss_exception_rationale"] == "高成长+强技术壁垒"
+    assert updates["forward_valuation_basis"] == "远期盈利折现"
+
+    # 缺两字段 → validate_output_shape 抛 OutputValidationError
+    tool2 = StageTool(c, llm_provider=LossLLM(include_fields=False))
+    with pytest.raises(OutputValidationError):
+        await tool2.execute(tool2.input_model(), _ctx(loss_state(), LossLLM(include_fields=False)))

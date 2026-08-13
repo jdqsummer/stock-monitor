@@ -168,6 +168,7 @@ class StageTool(BaseTool):
         if self.name == "output_conclusion":
             if llm is None:
                 return {}
+            from backend.agents.harness_output import validate_output_shape
             from backend.agents.openharness import apply_veto
             loss_note = "（当前亏损，年化利润不可得，请基于商业模式/技术壁垒判断）" if st.get("annual_profit_low", 0) <= 0 else ""
             prompt = (
@@ -181,7 +182,9 @@ class StageTool(BaseTool):
                 f"清单否决: {'是' if st.get('checklist_veto') else '否'}\n"
                 f'请以 JSON 返回 {{"conclusion": "审视后的结论（证伪思维，先依据后判断）", '
                 f'"recommendation": "买入-可配置区 / 等待时机-观察区 / 坚决放弃-太难", '
-                f'"unassessable_risk": false, "final_rating": "🟢/🟡/🔴", "action_items": ["行动1"]}}'
+                f'"unassessable_risk": false, "final_rating": "🟢/🟡/🔴", "action_items": ["行动1"]}}\n'
+                f'若当前亏损（年化利润 ≤ 0）且评级非 🔴，必须额外返回 '
+                f'"loss_exception_rationale"（上调理由）与 "forward_valuation_basis"（远期估值依据）'
             )
             resp = await llm.json_chat([{"role": "user", "content": prompt}])
             if not isinstance(resp, dict):
@@ -197,6 +200,12 @@ class StageTool(BaseTool):
                 "final_rating": final_rating,
                 "rating_confidence": 0.75,
             }
+            if resp.get("loss_exception_rationale"):
+                updates["loss_exception_rationale"] = resp.get("loss_exception_rationale")
+            if resp.get("forward_valuation_basis"):
+                updates["forward_valuation_basis"] = resp.get("forward_valuation_basis")
+            payload = {**st, **updates, "annual_profit_low": st.get("annual_profit_low")}
+            updates = validate_output_shape(payload)
             updates.update(apply_veto({**st, **updates}))
             return {"stage_results": {self.name: {"title": self.name, **updates}},
                     self.output_field: updates, **updates}
