@@ -102,6 +102,14 @@ class AnalysisReport:
     conclusion: str = ""
     unassessable_risk: bool = False
 
+    # 五段式工作流
+    stage_results: dict = field(default_factory=dict)
+    qualitative_analysis: dict = field(default_factory=dict)
+    reverse_analysis: dict = field(default_factory=dict)
+    business_model: str = ""
+    operating_quality: str = ""
+    financials_8p: list[dict] = field(default_factory=list)
+
     # 元数据
     errors: list[str] = field(default_factory=list)
     warnings_list: list[str] = field(default_factory=list)
@@ -147,6 +155,15 @@ class AnalysisReport:
             action_items=state.get("action_items", []),
             conclusion=state.get("conclusion", ""),
             unassessable_risk=state.get("unassessable_risk", False),
+            stage_results=state.get("stage_results", {}),
+            qualitative_analysis=state.get("qualitative_analysis", {}),
+            reverse_analysis=state.get("reverse_analysis", {}),
+            business_model=state.get("business_model", ""),
+            operating_quality=state.get("operating_quality", ""),
+            financials_8p=[{"period": f.report_period, "revenue": f.revenue,
+                            "net_profit_parent": f.net_profit_parent,
+                            "net_profit_deducted": f.net_profit_deducted}
+                           for f in (state.get("financials") or [])[:8]],
             errors=state.get("errors", []),
             warnings_list=state.get("warnings", []),
             analysis_started=state.get("analysis_started", ""),

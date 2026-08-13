@@ -17,6 +17,8 @@ from backend.api import api_router
 from backend.data.scheduler import TaskScheduler
 from backend.services.refresh_svc import run_quote_refresh, run_recompute_analysis
 
+from apscheduler.triggers.interval import IntervalTrigger
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +26,10 @@ async def lifespan(app: FastAPI):
     # 行情 30min 刷新（交易时段由 MarketCalendar 判断）；收盘重算 B
     scheduler.add_quote_refresh_job(run_quote_refresh, interval_minutes=30)
     scheduler.add_analysis_job(run_recompute_analysis)
+
+    from backend.services.refresh_svc import run_financials_refresh
+    scheduler.add_job(run_financials_refresh, IntervalTrigger(minutes=30),
+                      job_id="financials_refresh", name="财报数据刷新")
 
     # 每用户自动分析 reconcile（start 前，确保 startup 时已注册）
     from backend.services.refresh_svc import collect_auto_analysis_users, run_user_auto_analysis

@@ -119,3 +119,20 @@ async def test_save_snapshot_checklist_empty_to_none(db_session):
     assert snap.checklist_results is None
     assert snap.checklist_summary is None
     assert snap.checklist_veto is False
+
+
+@pytest.mark.asyncio
+async def test_save_snapshot_writes_stage_results_and_financials_8p(db_session):
+    from backend.agents.analysis_chain import AnalysisReport
+    from backend.services.snapshot_svc import SnapshotService
+
+    report = AnalysisReport(
+        code="600519", name="茅台", data_date="2026-08-13",
+        conclusion="c", recommendation="等待时机-观察区",
+        stage_results={"analyze_qualitative": {"business_model": {"title": "商业模式", "text": "t"}}},
+        financials_8p=[{"period": "2026H1", "revenue": 120.0, "net_profit_parent": 35.0,
+                        "net_profit_deducted": 32.0}],
+    )
+    snap = await SnapshotService.save_snapshot(db_session, "u1", report)
+    assert snap.stage_results
+    assert "2026H1" in snap.financials_8p

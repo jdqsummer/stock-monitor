@@ -102,6 +102,8 @@ class AnalysisSnapshot(Base):
     checklist_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     conclusion: Mapped[str | None] = mapped_column(Text, nullable=True)          # 逆向清单审视后的结论
     unassessable_risk: Mapped[bool] = mapped_column(Boolean, default=False)      # 安全边际无法评估
+    stage_results: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON：五段结构化结果
+    financials_8p: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON：近8期明细
     analysis_source: Mapped[str] = mapped_column(String(20), default="manual")
     analysis_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

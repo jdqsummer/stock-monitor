@@ -65,6 +65,12 @@ class SnapshotService:
         existing.checklist_summary = report.checklist_summary or None
         existing.conclusion = report.conclusion or None
         existing.unassessable_risk = report.unassessable_risk
+        existing.stage_results = (
+            json.dumps(report.stage_results, ensure_ascii=False) if report.stage_results else None
+        )
+        existing.financials_8p = (
+            json.dumps(report.financials_8p, ensure_ascii=False) if report.financials_8p else None
+        )
         existing.analysis_source = source
         existing.analysis_completed_at = datetime.now()
         try:

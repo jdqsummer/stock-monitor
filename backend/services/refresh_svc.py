@@ -181,3 +181,12 @@ async def run_recompute_analysis() -> int:
             return await RefreshService.recompute_analysis(session)
         finally:
             await session.close()
+
+
+async def run_financials_refresh() -> int:
+    """定时任务入口：独立 session 刷新财报多期落库"""
+    async with async_session_factory() as session:
+        try:
+            return await RefreshService.refresh_financials(session)
+        finally:
+            await session.close()

@@ -26,6 +26,17 @@ def _safe_json_list(raw) -> list:
         return []
 
 
+def _safe_json_dict(raw) -> dict:
+    """JSON 字符串 → dict；不合法返回 {}。"""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
 class StockDataService:
     """
     股票数据服务。
@@ -133,6 +144,9 @@ class StockDataService:
             "unassessable_risk": snapshot.unassessable_risk,
             "profit_quality_ok": snapshot.profit_quality_ok,
             "profit_quality_warnings": _safe_json_list(snapshot.profit_quality_warnings),
+            "stage_results": _safe_json_dict(snapshot.stage_results),
+            "financials_8p": _safe_json_list(snapshot.financials_8p),
+            "reverse_analysis": _safe_json_dict(snapshot.checklist_results),  # 兼容：reverse_analysis 暂映射 checklist_results
         }
 
     @staticmethod

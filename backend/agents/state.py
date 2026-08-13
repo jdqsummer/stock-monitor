@@ -96,6 +96,13 @@ class AnalysisState(TypedDict, total=False):
     loss_exception_rationale: str             # 亏损特例理由（LLM 路径，OpenHarness 输出）
     forward_valuation_basis: str              # 前瞻估值依据（LLM 路径，OpenHarness 输出）
 
+    # ── 五段式工作流结果（stage_results 供详情页渲染）──
+    stage_results: dict                 # {stage_name: {title, ...}} 五段结构化结果
+    qualitative_analysis: dict          # {output_field: {title, text, ...}}
+    reverse_analysis: dict              # {conclusions: {...}, major_risks: [...]}
+    business_model: str                 # 商业模式（兼容顶层字段）
+    operating_quality: str              # 经营质量（兼容顶层字段）
+
     # ── 元数据 ──
     messages: Annotated[list, add_messages]  # Agent 对话历史
     errors: list[str]                        # 错误收集
