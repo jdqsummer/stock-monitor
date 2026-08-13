@@ -121,6 +121,7 @@ class WatchlistBoardRow(BaseModel):
     swing_price: str                       # "38-51元"
     current_market_cap: float = 0.0        # 900（亿元）
     current_price: float = 0.0             # 55.89
+    pe_dynamic: float | None = None        # 动态 PE（来自实时行情）
     distance_pct: float | None = None      # 15.3（%）；未分析为 None
     signal: Signal = Signal.NONE
     industry: str | None = None

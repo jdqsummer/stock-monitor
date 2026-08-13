@@ -56,6 +56,7 @@ export interface WatchlistBoardRow {
   swing_price: string;
   current_market_cap: number;
   current_price: number;
+  pe_dynamic: number | null;
   distance_pct: number | null;
   signal: Signal;
   industry: string | null;

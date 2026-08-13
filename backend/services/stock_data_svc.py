@@ -62,6 +62,7 @@ class StockDataService:
             swing_price=f"{margin_result.swing_price_low:.0f}-{margin_result.swing_price_high:.0f}元",
             current_market_cap=margin_result.current_market_cap,
             current_price=margin_result.current_price,
+            pe_dynamic=quote.pe_dynamic,
             distance_pct=margin_result.distance_pct,
             signal=margin_result.signal,
             analysis_date=margin_result.data_date,
@@ -182,6 +183,7 @@ class StockDataService:
                     swing_market_cap="", swing_price="",
                     current_market_cap=quote.total_market_cap,
                     current_price=quote.current_price,
+                    pe_dynamic=quote.pe_dynamic,
                     distance_pct=None, signal=Signal.NONE,
                     industry=item.industry, analysis_date=None,
                 ))
@@ -197,6 +199,7 @@ class StockDataService:
                 swing_price=f"{snapshot.swing_price_low:.0f}-{snapshot.swing_price_high:.0f}元",
                 current_market_cap=quote.total_market_cap,
                 current_price=quote.current_price,
+                pe_dynamic=quote.pe_dynamic,
                 distance_pct=distance_pct,
                 signal=signal,
                 industry=item.industry,

@@ -45,7 +45,7 @@ async def test_recompute_distance_signal_invalid_swing(db_session):
 @pytest.mark.asyncio
 async def test_get_board_rows_with_snapshot(db_session):
     db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=1560.0,
-                                 total_market_cap=19500.0))
+                                 total_market_cap=19500.0, pe_dynamic=25.3))
     db_session.add(AnalysisSnapshot(
         user_id="u1", stock_code="600519",
         annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
@@ -66,12 +66,13 @@ async def test_get_board_rows_with_snapshot(db_session):
     assert row.swing_price == "1147-2456元"
     assert row.industry == "白酒"
     assert row.signal == Signal.GREEN
+    assert row.pe_dynamic == 25.3
 
 
 @pytest.mark.asyncio
 async def test_get_board_rows_without_snapshot(db_session):
     db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=1560.0,
-                                 total_market_cap=19500.0))
+                                 total_market_cap=19500.0, pe_dynamic=25.3))
     items = [WatchlistItem(user_id="u1", stock_code="600519", stock_name="贵州茅台")]
     await db_session.commit()
 
@@ -79,6 +80,7 @@ async def test_get_board_rows_without_snapshot(db_session):
     assert len(rows) == 1
     assert rows[0].signal == Signal.NONE
     assert rows[0].distance_pct is None
+    assert rows[0].pe_dynamic == 25.3
 
 
 @pytest.mark.asyncio
