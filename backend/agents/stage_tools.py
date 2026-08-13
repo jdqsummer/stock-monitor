@@ -205,7 +205,7 @@ class StageTool(BaseTool):
             if resp.get("forward_valuation_basis"):
                 updates["forward_valuation_basis"] = resp.get("forward_valuation_basis")
             payload = {**st, **updates, "annual_profit_low": st.get("annual_profit_low")}
-            updates = validate_output_shape(payload)
+            validate_output_shape(payload)               # 仅守卫：亏损非🔴缺字段时抛 OutputValidationError
             updates.update(apply_veto({**st, **updates}))
             return {"stage_results": {self.name: {"title": self.name, **updates}},
                     self.output_field: updates, **updates}
