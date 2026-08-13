@@ -179,6 +179,111 @@ async def test_output_conclusion_veto_forces_red():
     assert res.metadata["state_updates"]["final_rating"] == "🔴"
 
 
+# ── 恢复 Task 8 丢失的工具测试 ──
+
+
+@pytest.mark.asyncio
+async def test_run_reverse_checklist_maps_to_state(monkeypatch):
+    """RunReverseChecklistTool 将 run_reverse_checklist 输出映射到 checklist_* 字段"""
+    from backend.agents.harness_tools import RunReverseChecklistTool
+
+    async def fake_run(llm, stock_info):
+        return {
+            "checklist_results": {"Q1": "有风险", "Q2": "没问题"},
+            "checklist_veto": True,
+            "most_concerning": "核心护城河五年内可能被削弱",
+            "overall_assessment": "证伪充分，存在重大担忧，应暂停买入",
+        }
+
+    monkeypatch.setattr("backend.agents.analysis_chain.run_reverse_checklist", fake_run)
+
+    tool = RunReverseChecklistTool()
+    ctx = _ctx_with_llm(
+        {"stock_name": "贵州茅台", "stock_code": "600519", "current_price": 50.0,
+         "pe_dynamic": 22.0, "net_profit_deducted": 34.0, "industry_category": "白酒"},
+        {},
+    )
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+
+    assert updates["checklist_results"]["Q1"] == "有风险"
+    assert updates["checklist_veto"] is True
+    assert updates["checklist_summary"] == "证伪充分，存在重大担忧，应暂停买入"
+    assert "证伪" in res.output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "industry, payload, expected_low, expected_high",
+    [
+        # 有锚点行业（白酒 20-35）：非法区间 → 回退锚点
+        ("白酒", {"pe_low": 0, "pe_high": 35, "pe_rationale": "无效"}, 20.0, 35.0),
+        ("白酒", {"pe_low": 30, "pe_high": 25, "pe_rationale": "倒挂"}, 20.0, 35.0),
+        ("白酒", {"pe_low": "n/a", "pe_high": "n/a", "pe_rationale": "非数值"}, 20.0, 35.0),
+        # 无锚点行业 → 默认 15-25
+        ("未知行业", {"pe_low": -5, "pe_high": 10, "pe_rationale": "无效"}, 15.0, 25.0),
+        ("", {"pe_low": 30, "pe_high": 20, "pe_rationale": "倒挂"}, 15.0, 25.0),
+        ("未知行业", {"pe_low": "n/a", "pe_high": "n/a", "pe_rationale": "非数值"}, 15.0, 25.0),
+    ],
+)
+async def test_anchor_industry_pe_invalid_ranges_fall_back(
+    industry, payload, expected_low, expected_high
+):
+    """AnchorIndustryPeTool 对非法区间回退锚点/默认 15-25"""
+    from backend.agents.harness_tools import AnchorIndustryPeTool
+    tool = AnchorIndustryPeTool()
+    ctx = _ctx_with_llm(
+        {"stock_name": "X", "stock_code": "0001", "industry_category": industry, "current_price": 50.0},
+        payload,
+    )
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+    assert updates["pe_low"] == expected_low
+    assert updates["pe_high"] == expected_high
+
+
+@pytest.mark.asyncio
+async def test_output_conclusion_writes_confidence_and_action_items():
+    """OutputConclusionTool 写入 rating_confidence/action_items，透传 recommendation"""
+    from backend.agents.harness_tools import OutputConclusionTool
+    tool = OutputConclusionTool()
+    ctx = _ctx_with_llm(
+        {"annual_profit_low": 32.0, "distance_pct": 15.0, "signal_label": "观察区",
+         "swing_price_low": 10, "swing_price_high": 20, "moat_assessment": "m", "risk_factors": [],
+         "checklist_summary": "s", "checklist_veto": False},
+        {"final_rating": "🟡", "recommendation": "距击球区 15%，观察区，等待更好时机",
+         "action_items": ["设定击球点提醒", "持续跟踪基本面"]},
+    )
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+
+    assert updates["final_rating"] == "🟡"
+    assert "观察" in updates["recommendation"]
+    assert updates["rating_confidence"] == 0.75
+    assert updates["action_items"] == ["设定击球点提醒", "持续跟踪基本面"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload, expected", [
+    ({"final_rating": "INVALID", "recommendation": "x", "action_items": []}, "🟡"),
+    ({"final_rating": None, "recommendation": "x", "action_items": []}, "🟡"),
+    ({"final_rating": "🔴", "recommendation": "x", "action_items": []}, "🔴"),
+])
+async def test_output_conclusion_rating_guard(payload, expected):
+    """final_rating 非法 → 默认 🟡；合法值原样保留"""
+    from backend.agents.harness_tools import OutputConclusionTool
+    tool = OutputConclusionTool()
+    ctx = _ctx_with_llm(
+        {"annual_profit_low": 32.0, "distance_pct": 15.0, "signal_label": "观察区",
+         "swing_price_low": 10, "swing_price_high": 20, "moat_assessment": "m", "risk_factors": [],
+         "checklist_summary": "s", "checklist_veto": False},
+        payload,
+    )
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+    assert updates["final_rating"] == expected
+
+
 @pytest.mark.asyncio
 async def test_build_investment_tools_registers_9():
     from backend.agents.harness_tools import build_investment_tools
