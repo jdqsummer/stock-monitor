@@ -242,7 +242,7 @@ class DataAgent:
                 if data is None:
                     result["missing_fields"].append("quote")
             elif field_name == "financials":
-                result["financials"] = data if isinstance(data, list) else ([data] if data else [])
+                result["financials"] = data if isinstance(data, list) else []
                 if not result["financials"]:
                     result["missing_fields"].append("financials")
             elif field_name == "news":
@@ -406,7 +406,7 @@ class DataAgent:
             logger.error(f"获取行情失败 {code}: {e}")
             return None
 
-    async def _fetch_financials_safe(self, code: str) -> Optional[FinancialReport]:
+    async def _fetch_financials_safe(self, code: str) -> Optional[list[FinancialReport]]:
         try:
             return await self.westock.fetch_financials(code)
         except Exception as e:
@@ -475,9 +475,10 @@ class DataAgent:
 
             elif name == "fetch_financials":
                 code = args.get("code", "")
-                fin = await self._fetch_financials_safe(code)
-                collected["financials"] = [fin] if fin else []
-                return {"success": fin is not None, "data": fin.model_dump() if fin else None}
+                fins = await self._fetch_financials_safe(code)
+                collected["financials"] = fins or []
+                return {"success": bool(fins), "count": len(fins or []),
+                        "data": [f.model_dump() for f in (fins or [])]}
 
             elif name == "fetch_news":
                 code = args.get("code", "")

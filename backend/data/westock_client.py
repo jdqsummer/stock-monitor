@@ -29,11 +29,14 @@ class WestockClient:
                 last_error = e
         raise ProviderError(f"所有数据源均不可用: {code}: {last_error}")
 
-    async def fetch_financials(self, code: str) -> FinancialReport:
+    async def fetch_financials(self, code: str) -> list[FinancialReport]:
         last_error: Exception | None = None
         for p in self.providers:
             try:
-                return await p.fetch_financials(code)
+                reports = await p.fetch_financials(code)
+                if reports:
+                    return reports
+                last_error = ProviderError(f"数据源 {type(p).__name__} 财报为空: {code}")
             except ProviderError as e:
                 logger.warning(f"数据源 {type(p).__name__} 财报失败: {e}")
                 last_error = e

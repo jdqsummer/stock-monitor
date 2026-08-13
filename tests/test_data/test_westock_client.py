@@ -17,12 +17,15 @@ class TestWestockClient:
 
     @pytest.mark.asyncio
     async def test_fetch_financials_mock(self, westock_client):
-        """开发模式：模拟财报数据"""
-        report = await westock_client.fetch_financials("600519")
-        assert isinstance(report, FinancialReport)
+        """开发模式：模拟多期财报（8 期，最新在前）"""
+        reports = await westock_client.fetch_financials("600519")
+        assert isinstance(reports, list)
+        assert len(reports) == 8
+        report = reports[0]
         assert report.report_period == "2026H1"
         assert report.net_profit_deducted == 32.0
         assert report.is_official is False
+        assert reports[-1].report_period == "2024Q3"
 
     @pytest.mark.asyncio
     async def test_fetch_news_mock(self, westock_client):
