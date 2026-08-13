@@ -189,7 +189,6 @@ class TestNodeFunctions:
     @pytest.mark.asyncio
     async def test_check_profit_quality_writes_growth_metrics(self):
         """确定性节点输出 growth_metrics（规则降级路径供 read_context 展示）"""
-        from backend.agents.growth import compute_growth_metrics
         mock_fin = MagicMock()
         mock_fin.report_period = "2026H1"
         mock_fin.revenue = 120.0

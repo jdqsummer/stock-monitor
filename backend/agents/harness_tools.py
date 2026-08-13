@@ -10,7 +10,6 @@ import logging
 from pydantic import BaseModel, Field
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
 
-from backend.agents.growth import compute_growth_metrics
 from backend.agents.workflow import (
     check_profit_quality_node,
     estimate_annual_profit_node,
@@ -120,6 +119,8 @@ class AssessProfitQualityTool(BaseTool):
             resp = await llm.json_chat([{"role": "user", "content": prompt}])
         except Exception:
             logger.warning("assess_profit_quality LLM 定性失败，保留确定性判断")
+            return None
+        if not isinstance(resp, dict):
             return None
         gq = resp.get("growth_quality")
         if gq not in ("good", "warning", "deteriorating"):

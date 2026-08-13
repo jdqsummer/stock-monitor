@@ -189,6 +189,48 @@ async def test_assess_profit_quality_llm_failure_keeps_deterministic():
     assert "LLM 定性失败" in updates["growth_assessment"]
 
 
+@pytest.mark.asyncio
+async def test_assess_profit_quality_llm_warning_no_downgrade():
+    """growth_quality=='warning' → 不降级（保留确定性 profit_quality_ok）"""
+    tool = AssessProfitQualityTool()
+    state = {
+        "stock_name": "X", "stock_code": "600519",
+        "financials": [
+            FinancialReport(code="600519", name="X", report_period="2026H1",
+                            revenue=120.0, net_profit_parent=35.0, net_profit_deducted=32.0),
+            FinancialReport(code="600519", name="X", report_period="2025H1",
+                            revenue=108.0, net_profit_parent=31.0, net_profit_deducted=29.0),
+        ],
+        "net_profit_parent": 35.0,
+        "net_profit_deducted": 32.0,
+    }
+    ctx = _ctx_with_llm(state, {"growth_quality": "warning", "rationale": "增长趋缓", "confidence": 0.6})
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+    assert updates["profit_quality_ok"] is True  # warning 不触发降级
+
+
+@pytest.mark.asyncio
+async def test_assess_profit_quality_llm_invalid_value_normalized_no_downgrade():
+    """growth_quality 非法值 → 归一为 warning → 不降级"""
+    tool = AssessProfitQualityTool()
+    state = {
+        "stock_name": "X", "stock_code": "600519",
+        "financials": [
+            FinancialReport(code="600519", name="X", report_period="2026H1",
+                            revenue=120.0, net_profit_parent=35.0, net_profit_deducted=32.0),
+            FinancialReport(code="600519", name="X", report_period="2025H1",
+                            revenue=108.0, net_profit_parent=31.0, net_profit_deducted=29.0),
+        ],
+        "net_profit_parent": 35.0,
+        "net_profit_deducted": 32.0,
+    }
+    ctx = _ctx_with_llm(state, {"growth_quality": "bogus", "rationale": "r", "confidence": 0.5})
+    res = await tool.execute(tool.input_model(), ctx)
+    updates = res.metadata["state_updates"]
+    assert updates["profit_quality_ok"] is True  # 非法值归一 warning，不降级
+
+
 # ── Task 5: LLM 定性工具 + build_investment_tools ──
 
 class FakeLLM:

@@ -1,7 +1,7 @@
 # stock-monitor/tests/test_data/test_westock_client.py
 import pytest
 
-from backend.schemas.stock import StockQuote, FinancialReport, CompanyNews
+from backend.schemas.stock import StockQuote, CompanyNews
 
 
 class TestWestockClient:

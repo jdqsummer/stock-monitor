@@ -25,7 +25,7 @@ def _yoy(cur, prev, field: str) -> float | None:
 
 
 def _trend(values: list[float]) -> str:
-    """最近 4 期扣非同比方向：最新 vs 更早均值"""
+    """扣非同比方向：最新值 vs 更早均值"""
     if len(values) < 2:
         return "N/A"
     recent = values[0]
