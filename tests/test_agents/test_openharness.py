@@ -173,3 +173,32 @@ def test_apply_veto_includes_conclusion():
     assert u["final_rating"] == "🔴"
     assert u["conclusion"]
     assert "不可买入" in u["conclusion"]
+
+
+# ── 规则子链降级路径仍确定性执行约束 ──
+
+
+@pytest.mark.asyncio
+async def test_rule_based_path_still_enforces_constraints():
+    """规则子链降级路径仍走约束引擎（确定性兜底保留）。
+
+    覆盖两处确定性语义：
+    1. 亏损（net_profit_deducted ≤ 0）→ "亏损不年化" → signal=unquantifiable → 🟡
+       （亏损不机械判红，软规则语义已由「统一亏损语义」提交确立）
+    2. 非经常性水分 > 50% → 硬约束（纪律红线·利润质量）→ 🔴
+    """
+    agent = OpenHarnessAgent(llm_provider=None)
+
+    # 亏损：确定性 🟡 观察区，安全边际无法量化
+    loss = make_state(net_profit_deducted=-2.0, net_profit_parent=-2.0)
+    loss_result = await agent._rule_based(loss)
+    assert loss_result["profit_method"] == "亏损不年化"
+    assert loss_result["signal"] == "unquantifiable"
+    assert loss_result["final_rating"] == "🟡"
+    assert "无法量化" in loss_result["recommendation"]
+
+    # 非经常性水分 > 50%：确定性 🔴，硬约束仍强制执行并写入 errors
+    watery = make_state(net_profit_parent=100.0, net_profit_deducted=20.0)
+    watery_result = await agent._rule_based(watery)
+    assert watery_result["final_rating"] == "🔴"
+    assert any("利润质量" in e for e in watery_result["errors"])
