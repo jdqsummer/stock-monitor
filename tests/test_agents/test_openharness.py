@@ -251,10 +251,11 @@ async def test_output_conclusion_produces_conclusion_and_unassessable():
                        checklist_summary="存在重大担忧", moat_assessment="品牌护城河")
     updates, text = await agent._tool_output_conclusion(state, {})
 
-    assert updates["conclusion"].startswith("清单证伪")
     assert updates["unassessable_risk"] is True
     assert updates["final_rating"] == "🔴"          # veto 覆盖 LLM 的 🟢
     assert "坚决放弃" in updates["recommendation"]
+    # veto 同时覆盖 conclusion（spec §4：否决覆盖 final_rating/recommendation/conclusion）
+    assert "不可买入" in updates["conclusion"]
     assert "结论" in text
 
 
@@ -409,3 +410,13 @@ def test_apply_veto_none_returns_empty():
 def test_apply_veto_priority_unassessable_over_checklist():
     updates = apply_veto({"unassessable_risk": True, "checklist_veto": True})
     assert "无法评估" in updates["recommendation"]
+
+
+def test_apply_veto_includes_conclusion():
+    """否决覆盖 conclusion（spec §4：veto 覆盖 final_rating/recommendation/conclusion）"""
+    from backend.agents.openharness import apply_veto
+
+    u = apply_veto({"unassessable_risk": True, "checklist_veto": False})
+    assert u["final_rating"] == "🔴"
+    assert u["conclusion"]
+    assert "不可买入" in u["conclusion"]

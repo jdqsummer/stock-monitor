@@ -688,3 +688,43 @@ async def test_rule_based_applies_veto():
     result = await agent.analyze(state)
     assert result["final_rating"] == "🔴"
     assert "坚决放弃" in result["recommendation"]
+
+
+# ── 终审修复：cross_check 不覆盖 OpenHarness 产出的结论/veto ──
+
+@pytest.mark.asyncio
+async def test_cross_check_preserves_existing_conclusion():
+    """已有 conclusion/recommendation（LLM 产出）时 cross_check 不覆盖（veto 不被覆盖的关键）"""
+    from backend.agents.workflow import cross_check_and_output_node
+
+    updates = await cross_check_and_output_node({
+        "signal": "unquantifiable", "final_rating": "🔴", "distance_pct": 999.0,
+        "conclusion": "LLM 审视结论：重大风险", "recommendation": "坚决放弃-太难",
+    })
+    assert "conclusion" not in updates
+    assert "recommendation" not in updates
+    assert updates["analysis_completed"]
+
+
+@pytest.mark.asyncio
+async def test_rule_based_veto_survives_node4():
+    """模拟图 node3(openharness_analyze)→node4(cross_check)：_rule_based 否决后不被 node4 覆盖"""
+    from backend.agents.openharness import OpenHarnessAgent
+    from backend.agents.workflow import cross_check_and_output_node
+
+    agent = OpenHarnessAgent(llm_provider=None)
+    state = {
+        "stock_code": "600519", "stock_name": "测试股",
+        "current_price": 50.0, "total_market_cap": 750.0, "total_shares": 15.0,
+        "pe_dynamic": 22.0, "net_profit_parent": 35.0, "net_profit_deducted": 34.0,
+        "annual_profit_low": 32.0, "annual_profit_high": 35.0, "profit_method": "H1×2",
+        "pe_low": 20.0, "pe_high": 35.0, "industry_category": "白酒",
+        "signal": "green", "signal_label": "击球区", "distance_pct": -5.0,
+        "unassessable_risk": True, "checklist_veto": False,
+        "errors": [], "warnings": [], "financials": [], "news": [],
+    }
+    node3 = await agent.analyze(state)
+    assert node3["final_rating"] == "🔴"   # veto 生效
+    node4 = await cross_check_and_output_node({**state, **node3})
+    assert "conclusion" not in node4       # node4 不覆盖已有结论
+    assert node3["final_rating"] == "🔴"

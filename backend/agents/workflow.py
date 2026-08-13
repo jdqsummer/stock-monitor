@@ -489,8 +489,19 @@ async def manual_adjust_node(state: AnalysisState) -> dict:
 
 
 async def cross_check_and_output_node(state: AnalysisState) -> dict:
-    """清单对照 & 输出归档节点（Step 9）。生成审视结论 + 三分类建议。"""
+    """清单对照 & 输出归档节点（Step 9）。生成审视结论 + 三分类建议。
+
+    若 OpenHarness（LLM 路径 _tool_output_conclusion / apply_veto）已产出审视结论与建议，
+    保留其结论，只补归档元数据；否则按信号生成规则化结论（纯规则降级路径）。
+    """
     logger.info("[Step 4/4] 清单对照 & 输出")
+
+    # 保留 OpenHarness 已产出的结论与建议，避免本节点覆盖（LLM 路径关键，veto 不可被覆盖）
+    if state.get("conclusion") or state.get("recommendation"):
+        return {
+            "analysis_completed": datetime.now().isoformat(),
+            "rating_confidence": state.get("rating_confidence", 0.75),
+        }
 
     signal = state.get("signal", "red")
     final_rating = state.get("final_rating", "")

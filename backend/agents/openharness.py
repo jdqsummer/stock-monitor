@@ -98,18 +98,20 @@ RULE_BASED_STEPS = [
 def apply_veto(state: dict) -> dict:
     """否决链：安全边际无法评估 / 清单否决 → 强制 🔴 坚决放弃。
 
-    只覆盖 final_rating 与 recommendation；不改 signal（价格信号保留，
+    覆盖 final_rating、recommendation、conclusion；不改 signal（价格信号保留，
     让 UI 同时展示"便宜"与"不可买"）。
     """
     if state.get("unassessable_risk"):
         return {
             "final_rating": "🔴",
             "recommendation": "坚决放弃-太难：安全边际无法评估（重大风险），即使价格处于击球区也不可买入。",
+            "conclusion": "风险审视显示该标的存在使安全边际无法评估的重大风险：任何价格都不构成安全边际，即使跌到 0 也不可买入。",
         }
     if state.get("checklist_veto"):
         return {
             "final_rating": "🔴",
             "recommendation": "坚决放弃-太难：逆向清单存在否决项，证伪买入逻辑。",
+            "conclusion": "14 道逆向清单出现否决项，买入逻辑被证伪；即使估值便宜也不可买入。",
         }
     return {}
 
