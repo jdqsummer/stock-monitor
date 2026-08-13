@@ -49,19 +49,19 @@
 ```
 backend/agents/skills/
   ├── investment-framework/SKILL.md       # 主 skill：角色+5阶段骨架+顺序/依赖+八项原则+评级纪律+输出schema
-  ├── stages/                             # 分析阶段容器（可扩展任意分析模块）
-  │   ├── qualitative/SKILL.md            # 阶段2 定性（声明 blocks_dir: qualitative）
-  │   ├── reverse-checklist/SKILL.md      # 阶段3 逆向
-  │   ├── swing-zone/SKILL.md             # 阶段4 安全边际（hybrid：LLM PE 锚定 + 定量工具）
-  │   └── conclusion/SKILL.md             # 阶段5 结论与建议
-  └── blocks/                             # 阶段内子块容器（供 stage skill 引用）
-      └── qualitative/
-          ├── business-model/SKILL.md     # 商业模式：如何赚钱
-          ├── moat/SKILL.md               # 护城河六要素
-          └── operating-quality/SKILL.md  # 经营质量（含确定性利润质量检查，handler: dedicated）
+  └── stages/                             # 分析阶段容器（可扩展任意分析模块）
+      ├── qualitative/                    # 阶段2 定性（含内部子块容器）
+      │   ├── SKILL.md                    # 阶段定义（frontmatter 声明 blocks_dir: blocks）
+      │   └── blocks/
+      │       ├── business-model/SKILL.md # 商业模式：如何赚钱
+      │       ├── moat/SKILL.md           # 护城河六要素
+      │       └── operating-quality/SKILL.md  # 经营质量（含确定性利润质量检查，handler: dedicated）
+      ├── reverse-checklist/SKILL.md      # 阶段3 逆向
+      ├── swing-zone/SKILL.md             # 阶段4 安全边际（hybrid：LLM PE 锚定 + 定量工具）
+      └── conclusion/SKILL.md             # 阶段5 结论与建议
 ```
 
-**布局约定**：`<root>/<skill-dir>/SKILL.md`，与 OpenHarness `load_skills_from_dirs`（`vendor/openharness/skills/loader.py:153`）完全一致。适配层用 `load_skill_registry(extra_skill_dirs=["skills/", "skills/stages/", "skills/blocks/qualitative/"])` 加载全部。
+**布局约定**：stage 级 `<root>/<skill-dir>/SKILL.md`，与 OpenHarness `load_skills_from_dirs`（`vendor/openharness/skills/loader.py:153`）完全一致。适配层用 `load_skill_registry(extra_skill_dirs=["skills/", "skills/stages/"])` 加载全部阶段 skill；**阶段内子块不注册进 skill registry**，由 `StageTool` 工厂在构造时扫描 stage 目录的 `blocks/` 子目录加载（内聚、避免 registry 膨胀）。
 
 **SKILL.md frontmatter 约定**（驱动通用工厂）：
 
@@ -83,13 +83,15 @@ block 级 frontmatter：`name`（如 `business-model`）、`output_field`（如 
 
 ### 通用阶段工具工厂 `build_stage_tools()`（`harness_tools.py`）
 
-- 扫描 `skills/stages/` 目录，**每个 stage skill 生成一个 `StageTool` 实例**（`name`/`description` 取自 frontmatter）
+- 扫描 `skills/stages/` 目录，**每个 stage skill 生成一个 `StageTool` 实例**：
+  - 构造时解析该 stage `SKILL.md` frontmatter（`name`/`description`/`type`/`output_field`/`order`/`depends_on`/`blocks_dir`）并读入正文
+  - 若 stage 目录下存在 `blocks/` 子目录 → 内部扫描每个子块 `SKILL.md`，解析子块 frontmatter（`output_field`/`title`/`order`/可选 `handler`）
 - **基本数据阶段不生成 stage 工具**：它由 `read_context` 覆盖（纯只读），主 skill 阶段 1 直接引导调用；故 `stages/` 只放需要 LLM 产出写回 state 的阶段（2-5）+ 未来新增
 - `StageTool.execute`：
-  1. 从 registry 取本 stage skill 内容
+  1. 用构造时读到的本 stage skill 内容（无需运行时查 registry）
   2. 按 `depends_on` 从 state 注入依赖数据
   3. 按 `type` 执行：
-     - `qualitative`：若声明 `blocks_dir` → **遍历该 blocks 容器**，每个子块一次 LLM 调用（读子块 skill + 注入数据 → `json_chat` → 写 `state.stage_results.<stage>.<block>`）；否则单次 LLM 定性
+     - `qualitative`：有 `blocks/` 子目录 → **遍历子块**，每个子块一次 LLM 调用（读子块 SKILL.md + 注入数据 → `json_chat` → 写 `state.stage_results.<stage>.<output_field>`）；否则单次 LLM 定性
      - `hybrid`（swing-zone）：LLM 定击球 PE 区间 → 引导调用确定性工具（`calc_swing_zone`/`calc_safety_margin`）→ 合并写回
      - `readonly`：仅读 `read_context`
   4. 子块 frontmatter 含 `handler: dedicated_*` 时，转专用处理函数（如 `operating-quality` → `check_profit_quality_node` 确定性检查 + LLM 定性，即现 `AssessProfitQualityTool` 演进）
@@ -100,14 +102,14 @@ block 级 frontmatter：`name`（如 `business-model`）、`output_field`（如 
 ```markdown
 ## 分析工作流（按 order 依次执行 stages/ 下全部阶段）
 1. 基本数据：调用 read_context 读取行情/近8期财报
-2. 定性分析：analyze_qualitative（内部按 blocks/qualitative 子块逐块分析）
+2. 定性分析：analyze_qualitative（内部按 stages/qualitative/blocks/ 子块逐块分析）
 3. 逆向分析：run_reverse_checklist
 4. 安全边际分析：anchor_swing_pe → estimate_annual_profit → calc_swing_zone → calc_safety_margin
 5. 结论与建议：output_conclusion（结合 1-4 全部结论）
 
 ## 扩展说明
 - 新增分析模块 = 在 stages/ 新建 SKILL.md（声明 type/output_field/order/depends_on），自动纳入流程
-- 新增定性子块 = 在 blocks/qualitative/ 新建 SKILL.md（声明 output_field/title/order），自动纳入定性分析
+- 新增定性子块 = 在 stages/qualitative/blocks/ 新建 SKILL.md（声明 output_field/title/order），自动纳入定性分析
 - 各阶段判断依据见对应 SKILL.md，用户可直接编辑演进方法论，无需改代码
 ```
 
@@ -116,7 +118,7 @@ block 级 frontmatter：`name`（如 `business-model`）、`output_field`（如 
 | 扩展类型 | 零代码 | 说明 |
 |:--|:--|:--|
 | 新增纯 LLM 判断阶段 | ✅ | `stages/xx/SKILL.md` 一个文件 |
-| 新增定性子块 | ✅ | `blocks/qualitative/xx/SKILL.md` 一个文件 |
+| 新增定性子块 | ✅ | `stages/qualitative/blocks/xx/SKILL.md` 一个文件 |
 | 调整阶段顺序/依赖/判断指导 | ✅ | 改主 skill / stage skill / block skill 文本 |
 | 需要新数据字段 | ❌ | 数据采集 + 注入映射需代码（数据面） |
 | 需要新算术公式 | ❌ | 需新增确定性工具类（计算面） |
@@ -128,7 +130,7 @@ block 级 frontmatter：`name`（如 `business-model`）、`output_field`（如 
 | 工具 | 类型 | skill 来源 | 阶段 |
 |:--|:--|:--|:--|
 | `read_context` | 专用只读（保留） | — | 1 基本数据 |
-| `analyze_qualitative` | stage 通用（遍历 blocks） | stages/qualitative + blocks/qualitative/* | 2 定性 |
+| `analyze_qualitative` | stage 通用（遍历内部子块） | stages/qualitative（+ stages/qualitative/blocks/*） | 2 定性 |
 | `run_reverse_checklist` | stage 通用（单块） | stages/reverse-checklist | 3 逆向 |
 | `estimate_annual_profit` | 专用定量（保留） | — | 4 安全边际 |
 | `anchor_swing_pe` | stage 通用（hybrid） | stages/swing-zone | 4 安全边际 |
@@ -139,7 +141,7 @@ block 级 frontmatter：`name`（如 `business-model`）、`output_field`（如 
 
 **关键迁移**：
 - `assess_profit_quality` → 并入 `analyze_qualitative` 的 `operating-quality` 子块（`handler: dedicated`），内部保留确定性 `check_profit_quality_node`（扣非口径/非经常性/增长指标）+ LLM 定性；`profit_quality_ok` 不再作为前端独立展示字段，但仍作结论内部依据
-- `analyze_qualitative`（三者合一）→ 拆为 `blocks/qualitative/` 三子块，由 `analyze_qualitative` 遍历
+- `analyze_qualitative`（三者合一）→ 拆为 `stages/qualitative/blocks/` 三子块，由 `analyze_qualitative` 遍历
 - `run_reverse_checklist` → 输出从 Q1-Q14 平铺改为 **4 类结论 + 重大风险**；14 问保留在 skill 内作 prompts；`checklist_veto` 逻辑保留
 - `anchor_industry_pe` → 更名 `anchor_swing_pe`，prompt 注入前序定性/逆向结论；先 `resolve_pe_anchor` 取行业锚点作 fallback，解析失败回退锚点
 - `output_conclusion` → prompt 注入 1-4 全部结论，输出三档 + 理由 + `action_items`
@@ -186,7 +188,7 @@ operating_quality: str         # 兼容顶层字段
 
 ## 九、适配层改动（`harness_component.py`）
 
-1. `build_skill_registry()`：`load_skill_registry(cwd, extra_skill_dirs=["skills/", "skills/stages/", "skills/blocks/qualitative/"])`
+1. `build_skill_registry()`：`load_skill_registry(cwd, extra_skill_dirs=["skills/", "skills/stages/"])`（阶段内子块由工厂扫描加载，不注册进 registry）
 2. system prompt = 主 skill 全文 + harness `_build_skills_section`（`prompts/context.py:25`）生成的 Available Skills 列表（列出全部 stage/block skill 供 LLM 用 `skill()` 读取）
 3. 注册 `skill` 工具（`SkillTool`）——LLM 可按需读任意子 skill
 4. 工具注册：`build_investment_tools` 改为 `[read_context, *build_stage_tools(), estimate_annual_profit, calc_swing_zone, calc_safety_margin, SkillTool()]`
@@ -214,7 +216,7 @@ operating_quality: str         # 兼容顶层字段
 ## 十一、测试策略
 
 **后端**：
-- skill 加载：`load_skill_registry` 能加载 stages/ 与 blocks/ 全部 SKILL.md，frontmatter 解析正确（name/type/output_field/order/depends_on）
+- skill 加载：`load_skill_registry` 能加载 stages/ 全部阶段 SKILL.md；`StageTool` 工厂能扫描 `stages/qualitative/blocks/` 子块，frontmatter 解析正确（name/type/output_field/order/depends_on/blocks_dir/handler）
 - 通用工厂：扫描 stages/ 生成对应工具；新增一个临时 stage skill → 工具自动出现（扩展性验证）
 - stage 工具单测（mock LLM）：qualitative 遍历 blocks 正确写 `stage_results`；operating-quality handler 确定性检查+LLM 定性；reverse 输出 4 类结论结构；swing-zone hybrid 顺序
 - 定量工具回归：`calc_swing_zone`/`calc_safety_margin`/`estimate_annual_profit` 纯算术不变
@@ -238,9 +240,9 @@ operating_quality: str         # 兼容顶层字段
 
 1. `reverse_analysis` 与现有 `checklist_results` 字段的映射（保留兼容 vs 迁移）
 2. 前端未知 stage 卡片的展示样式（通用块 vs 兜底文本）
-3. `blocks/qualitative/` 是否也复用 `blocks_dir` 通用机制（当前仅 qualitative 一个 stage 用子块，未来可推广）
+3. 子块容器机制（`stages/<stage>/blocks/`）当前仅 qualitative 一个阶段使用，未来其他阶段需要子级时可直接复用
 4. `financials_8p` 存储上限（固定 8 期，防膨胀）
 
 ## 十四、与既有设计文档的关系
 
-本设计是 `2026-08-13-openharness-embed-design.md` 十九节的落地细化：既有的 vendor 形态/降级路径/输出契约/日志方案不变；本设计新增"五段式工作流 + 阶段级 skill 扩展 + financials 双保险"三块，并替换其中工具链（9→8 投资工具 + skill 工具）与 SKILL.md 组织（单文件→stages/ + blocks/ 多文件）。
+本设计是 `2026-08-13-openharness-embed-design.md` 十九节的落地细化：既有的 vendor 形态/降级路径/输出契约/日志方案不变；本设计新增"五段式工作流 + 阶段级 skill 扩展 + financials 双保险"三块，并替换其中工具链（9→8 投资工具 + skill 工具）与 SKILL.md 组织（单文件→stages/ 多阶段目录，阶段内子块随阶段目录内聚）。
