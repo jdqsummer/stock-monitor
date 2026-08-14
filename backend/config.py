@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     VERIFY_CODE_EXPIRE_SECONDS: int = 300  # 5 分钟
     VERIFY_CODE_RATE_LIMIT_SECONDS: int = 60  # 同一邮箱 60s 内不可重复发送
 
+    # DSH 分析引擎（P3 桥接）
+    DSH_ENABLED: bool = False                # 总开关：False 时走纯规则降级链
+    DSH_ENGINE_URL: str = ""                 # dsh-engine HTTP 触发端点，如 http://dsh-engine:8000
+    DSH_TIMEOUT_SECONDS: float = 600.0       # 单次五段分析超时（P2 实测 5 个 agent() 串行 >8min，120s 会误降级）
+    DSH_RETRY_COUNT: int = 1                 # 整体重试 ≤1 次
+    DSH_MODEL_DEFAULT: str = "deepseek-v4-flash"
+    DSH_BUDGET_PER_ANALYSIS: int = 100_000   # 单次分析 input+output token 预算阈值，超限降级
+    DSH_DAILY_BUDGET: int = 1_000_000        # 日累计上限（超限拒绝新分析）
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
