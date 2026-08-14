@@ -1,0 +1,9 @@
+{
+  "signal_thresholds": { "green": 0, "yellow": 0.5, "red_above": 0.5 },
+  "pe_invalid_rules": {
+    "pe_low_le_zero": "非法 → 回退行业锚点",
+    "pe_high_le_zero": "非法 → 回退锚点",
+    "pe_high_lt_low": "非法 → 回退锚点",
+    "pe_low_gt_200": "极端兜底 → 回退锚点并标记 pe_extreme_fallback=true"
+  }
+}
