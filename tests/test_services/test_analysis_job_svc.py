@@ -15,7 +15,7 @@ from backend.services.analysis_job_svc import (
 async def test_default_chain_uses_llm_aware_constructor(db_session, test_session_factory, monkeypatch):
     """默认 chain 必须用 create_analysis_chain（带 LLM），不能用无 LLM 的 AnalysisChain()
 
-    AnalysisChain() 默认 llm_provider=None → OpenHarnessAgent.has_real_llm=False →
+    AnalysisChain() 默认 llm_provider=None → AnalysisAgent.has_real_llm=False →
     走纯规则子链，moat_assessment/risk_factors/checklist_summary 全空（生产定性分析缺失的根因）。
     """
     from sqlalchemy import select

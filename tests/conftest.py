@@ -1,13 +1,4 @@
 # stock-monitor/tests/conftest.py
-import sys
-from pathlib import Path
-
-# 根 conftest 引导 vendored openharness（仓库根 vendor/）进 sys.path，
-# 使任何测试的 `import openharness` 可用（替代各测试文件内的 _ensure_vendor_on_path）。
-_VENDOR = Path(__file__).resolve().parents[1] / "vendor"
-if str(_VENDOR) not in sys.path:
-    sys.path.insert(0, str(_VENDOR))
-
 import asyncio
 from unittest.mock import AsyncMock, patch
 

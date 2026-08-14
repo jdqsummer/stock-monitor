@@ -102,7 +102,6 @@ def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimat
     注意：此处检查 net_profit_deducted（Step 3 已设置），
     而非 annual_profit_low（Step 4 才会设置）。
     """
-    # DEPRECATED: OpenHarnessAgent 接管该逻辑（_apply_hard_constraints / 内部子链）；保留仅供旧测试引用
     net_profit_deducted = state.get("net_profit_deducted", 0)
     # 亏损直接跳到评级
     if net_profit_deducted <= 0:
@@ -112,7 +111,6 @@ def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimat
 
 def should_continue_at_rating(state: AnalysisState) -> Literal["manual_adjust", "cross_check_and_output"]:
     """评级阶段的路由决策：🔴 跳过人工调整直达输出"""
-    # DEPRECATED: OpenHarnessAgent 接管该逻辑（_apply_hard_constraints / 内部子链）；保留仅供旧测试引用
     signal = state.get("signal", "")
     if signal == "red":
         return "cross_check_and_output"
@@ -558,7 +556,6 @@ async def cross_check_and_output_node(state: AnalysisState) -> dict:
 
 async def validate_constraints_node(state: AnalysisState) -> dict:
     """OpenHarness 约束校验节点"""
-    # DEPRECATED: OpenHarnessAgent 接管该逻辑（_apply_hard_constraints）；保留仅供旧测试引用
     logger.info("[约束检查] 执行 OpenHarness 约束校验")
 
     engine = ConstraintEngine()

@@ -1,23 +1,9 @@
 """AnalysisAgent 测试（原 test_openharness.py 迁移，P4 语义退役）"""
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-# 确保 vendor/ 在 sys.path 上，使 vendored openharness 可导入
-# （LLM 模式委托 harness_component，其依赖 vendored openharness）
-_VENDOR = Path(__file__).resolve().parents[2] / "vendor"
-
-
-def _ensure_vendor_on_path():
-    if str(_VENDOR) not in sys.path:
-        sys.path.insert(0, str(_VENDOR))
-
-
-_ensure_vendor_on_path()
-
-from backend.agents.analysis_agent import AnalysisAgent, apply_veto  # noqa: E402
+from backend.agents.analysis_agent import AnalysisAgent, apply_veto
 
 
 def make_state(**overrides) -> dict:
@@ -205,19 +191,6 @@ async def test_analyze_mock_llm_marks_mock():
     assert result["analysis_source"] == "mock"
     assert result["analysis_model"] == "none"
     assert result["analysis_degraded"] is True
-
-
-# ── P4 Task 1 迁移说明：以下用例测 harness_tools.build_investment_tools，harness_tools
-#    由 P4 Task 2 删除，故不迁移进 test_analysis_agent.py。原用例逻辑保留在此注释，供
-#    Task 2 随 harness_tools 一并删除/迁移（原 test_openharness.py:210-216）。
-#
-# def test_build_investment_tools_excludes_validate_constraints():
-#     """validate_constraints 工具已移除（硬约束软化）；至少 8 工具 = 只读 + 4 阶段 + 3 定量"""
-#     from backend.agents.harness_tools import build_investment_tools
-#
-#     names = [t.name for t in build_investment_tools(None)]
-#     assert "validate_constraints" not in names
-#     assert len(names) >= 8
 
 
 # ── 硬约束校验（规则子链兜底用） ──
