@@ -1,6 +1,6 @@
 # 投资分析框架 DSH 深度集成设计
 
-> 版本：v1.4 ｜ 日期：2026-08-14 ｜ 状态：P0 已验证 + 章节 12-14 审核修订**全量融入**正文（含章节十三深化项 D3/D4/D5/Q1/Q2 落位组件设计）；深化项 D1/D2/D6/Q3 **P0-1 扩展验证已完成**并回填章节十四组②
+> 版本：v1.5 ｜ 日期：2026-08-15 ｜ 状态：P0 已验证 + 章节 12-14 审核修订**全量融入**正文（含章节十三深化项 D3/D4/D5/Q1/Q2 落位组件设计）；深化项 D1/D2/D6/Q3 **P0-1 扩展验证已完成**并回填章节十四组②；**P4 清理与加固已完成**（OpenHarness 退役 / AnalysisAgent 重构 / 测试迁移 / Docker 双容器 / rc.6 锁定 / DSH_UPSTREAM 六步脚本化 / Q3 Ralph / I4 收敛 / S3 日志 / S6 runbook），修订追踪表已回填 P4 行
 > v1.4 修订：**P0-1 扩展验证回填**——章节十四组② D1/D2/D6/Q3 四项决策回填 + 章节十三 D1/D2/D6/Q3 落地载体修订 + I7 prefix-cache 实测（79%）下修成本模型
 > 目标：将投资分析框架深度融入 DeepSeek Harness (DSH)，充分利用 DSH 运行时/工具层/记忆层/Skill 层/Preset/多 Agent 能力，实现投资分析可扩展（skills 化）、可维护（方便更新升级），而非套壳。
 
@@ -413,7 +413,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 - **P1 资产迁移（含组③全部融入）**：SKILL 迁入 `.dsh/skills/`（kebab-case + frontmatter 精简 + **E1 `provides/consumes`** + **E2 `output.schema.json`**）；workflow 五段预置脚本（自定义工具插件承载，tool-ralph 范式）；确定性 TS + 黄金数据集（**S4** 6 类边界）；**I5 源头统一 snake_case 决策**（首选；兜底附录 B 字段映射表，输出契约定稿时裁决）；I6 模型选择预留接口；I3 脚本防篡改挂载（read-only volume）；I2 并发模型设计（max_sessions + 队列 + 同股票锁）；I1 开发环境（WSL2/Docker）；S1 MCP streamable-http；S2 PE 非法判定入 schema；**附录 A cordis.yml 可运行样例**（B2，插件开发首日产出）。
 - **P2 插件开发（含组④ P2 项）**：invest-data-tool / invest-calc / invest-guard / invest-schema + **D1 PTC**（组②通过后）/ **D3 内置守卫**（循环卫生 + 工具超时，零依赖两行配置）/ **D5 上下文压缩**（窗口 80% 触发）/ **Q1 证据引用强制** / **Q2 置信度标注**。
 - **P3 桥接集成（含组④ P3 项）（✅ 已完成）**：Orchestrator + DataBridge(MCP streamable-http) + 元数据契约（analysis_model/analysis_degraded）+ 前端展示（含 I6 模型选择完整落地）+ **5.1 容错策略落地为代码** / **D2 敏感性退路（Orchestrator 串行重跑）** / **D4 invest-telemetry**（I7 成本监控载体）/ **D6 重跑范围（Orchestrator 步骤级幂等）** / I7 成本监控与预算 / S7 经验进化（人工审阅 + 热更新）。
-- **P4 清理与加固（含组④ P4 项）**：OpenHarness 退役、测试迁移、Docker 双容器、版本锁定 rc.6、DSH_UPSTREAM 六步升级流水线 + **Q3 Ralph**（组②通过后，深度模式）/ **I4 双实现收敛**（降级链调 DSH TS 端点）/ **S3 日志留存**（90 天热存储）/ **S6 回滚 runbook**。
+- **P4 清理与加固（✅ 已完成）**：OpenHarness 退役、测试迁移、Docker 双容器、版本锁定 rc.6、DSH_UPSTREAM 六步升级流水线 + **Q3 Ralph**（深度模式）/ **I4 双实现收敛**（降级链调 DSH TS 端点）/ **S3 日志留存**（90 天热存储）/ **S6 回滚 runbook**。
 
 ---
 
@@ -613,6 +613,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | S10 DSH 版本号时效 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T1：npm latest=rc.6，已统一锁定并回填 DSH_UPSTREAM） |
 | D1 PTC / D2 Fork / D6 Resume / Q3 Ralph（组② 已验证） | 高 | 组②（P0-1 验证后决策） | P0-1 → P2/P3/P4 | 已验证（P0-1 T1-T4：D1 PTC 存在（`DSH_TOOLS_MODE=code`）/ D2 Python SDK 无 fork 走退路 / D6 部分成立改 Orchestrator 幂等 / Q3 `ralph` 可触发）；**D1 P2 完成**（PTC 组合结论定稿：`DSH_TOOLS_MODE=code` 全局替换工具集、agent() 子代理无 per-scope 覆盖 → ① 步退路 invest-data-tool 单次聚合 / P3 Orchestrator 预聚合）；**D2/D6 P3 完成**（Orchestrator 串行重跑 PE±10% 敏感性 `run_sensitivity` 落代码、默认不启用开关待端到端验证后打开；`decide_rerun_scope` 数据新鲜度驱动重跑范围） |
 | D3 内置守卫 / D4 telemetry / D5 上下文压缩 / Q1 证据引用 / Q2 置信度（组④ 深化项） | 中 | 组④（P2/P3 逐项实施） | P2-P3 | 已写入正文组件设计（v1.3：4.1 cordis 清单 / 4.3 输出 / 4.5 守卫表 / 4.6 记忆层 / 4.2 skill），实施归组④ P2-P3；**P2 完成**：D3/D5 确认 base 内置（零自研，`p2-d3d5-verification.md`）、Q1/Q2 落 invest-schema（30 tests 全绿）；**P3 完成**：D4 invest-telemetry 落 `.dsh/plugins/invest-telemetry`（tools/pre-execute + tools/post-execute 钩子实测触发，18 pre + 18 post 冒烟通过；agent/* 钩子未实测标记待验证）、Q1/Q2 producer schema 字段（evidence/confidence）激活 4 个 stage schema + knownPaths 对齐真实注入键、I7 成本预算落 `DshBudgetTracker`；真实五段全链路完成态待 P4 容器化验证（诚实标注） |
+| Q3 Ralph / I4 收敛 / S3 / S6（组④ P4 项） | 中 | 组④（P4） | P4 | 已落地：Q3 `ralph-review` 五段脚本 ⑤b（深度模式 V4-Pro 开启）；I4 降级链主调 DSH TS `/calc` + 本地兜底；S3 会话日志 90 天/10k 上限清理脚本 + 熔断自动降级；S6 生产回滚 runbook；OpenHarness 资产退役（vendor/harness 层删除 + `OpenHarnessAgent`→`AnalysisAgent`）+ 测试迁移 + Docker 双容器 + rc.6 锁定 + DSH_UPSTREAM 六步脚本化 |
 
 ---
 
