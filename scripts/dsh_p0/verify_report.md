@@ -7,7 +7,7 @@
 - [x] T1 环境与双方式安装
 - [x] T2 DeepSeek API 接入与基础对话
 - [x] T3 Skill 子系统 + 现有 SKILL.md 兼容性
-- [ ] T4 Preset 定制 + 工具插件 + 守卫
+- [x] T4 Preset 定制 + 工具插件 + 守卫
 - [ ] T5 workflow 工具 + 确定性步骤
 - [ ] T6 Python SDK 连接 + MCP 数据桥
 - [ ] T7 验证报告汇总与 spec 假设对照
@@ -175,3 +175,99 @@ run #2（同 task，观察 prefix-cache，耗时 5.4s）：
 - **skill 名改为 kebab-case**（4 个 snake_case stage 技能须重命名），否则被 DSH 静默丢弃。
 - 主框架 SKILL.md（`investment-framework`）本身仅 `name`/`description`/`version` 且 kebab-case，可直接作为 DSH skill 保留；其正文里「按 order 调工具」的编排语义仍须 workflow 承载。
 - 需注意：DSH 的 `skill` 机制是「模型按名自取」，无「依赖解析/顺序强制/输出字段契约」——这些正是自研 frontmatter 承担的编排职责，DSH 原生不提供等价物，P1 必须由 `tool-workflow`（T5 详查）承接。
+
+## T4 Preset 定制 + 工具插件 + 守卫
+
+### 结论（一句话）
+✅ **工具插件与守卫均真实跑通；preset 无 CLI 子命令，是 `ctx.agentPresets.copy()` 服务 + web 设置页。** 核心纠正：`defineTool` 从 `@deepseek-ai/dsh-tools` 导出（非 `@deepseek-ai/dsh`），参数字段是 `parameters`（非 `inputSchema`），`output` 必填；守卫不是工具事件插件，而是 `ctx.tools.guard()`（`ToolGuard = (exec) => string|undefined`），拒绝单调不可逆。preset 挂载在 agent 工厂 `setup()`，headless 默认 rosterless 无法挂载。
+
+### Step 1: preset 复制/定制 —— 无 CLI 命令（实测纠正）
+
+**实测 `dsh --help`**：launcher 仅两个子命令 `web` 与 `plugin`（`plugin` 是把剩余参数转发给 pnpm 管理 profile 依赖）。**不存在 `dsh preset list` / `dsh preset copy` 子命令**，简报猜测的命令是错的。
+
+真实作者 API（`@deepseek-ai/dsh-agent-presets`，ctx key `agentPresets`，签名来自源码 + README）：
+- `ctx.agentPresets.copy(from: string, id: string, name?: string): Promise<void>` —— 唯一作者写操作，整目录复制现有 preset 到第一个 `user` root；重写复制品的 `preset.yml`（保留 source 的 description，丢弃 name 与 roster `order`）；拒绝三件事（id 非法 `[a-z0-9][a-z0-9-]*` / id 已被占用 / 源不存在）。
+- `list()/resolve(id?)/remove(id)/read(id)/mount(agentCtx,id?)` 等（详见 `packages/preset/agent-presets/README.md`）。
+- 用户 preset 根：`<DSH_HOME>/.agent-presets/<id>/`；shipped preset 根在 app config 旁（`apps/cli/config/agent-presets/`，共 `standard`/`minimal`/`code`/`cordis` 四个）。
+
+**preset 真实结构**（一个 preset = 一个目录，含一个 `agent.cordis.yml` + 可选 `preset.yml`）：
+```
+<root>/<id>/
+├── agent.cordis.yml   # 组合：顶层为「裸插件行」列表（id/name/config/disabled）
+└── preset.yml         # 展示元数据：name + description（可选 order）；id/trust 不可写
+```
+- `agent.cordis.yml` 是 **composition**（裸插件行），与 **patch 覆盖层** 是两种格式：patch 里新增插件须包 `- insert: [...]`，裸行是「对既有 id 的 config 覆盖/disable」。实测：把 composition 直接 `--patch` 传入，新插件行被当成「对不存在 id 的覆盖」= 静默 no-op（`hello_echo` 未注册）。
+- `dsh-persona`（preset 的 identity 行）**scope-only**：只能在 preset 挂载时提供的 agent scope 内生效；在 host 层（--patch）挂载会与 `dsh-system-prompt` 的 `deployment:persona` 冲突。
+- **headless 默认 rosterless**：`headless-runner` 的 `agents.create({setup})` 只调 `installModelSelection`，不调 `ctx.agentPresets.mount()`，故 headless **不挂载任何 preset**。preset 挂载由 web/tui 的 agent 工厂 `setup()` 完成。
+
+产物：`scripts/dsh_p0/t4_preset/custom-investor/{agent.cordis.yml,preset.yml}`（价值投资 persona + hello_echo 工具 + block-guard 守卫，仿 `copy()` 产物结构手写）。
+
+### Step 2: 工具插件真实 API（defineTool 签名 + schema 校验）
+
+**真实签名**（`defineTool` 从 `@deepseek-ai/dsh-tools` 导出，**不是** `@deepseek-ai/dsh`）：
+
+```ts
+import { defineTool } from '@deepseek-ai/dsh-tools'   // ← 不是 '@deepseek-ai/dsh'
+
+ctx.tools.register(defineTool({
+  name: 'hello_echo',
+  description: '...',
+  parameters: {                                       // ← 不是 inputSchema；ParameterSchemaSpec 类型化 DSL
+    text: { type: 'string', required: true, description: '...' },
+  },
+  output: {                                           // ← 必填
+    schema: { type: 'string' },                       // ValueSchemaSpec
+    render: (_args, value) => [{ type: 'text', text: value }],
+  },
+  async execute(args, exec) {                         // 返回 output.schema 声明的规范 JSON 值
+    return `echo: ${args.text}`
+  },
+}))
+```
+
+- 插件不是 `export default defineTool(...)`，而是 cordis 函数/命名空间插件：导出 `name`/`inject`/`apply`，在 `apply(ctx)` 里 `ctx.tools.register(defineTool(...))`。
+- `defineTool` 编译 `parameters`（DSL）→ 原始 JSON Schema `{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}`，字段名是 **`parameters`**（非 `inputSchema`）；`ToolDefinition` 形状 = `ToolSchema`（`name`/`description`/`parameters`）+ 必填 `output {schema,render,presentationMeta?}` + `execute(args,exec)` + 可选 `timeoutMs`/`finalizeContent`/`presentCall`/`presentResult`/`isConcurrencySafe`。
+- **schema 校验**（`defineTool` 独立实测，`node` 跑 `t.execute(...)`）：
+  - `execute({text:'hi'})` → `echo: hi`（合法）。
+  - `execute({})` → 抛 `ToolArgsError`，`code: INVALID_ARGS`，msg `invalid arguments: missing required property "text"`。
+  - `execute({text:123})` → 抛 `ToolArgsError`，`code: INVALID_ARGS`，msg `invalid arguments: "text" must be a string`。
+- **headless 实测**（原始注册 + `--patch` 的 `insert` 加载本地 `.mjs`）：模型成功调用 `hello_echo(text='hello dsh')`，输出 `echo: hello dsh`，exit 0。原始 `ToolDefinition` 注册 `ctx.tools.register({name,description,parameters,output,execute})`（MCP server 同款一等 API）零外部 import，是 `--patch` 加载本地插件的最简可移植路径。
+
+**模块解析坑（重要）**：`--patch` 加载的本地插件文件，其 bare import（如 `@deepseek-ai/dsh-tools`）按 Node 默认规则从**插件文件自身目录**向上解析 node_modules；pnpm 严格隔离不把 `dsh-tools` 的传递依赖（schemastery/dsh-scope/dsh-llm/…）提升到本地 node_modules，导致 `import { defineTool } from '@deepseek-ai/dsh-tools'` 及其依赖链无法解析（实测报 `Cannot find package '@deepseek-ai/schemastery'` 等）。官方作者路径：`dsh plugin add <pkg>`（装进 profile 的 node_modules）或放 preset 目录（agent-presets mount 把 bare specifier 重定向到 host base）。`defineTool` 的独立验证因此用 `file://...dsh-tools/lib/index.js` 绝对路径导入完成。
+
+### Step 3: 守卫真实 API（单调拒绝不可逆）
+
+**真实签名**（不是工具事件插件，是 `ctx.tools.guard()`）：
+
+```ts
+import type { Context } from '@deepseek-ai/cordis'
+
+export const name = 'block-guard'
+export const inject = ['tools']
+
+export function apply(ctx: Context): void {
+  ctx.tools.guard((execution) => {                 // ToolGuard = (execution) => string | undefined
+    if (execution.name === 'hello_echo') {
+      return 'hello_echo 已被 block-guard 守卫拒绝（单调否决，不可逆）'
+    }
+    return undefined                               // undefined = 放行；返回字符串 = 拒绝（final）
+  })
+}
+```
+
+- `ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined`：返回字符串=拒绝原因（final 单调否决），`undefined`=放行。**守卫没有「allow」方向** —— 源码注释明示「Because guards have no allow result, listener ordering cannot turn a denial back into permission」。
+- 管线顺序（源码 `packages/core/tools/src/index.ts`）：`tools/pre-execute`（可重排 allow/deny/ask 门，`PreToolDecision`）→ **单调守卫 `guardReason(exec)`（first non-undefined 即拒绝）** → `tools/execute`（around-dispatch 包装）→ `tools/post-execute`（accept/replace/block，`PostToolDecision`，可 `additionalContexts`）→ `finalizeContent` → `tools/result`（observe-only）。
+- **不可逆语义（源码确认）**：`denialReason = decision.kind==='allow' ? guardReason(exec) : decision.reason`；`denialReason !== undefined` 时 pipeline 直接返回 `post-result`（`Error: <reason>`），**`tools/execute` 与工具 body 永不执行**。守卫求值在 `pre-execute` 之后、dispatch 之前，任何后续 waterfall 监听器都无法把守卫拒绝改回放行。
+- **事件签名**（`docs/subsystems/tools.md` 生成区）：
+  - `'tools/pre-execute'(ctx, exec, next) => Promise<PreToolDecision>`（allow/deny/ask）
+  - `'tools/execute'(ctx, exec: ToolDispatchExecution, next) => Promise<ToolExecutionResult>`（around，仅可换 `exec.signal`）
+  - `'tools/post-execute'(ctx, exec, result, next) => Promise<PostToolDecision>`（post-processing 钩子，可 block 或附加 `additionalContexts`）
+  - `'tools/result'(ctx, exec, result)`（emit，观察冻结最终结果）
+- **headless 实测**：guard.patch.yml 同时加载 hello-plugin + block-guard，模型调用 `hello_echo(text='hello dsh')` → 收到 `Error: hello_echo 已被 block-guard 守卫拒绝（单调否决，不可逆）`，exit 0。守卫注册即全局生效（plain-context guard）。
+
+### 关键结论（P1/P2 插件开发依据）
+
+1. **preset 结构成立，但作者方式不是 CLI**：P1 的 `value-investor` preset 须经 `ctx.agentPresets.copy()`（或 web 设置页）创建到 `<DSH_HOME>/.agent-presets/`，或由部署在 `agent-presets.roots` 配置 user root 后 `copy()`；preset = `agent.cordis.yml`（裸插件行组合）+ `preset.yml`（展示元数据）。
+2. **工具插件**：`defineTool` 从 `@deepseek-ai/dsh-tools` 导入，参数用 `parameters`（类型化 DSL），必填 `output`，`execute` 返回规范值；schema 校验由 `defineTool` 内建（缺参/错型 → `ToolArgsError`/`INVALID_ARGS`）。
+3. **守卫**：`ctx.tools.guard()` 单调拒绝，不可逆；「post-processing」是 `tools/post-execute` 瀑布（`PostToolDecision` 支持 replace/block/附加 context），另有 `tools/execute`（around）与 `tools/result`（observe）。
+4. **spec 4.1/4.5 对照**：spec 假设的 `defineTool`/`inputSchema` 命名需修正为 `@deepseek-ai/dsh-tools` 的 `parameters`/`output`；「单调安全守卫 + pre-policy → guard → execute → post-processing」顺序**成立**（源码逐行确认）；「拒绝不可逆」**成立**（守卫无 allow 方向 + denial 短路 dispatch）。

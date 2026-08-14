@@ -1,0 +1,6 @@
+# --patch 覆盖层：插入 hello-plugin + block-guard（验证守卫单调拒绝不可逆）。
+- insert:
+    - id: hello-plugin
+      name: file:///D:/project/github/stock-monitor/scripts/dsh_p0/t4_plugin/hello-plugin.mjs
+    - id: block-guard
+      name: file:///D:/project/github/stock-monitor/scripts/dsh_p0/t4_plugin/block-guard.mjs

@@ -1,0 +1,5 @@
+# 展示元数据（仅用于 picker 展示，id 来自目录名，trust 来自发现根，二者不可写）。
+# 真实 `ctx.agentPresets.copy('standard', 'custom-investor')` 会保留 source 的 description、
+# 丢弃 name 与 roster order；本文件为手工定制的展示元数据。
+name: 价值投资模式
+description: 面向 A 股安全边际分析的定制 Agent：价值投资 persona + 自定义只读工具 hello_echo + 守卫 block-guard。

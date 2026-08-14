@@ -1,0 +1,5 @@
+# --patch 覆盖层：插入 hello-plugin 工具插件（验证工具事件管线）。
+# `name` 用绝对 file: URL，让 Loader 直接 ESM import 本地插件文件。
+- insert:
+    - id: hello-plugin
+      name: file:///D:/project/github/stock-monitor/scripts/dsh_p0/t4_plugin/hello-plugin.mjs

@@ -1,0 +1,31 @@
+# `custom-investor` agent preset —— 价值投资定制组合。
+#
+# 结构（与 shipped preset 一致）：preset = 目录，内含一个 agent.cordis.yml（顶层为
+# 插件行列表）+ 可选 preset.yml（展示元数据）。本文件即「组合」（composition）。
+# 真实作者路径是 `ctx.agentPresets.copy('standard', 'custom-investor', '价值投资模式')`
+# 或 web 设置页；无 `dsh preset copy` CLI 子命令。本文件手工仿照 copy 产物结构编写。
+#
+# 说明：headless profile 默认 rosterless（不挂载任何 preset，agent 直接跑 host 全局
+# 工具层），preset 挂载需在 agent 工厂 setup() 里 `ctx.agentPresets.mount(agentCtx, id)`。
+# 注意区分两种格式：
+#   - composition（本文件 / base.cordis.yml）：顶层为「裸插件行」列表 `- id/name/config`。
+#   - patch 覆盖层（cordis.patch.yml / --patch）：新增插件须包在 `- insert: [...]` 里，
+#     裸行是「对既有 id 的 config 覆盖/disable」。因此本 composition 不能直接当 --patch 用。
+
+# ── identity：价值投资 persona ─────────────────────────────────────────────
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: >-
+      You are a value-investing analyst for the A-share market, powered by the {{model}} model.
+      Your working directory is {{cwd}}. You focus on margin-of-safety analysis: good companies
+      at good prices, conservative annualized return (H1×2 first), industry-PE anchoring, and
+      falsification-first review.
+
+# ── 自定义只读工具（hello_echo，验证工具插件管线）──────────────────────────
+- id: hello-plugin
+  name: file:///D:/project/github/stock-monitor/scripts/dsh_p0/t4_plugin/hello-plugin.mjs
+
+# ── 守卫（block-guard，验证单调拒绝不可逆）─────────────────────────────────
+- id: block-guard
+  name: file:///D:/project/github/stock-monitor/scripts/dsh_p0/t4_plugin/block-guard.mjs
