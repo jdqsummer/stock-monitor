@@ -36,6 +36,8 @@ DSH 工具参数本身（如 `stock_code`）是工具 DSL 内部名，不在本�
 - **输出字段名（schema 字段 / 函数返回 / 脚本 return 键）**：snake_case，是本决策约束的对象。
 - **`stage_results` 阶段键**：沿用 snake_case 技能名（`analyze_qualitative` / `run_reverse_checklist` / `anchor_industry_pe` / `output_conclusion`），由 `backend/` 侧 skill 的 frontmatter `name` 决定，前端契约不可破。
 
+> 注：`script.ts` 的 `return` 顶层键 `qualitative`/`reverse`/`conclusion` 是脚本 DSL 内部标签（单字段词），与对应 schema 输出字段 `qualitative_analysis`/`reverse_analysis`/`conclusion_analysis` 存在粒度差——P2 契约钉死时需统一（列为待 P2 契约项）。
+
 ## 已落地证据
 
 ### Task 1 — `.dsh/skills/*/output.schema.json`（4 个 stage）
