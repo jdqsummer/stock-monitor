@@ -612,7 +612,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | S9 standard preset 存在性 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T4：shipped preset 为 standard/minimal/code/cordis） |
 | S10 DSH 版本号时效 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T1：npm latest=rc.6，已统一锁定并回填 DSH_UPSTREAM） |
 | D1 PTC / D2 Fork / D6 Resume / Q3 Ralph（组② 已验证） | 高 | 组②（P0-1 验证后决策） | P0-1 → P2/P3/P4 | 已验证（P0-1 T1-T4：D1 PTC 存在（`DSH_TOOLS_MODE=code`）/ D2 Python SDK 无 fork 走退路 / D6 部分成立改 Orchestrator 幂等 / Q3 `ralph` 可触发）；**D1 P2 完成**（PTC 组合结论定稿：`DSH_TOOLS_MODE=code` 全局替换工具集、agent() 子代理无 per-scope 覆盖 → ① 步退路 invest-data-tool 单次聚合 / P3 Orchestrator 预聚合） |
-| D3 内置守卫 / D4 telemetry / D5 上下文压缩 / Q1 证据引用 / Q2 置信度（组④ 深化项） | 中 | 组④（P2/P3 逐项实施） | P2-P3 | 已写入正文组件设计（v1.3：4.1 cordis 清单 / 4.3 输出 / 4.5 守卫表 / 4.6 记忆层 / 4.2 skill），实施归组④ P2-P3；**P2 完成**：D3/D5 确认 base 内置（零自研，`p2-d3d5-verification.md`）、Q1/Q2 落 invest-schema（29 tests 全绿），D4 telemetry 归 P3 |
+| D3 内置守卫 / D4 telemetry / D5 上下文压缩 / Q1 证据引用 / Q2 置信度（组④ 深化项） | 中 | 组④（P2/P3 逐项实施） | P2-P3 | 已写入正文组件设计（v1.3：4.1 cordis 清单 / 4.3 输出 / 4.5 守卫表 / 4.6 记忆层 / 4.2 skill），实施归组④ P2-P3；**P2 完成**：D3/D5 确认 base 内置（零自研，`p2-d3d5-verification.md`）、Q1/Q2 落 invest-schema（30 tests 全绿），D4 telemetry 归 P3；⚠️ Q1/Q2 纯函数层已落，producer schema 字段（evidence/confidence）待 P3；Q1 缺 evidence 时 P2 降级为警告不 block |
 
 ---
 

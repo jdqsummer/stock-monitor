@@ -81,6 +81,9 @@ describe('checkPeValidity（S2 PE 非法四条件）', () => {
   it('pe_low ≤ 0 → 非法回退锚点', () => {
     expect(checkPeValidity(0, 25)).toMatchObject({ valid: false, reason: /pe_low/ })
   })
+  it('pe_high ≤ 0 → 非法回退', () => {
+    expect(checkPeValidity(20, 0)).toMatchObject({ valid: false, reason: /pe_high/ })
+  })
   it('pe_high < pe_low → 非法回退', () => {
     expect(checkPeValidity(30, 20)).toMatchObject({ valid: false, reason: /high.*low|pe_high/ })
   })

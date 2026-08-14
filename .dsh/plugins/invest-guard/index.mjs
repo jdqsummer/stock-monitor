@@ -111,13 +111,15 @@ function apply(ctx) {
 		});
 		if (constraints.warnings.length > 0) {
 			const conclusionText = conclusion?.conclusion ?? value?.conclusion;
+			const notice = buildNotice([
+				"[invest-guard] 约束警告：",
+				...constraints.warnings.map((warning) => `- ${warning}`),
+				...conclusionText ? ["", `结论原文：${conclusionText}`] : []
+			].join("\n"), `invest-five-stage 约束警告（${constraints.warnings.length} 项）`);
+			const downstream = await next();
 			return {
-				kind: "accept",
-				additionalContexts: [buildNotice([
-					"[invest-guard] 约束警告：",
-					...constraints.warnings.map((warning) => `- ${warning}`),
-					...conclusionText ? ["", `结论原文：${conclusionText}`] : []
-				].join("\n"), `invest-five-stage 约束警告（${constraints.warnings.length} 项）`)]
+				...downstream,
+				additionalContexts: [notice, ...downstream?.additionalContexts ?? []]
 			};
 		}
 		return next();

@@ -178,18 +178,23 @@ function apply(ctx) {
 			if (!pe.valid) errors.push(`[anchor_industry_pe] ${pe.reason}`);
 		}
 		const conclusion = value?.output_conclusion;
+		let q1MissingEvidence = false;
 		if (conclusion?.conclusion) {
-			const ev = validateEvidence({
-				claim: String(conclusion.conclusion),
-				evidence: conclusion.evidence
-			}, [
-				"context",
-				"financials",
-				"qualitative",
-				"reverse",
-				"calc"
-			]);
-			if (!ev.valid) errors.push(...ev.errors);
+			const evidence = conclusion?.evidence ?? [];
+			if (!evidence || evidence.length === 0) q1MissingEvidence = true;
+			else {
+				const ev = validateEvidence({
+					claim: String(conclusion.conclusion),
+					evidence
+				}, [
+					"context",
+					"financials",
+					"qualitative",
+					"reverse",
+					"calc"
+				]);
+				if (!ev.valid) errors.push(...ev.errors);
+			}
 		}
 		const conf = mergeConfidence({
 			qualitative: value?.analyze_qualitative?.confidence ?? "high",
@@ -206,6 +211,7 @@ function apply(ctx) {
 		};
 		const notices = [];
 		if (conf.overall === "low") notices.push(buildNotice(`[invest-schema] 置信度不足警告：≥2 个关键步骤为 low，结论建议人工验证（Q2）`, "invest-five-stage 置信度不足"));
+		if (q1MissingEvidence) notices.push(buildNotice(`[invest-schema] Q1 证据缺失提示：结论尚未携带 evidence 字段（producer schema 待 P3 补 evidence），当前降级为警告不 block`, "invest-five-stage Q1 evidence 缺失"));
 		if (contextWarnings(value).length > 0) notices.push(buildNotice(`[invest-schema] 信号灯量纲提示（redlines 比率 0.5 ↔ 百分比 50）：${ratioToPercent(.5)}`, "invest-five-stage 信号灯量纲提示"));
 		if (notices.length > 0) {
 			const downstream = await next();

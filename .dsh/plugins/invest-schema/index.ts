@@ -63,13 +63,21 @@ export function apply(ctx: any): void {
     }
 
     // ③ Q1 证据引用：conclusion 段（knownPaths 来自注入 context 键集合——P2 用白名单近似）
+    // ⚠️ P2 范围：producer（output-conclusion schema + script.ts）尚未产出 evidence 字段（P3 补），
+    // 故 evidence 缺失降级为 warning notice（不 block）；evidence 存在但 source 不在白名单 → 仍 block。
     const conclusion = value?.output_conclusion
+    let q1MissingEvidence = false
     if (conclusion?.conclusion) {
-      const ev = validateEvidence(
-        { claim: String(conclusion.conclusion), evidence: conclusion.evidence },
-        ['context', 'financials', 'qualitative', 'reverse', 'calc'],
-      )
-      if (!ev.valid) errors.push(...ev.errors)
+      const evidence: any[] = conclusion?.evidence ?? []
+      if (!evidence || evidence.length === 0) {
+        q1MissingEvidence = true
+      } else {
+        const ev = validateEvidence(
+          { claim: String(conclusion.conclusion), evidence },
+          ['context', 'financials', 'qualitative', 'reverse', 'calc'],
+        )
+        if (!ev.valid) errors.push(...ev.errors)
+      }
     }
 
     // ④ Q2 置信度：合并各步（低置信警告附加上下文）
@@ -92,6 +100,12 @@ export function apply(ctx: any): void {
       notices.push(buildNotice(
         `[invest-schema] 置信度不足警告：≥2 个关键步骤为 low，结论建议人工验证（Q2）`,
         'invest-five-stage 置信度不足',
+      ))
+    }
+    if (q1MissingEvidence) {
+      notices.push(buildNotice(
+        `[invest-schema] Q1 证据缺失提示：结论尚未携带 evidence 字段（producer schema 待 P3 补 evidence），当前降级为警告不 block`,
+        'invest-five-stage Q1 evidence 缺失',
       ))
     }
     const warnings = contextWarnings(value)

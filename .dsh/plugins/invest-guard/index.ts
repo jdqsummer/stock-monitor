@@ -89,11 +89,11 @@ export function apply(ctx: any): void {
         ...constraints.warnings.map((warning) => `- ${warning}`),
         ...(conclusionText ? ['', `结论原文：${conclusionText}`] : []),
       ].join('\n')
-      // 软警告：附加上下文（不 block，供模型参考），形状对齐 canonical guard 的 notice
-      return {
-        kind: 'accept',
-        additionalContexts: [buildNotice(text, `invest-five-stage 约束警告（${constraints.warnings.length} 项）`)],
-      }
+      // 软警告：fold 模式（不 short-circuit）——先 next() 委托下游（invest-schema 等），
+      // 再合并 notice，保证 guard 的 accept 路径不跳过下游形状/PE/Q1/Q2 校验（I2）。
+      const notice = buildNotice(text, `invest-five-stage 约束警告（${constraints.warnings.length} 项）`)
+      const downstream = await next()
+      return { ...downstream, additionalContexts: [notice, ...(downstream?.additionalContexts ?? [])] }
     }
 
     // 无否决 / 无警告 → 委托原样透传

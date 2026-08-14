@@ -8,7 +8,7 @@
 |:--|:--|:--|:--|
 | prepareArgs 三件套 | `.dsh/plugins/invest-five-stage/prepare.ts` | vitest 5 tests | ✅ |
 | invest-guard 插件 | `.dsh/plugins/invest-guard/{logic,index}.ts` + `index.mjs` | vitest 11 tests + 冒烟 2 | ✅ |
-| invest-schema 插件 | `.dsh/plugins/invest-schema/{logic,index,stage-contract}.ts` + `index.mjs` | vitest 13 tests | ✅ |
+| invest-schema 插件 | `.dsh/plugins/invest-schema/{logic,index,stage-contract}.ts` + `index.mjs` | vitest 14 tests | ✅ |
 | invest-data-tool | `.dsh/plugins/invest-data-tool/agent.cordis.yml` | MCP client 冒烟（Task 4） | ✅（600519/贵州茅台） |
 | D3 内置守卫 | `.dsh/docs/p2-d3d5-verification.md` | --dump-config / 源码证据 | ✅（base 内置，零自研） |
 | D5 上下文压缩 | `.dsh/docs/p2-d3d5-verification.md` | --dump-config / 源码证据 | ✅（base 内置，零自研） |
@@ -19,15 +19,17 @@
 
 ## 验证结果
 
-### vitest 单测（P2 主验证证据，Task 1-3 共 29 tests 全绿）
+### vitest 单测（P2 主验证证据，Task 1-3 共 30 tests 全绿）
 
 ```text
 invest-five-stage/prepare.test.ts   Tests 5 passed (5)   # blocks 扫描 / schema 读取 / invest-calc
 invest-guard/logic.test.ts          Tests 11 passed (11)  # veto 3 + constraints 3 + 禁写 5
-invest-schema/logic.test.ts         Tests 13 passed (13)  # 形状 3 + 证据 3 + 置信度 2 + PE 4 + 量纲 1
+invest-schema/logic.test.ts         Tests 14 passed (14)  # 形状 3 + 证据 3 + 置信度 2 + PE 5 + 量纲 1
 ```
 
-> 说明：报告模板预估 invest-guard=10、invest-schema=14，实际为 11 / 13（Task 1 计划正文「veto 3 + constraints 3 + 禁写 5 = 11」「形状 3 + 证据 3 + 置信度 2 + PE 4 + 量纲 1 = 13」），以实测为准。
+> 说明：报告模板预估 invest-guard=10、invest-schema=14，实际为 11 / 14（Task 1 计划正文「veto 3 + constraints 3 + 禁写 5 = 11」「形状 3 + 证据 3 + 置信度 2 + PE 5 + 量纲 1 = 14」，补 pe_high≤0 一例），以实测为准。
+
+> **Q1/Q2 落地范围（如实说明）**：Q1/Q2 现为**纯函数 + 单测层**落地（`validateEvidence` / `mergeConfidence`，vitest 证据/置信度测试全绿）；producer schema 字段（`evidence` / `confidence`）**尚未被任何 stage 产出**——端到端激活需 P3 将这两个字段补入 4 个 stage 的 `output.schema.json` + skill 正文指引。Q1 证据校验在 P3 之前**缺 evidence 时降级为警告不 block**（避免 P2 端到端每结论必 block）。
 
 ### headless 端到端冒烟（Fork A 实测，真实 LLM 链路）
 
@@ -66,6 +68,9 @@ Error: invest-guard 拒绝：禁止写入 .dsh/ 路径（脚本防篡改 I3）�
 | 五段全链路完成态 | ⏳ 待 P3 | 5 个 agent() 子代理串行 headless >8min 未完成（慢/长时任务）；P3 SDK 宿主 + 长时 job 执行 + 数据注入后重验 |
 | D1 PTC 组合 | ✅ P2 结论定稿 | Task 4 实测：`DSH_TOOLS_MODE=code` 进程级全局开关，workflow 的 agent() 子代理无 per-scope 覆盖 → 工具集全局替换为单一 run_code；D1 采用退路（① read_context 不依赖 PTC，走 invest-data-tool 单次聚合或 P3 Orchestrator 预聚合） |
 | MCP streamable-http 跨容器 | ⏳ 待 P3 | agent.cordis.yml 已提供 stdio/streamable-http 两形态；stdio 已冒烟（Task 4），streamable-http 跨容器连 DataBridge 端点待 P3 落地 `backend/data/dsh_bridge.py` |
+| I1 producer `evidence` 字段（Q1 端到端） | ⏳ 待 P3 | 4 个 stage `output.schema.json` 增加 `evidence` 字段 + knownPaths 改用真实注入 context 键（P2 为白名单近似）；P3 前缺 evidence 降级警告不 block（本报告同步） |
+| I2 guard↔schema 组合（端到端） | ⏳ 待 P3 | invest-guard accept 路径已改 fold（不 short-circuit，本报告同步）；五段完成态后端到端验证 guard→schema 组合通过 |
+| I3 producer `confidence` 字段（Q2 端到端） | ⏳ 待 P3 | 4 个 stage schema 增加 `confidence` 枚举 + mergeConfidence 补 medium 中间态 |
 
 ## 修订追踪表更新
 
