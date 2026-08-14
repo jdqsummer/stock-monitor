@@ -7,7 +7,7 @@
 - [x] T2 D2 Session Fork 可用性
 - [x] T3 D6 Session Resume 语义
 - [x] T4 Q3 Ralph 循环触发
-- [ ] T5 prefix-cache API 层观测（可选）
+- [x] T5 prefix-cache API 层观测（可选）
 - [ ] T6 报告汇总与 spec 章节十四回填
 
 ## 详细记录
@@ -254,3 +254,26 @@ Ralph 循环已完成：roundsStarted=2，verdict=一致（最终评级 🟡 与
 ### T4 副作用说明
 
 未创建 `ralph.patch.yml`（已注册即跳过）。探针运行调用真实 DeepSeek API 一次（授权）。**探针副作用产物**：ralph round-2 fresh child 在会话工作区写出自审报告 `scripts/dsh_p0/p0_1_t4_ralph/round2_verify_report.md`（本轮 fresh agent 的独立复核报告，含 `verdict=一致` + `suggestedRating=🟡` + 逐文件证据链表 + 4 处文档阈值漂移定位：`设计语言规范.md:65-66`、`主计划.md:489-495`、`主计划.md:61`、`股票WEB监控系统需求.md:8`，均为旧阈值 0-30%🟡/>30%🔴 与权威 0-50%🟡/>50%🔴 冲突）。该文件是「每轮新子 Agent 读盘产出」的直接物证，但按 T1 先例（副作用产物删除、不纳入提交），已删除未提交。提交仅含 `p0_1_t4_ralph/prompt.mjs` 与本报告。
+
+## T5 prefix-cache API 层观测
+
+- 实测: 第1次（冷缓存）`hit=0 miss=162 total=162 hit_rate=0.0%`；第2次（暖缓存）`hit=128 miss=34 total=162 hit_rate=79.0%`。两次运行稳定（暖缓存后第1/2次均为 79.0%）。API **返回** `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` 字段 → cache **可观测**。
+- 结论: ⚠️ **可观测，但「99% 命中」假设不成立**（实测稳定 79%，非 99%）。根因：DeepSeek 以 64-token 块为缓存粒度，尾块 34 tokens 恒 miss（162 = 2×64 + 34）。→ I7 生产监控**直接以 `prompt_cache_hit_tokens` 为指标**（字段可观测），但成本模型须把「99% 命中」下修到块对齐上限 `⌊prompt_tokens/64⌋×64 / prompt_tokens`（本测 79%）。
+
+### T5 探针输出（verbatim）
+
+```text
+第 1 次: hit=0 miss=162 total=162 hit_rate=0.0% 耗时=3.31s
+第 2 次: hit=128 miss=34 total=162 hit_rate=79.0% 耗时=2.97s
+```
+
+（第二次运行，暖缓存：）
+
+```text
+第 1 次: hit=128 miss=34 total=162 hit_rate=79.0% 耗时=3.07s
+第 2 次: hit=128 miss=34 total=162 hit_rate=79.0% 耗时=3.14s
+```
+
+### T5 副作用说明
+
+调用真实 DeepSeek API 共 4 次（两次运行 × 每次 2 请求，max_tokens=200，授权），无文件副作用。注：brief 脚本 `.env` 读取路径 `parents[1]` 有误（指向 `scripts/.env`），按脚本自身注释「读取 scripts/dsh_p0/.env」修正为 `parents[0]`。
