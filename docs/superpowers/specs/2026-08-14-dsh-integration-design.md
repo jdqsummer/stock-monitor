@@ -1,6 +1,7 @@
 # 投资分析框架 DSH 深度集成设计
 
-> 版本：v1.3 ｜ 日期：2026-08-14 ｜ 状态：P0 已验证 + 章节 12-14 审核修订**全量融入**正文（含章节十三深化项 D3/D4/D5/Q1/Q2 落位组件设计）；深化项 D1/D2/D6/Q3 待 **P0-1** 扩展验证
+> 版本：v1.4 ｜ 日期：2026-08-14 ｜ 状态：P0 已验证 + 章节 12-14 审核修订**全量融入**正文（含章节十三深化项 D3/D4/D5/Q1/Q2 落位组件设计）；深化项 D1/D2/D6/Q3 **P0-1 扩展验证已完成**并回填章节十四组②
+> v1.4 修订：**P0-1 扩展验证回填**——章节十四组② D1/D2/D6/Q3 四项决策回填 + 章节十三 D1/D2/D6/Q3 落地载体修订 + I7 prefix-cache 实测（79%）下修成本模型
 > 目标：将投资分析框架深度融入 DeepSeek Harness (DSH)，充分利用 DSH 运行时/工具层/记忆层/Skill 层/Preset/多 Agent 能力，实现投资分析可扩展（skills 化）、可维护（方便更新升级），而非套壳。
 
 ---
@@ -188,10 +189,10 @@ version: 1.0.0
 
 | 步 | skill | 输入（depends_on） | 确定性逻辑 | 输出 |
 |:--|:--|:--|:--|:--|
-| ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报（D1 P0-1 验证通过后改 PTC 批量拉数+本地计算，见第十三节 D1） | 基础数据 |
+| ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报（D1 P0-1 已验证 → PTC 批量拉数+本地计算，见第十三节 D1） | 基础数据 |
 | ② analyze_qualitative | analyze-qualitative | financials/current_price/… | 经营质量：增长指标 + 利润质量确定性检查；**blocks/ 目录扫描驱动子块** | qualitative_analysis + business_model/moat_assessment/operating_quality + 各子块 output_field |
 | ③ run_reverse_checklist | run-reverse-checklist | qualitative_analysis/financials/… | 无（纯 LLM） | reverse_analysis + risk_factors/checklist_veto |
-| ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis（含 `sensitivity_analysis`：PE ±10% 敏感性，D2 P0-1 验证通过后 P3）+ pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
+| ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis（含 `sensitivity_analysis`：PE ±10% 敏感性，D2 P0-1 验证失败 → Orchestrator 串行重跑退路，P3）+ pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
 | ⑤ output_conclusion | output-conclusion | 1-4 全部 | 否决守卫 + 形状校验 | conclusion_analysis + final_rating/recommendation/action_items |
 
 > **子块可扩展性**：② 步运行时扫描 `analyze-qualitative/blocks/` 目录（**在插件 `execute()` host 侧执行，非脚本 realm**——脚本无 fs），动态遍历每个子块 skill（注入方法论 + depends_on 数据 → LLM 定性）。纯 LLM 子块（如新增市场情绪）零代码改动；仅需确定性计算的子块才在 invest-calc 加 TS 纯函数 + 声明 handler 引用。
@@ -398,17 +399,17 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | SDK 进程外连接能力 | 中 → 已坐实 | P0 已坐实（T6）：仅支持进程内 stdio JSON-RPC，无进程外 transport；已采纳降级「容器内 SDK 宿主 + HTTP 触发」 |
 | 记忆插件生态未成熟 | 低 | 记忆走 Python 蒸馏管道（保留），DSH log 只做审计 |
 | OpenHarness 资产删除后不可回退 | 中 | 方法论 Skill 资产两边通用（anthropics/skills 格式），可随时重建 |
-| 深化项 API 可用性（D1 PTC / D2 Fork / D6 Resume / Q3 Ralph） | 高 → 待 **P0-1** 验证 | P0-1 四项 API 验证（P0 源码侦察：`tool-ralph` 存在、fork 仅持久化层概念、PTC 无 core 落点、checkpoint 为崩溃恢复——均须执行确认）；通过则进 P2-P4，失败走章节十四组②退路（invest-data-tool 批量封装 / Orchestrator 串行重跑 / 全量重跑 / 移除自审） |
+| 深化项 API 可用性（D1 PTC / D2 Fork / D6 Resume / Q3 Ralph） | 高 → **P0-1 已验证** | P0-1 T1-T4 已验证：D1 PTC 存在（须 `DSH_TOOLS_MODE=code` 显式启用）→ P2；D2 Python SDK 无 fork → Orchestrator 串行重跑退路；D6 部分成立（上下文延续成立、无断点恢复原语）→ Orchestrator 幂等；Q3 `ralph` 可触发 → P4。均已回填章节十四组② |
 | 成本失控（I7） | 中 | DSH 会话级 token 追踪 + 单次分析预算阈值（超限降级）+ 日累计上限告警；prefix-cache 命中率纳入生产监控（D4 invest-telemetry 载体，P3） |
 | 双实现漂移（I4，已知取舍） | 中 | 短期黄金数据集 CI 把关；P4 后评估长期收敛：降级链调 DSH TS 端点（HTTP），消除 Python 侧确定性逻辑副本 |
 
 
 ## 十一、实施路线（v1.3，融入章节十二/十三/十四）
 
-> 执行策略按章节十四「四组处置」：**组①** 已融入正文；**组②** 已验证项已回填、4 项深化 API 待 **P0-1** 验证；**组③** 全部融入 **P1** 设计；**组④** 按第十三节映射表逐项迭代。修订追踪表（章节十二）状态列随进展更新。
+> 执行策略按章节十四「四组处置」：**组①** 已融入正文；**组②** 已验证项已回填、4 项深化 API **P0-1 已验证**（D1 PTC 存在 / D2 无 fork 走退路 / D6 部分成立 / Q3 `ralph` 可触发）；**组③** 全部融入 **P1** 设计；**组④** 按第十三节映射表逐项迭代。修订追踪表（章节十二）状态列随进展更新。
 
 - **P0 试跑（✅ 已完成）**：T1-T7 验证 DSH v0.1 真实能力 → `docs/superpowers/plans/2026-08-14-dsh-p0-report.md`（真实 API 签名 + spec 假设矩阵 + 版本裁决 rc.6 + 部署拓扑降级「容器内 SDK 宿主 + HTTP 触发」）。
-- **P0-1 扩展验证（新增，章节十四组②进入条件）**：D1 PTC / D2 Fork / D6 Resume / Q3 Ralph 四项 API 验证 + prefix-cache API 层观测（可选）→ `docs/superpowers/plans/2026-08-14-dsh-p0-1-api-extension.md`；结果回填章节十四组②决策表（通过 → 对应深化项进 P2/P3/P4；失败 → 走文档退路）。
+- **P0-1 扩展验证（✅ 已完成）**：D1 PTC / D2 Fork / D6 Resume / Q3 Ralph 四项 API 验证 + prefix-cache API 层观测 → `docs/superpowers/plans/2026-08-14-dsh-p0-1-report.md`；结果已回填章节十四组②决策表（D1 PTC 存在 → P2；D2 Python SDK 无 fork → 串行重跑退路；D6 部分成立 → Orchestrator 幂等；Q3 `ralph` 可触发 → P4）。
 - **P1 资产迁移（含组③全部融入）**：SKILL 迁入 `.dsh/skills/`（kebab-case + frontmatter 精简 + **E1 `provides/consumes`** + **E2 `output.schema.json`**）；workflow 五段预置脚本（自定义工具插件承载，tool-ralph 范式）；确定性 TS + 黄金数据集（**S4** 6 类边界）；**I5 源头统一 snake_case 决策**（首选；兜底附录 B 字段映射表，输出契约定稿时裁决）；I6 模型选择预留接口；I3 脚本防篡改挂载（read-only volume）；I2 并发模型设计（max_sessions + 队列 + 同股票锁）；I1 开发环境（WSL2/Docker）；S1 MCP streamable-http；S2 PE 非法判定入 schema；**附录 A cordis.yml 可运行样例**（B2，插件开发首日产出）。
 - **P2 插件开发（含组④ P2 项）**：invest-data-tool / invest-calc / invest-guard / invest-schema + **D1 PTC**（组②通过后）/ **D3 内置守卫**（循环卫生 + 工具超时，零依赖两行配置）/ **D5 上下文压缩**（窗口 80% 触发）/ **Q1 证据引用强制** / **Q2 置信度标注**。
 - **P3 桥接集成（含组④ P3 项）**：Orchestrator + DataBridge(MCP streamable-http) + 元数据契约（analysis_model/analysis_degraded）+ 前端展示（含 I6 模型选择完整落地）+ **5.1 容错策略落地为代码** / **D2 Fork**（组②通过后）/ **D4 invest-telemetry**（I7 成本监控载体）/ **D6 Resume**（组②通过后）/ I7 成本监控与预算 / S7 经验进化（人工审阅 + 热更新）。
@@ -522,7 +523,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 - **修订建议**：风险表加一条「成本失控」：
   - DSH 会话级 token 追踪（框架已有）+ 单次分析预算阈值（超限降级）。
   - 日累计 token 上限 + 告警（接入现有监控）。
-  - prefix-cache 命中率纳入生产监控指标（验证 99% 假设是否成立）。
+  - prefix-cache 命中率纳入生产监控指标（P0-1 T5 实测：暖缓存 hit_rate=79.0%，非 99%——DeepSeek 以 64-token 块为缓存粒度，尾块恒 miss；成本模型按块对齐上限下修，以「真实 persona 前缀重测后定稿上限」为准）。
 
 ---
 
@@ -599,7 +600,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | I4 双实现漂移 | 重要 | 组④（P4 收敛） | P4 | 已写入风险表（v1.2），收敛方案归 P4 |
 | I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.3「I5 源头 snake_case + 附录 B 兜底」，**附录 B 占位已建**），P1 定稿 |
 | I6 多模型选择 | 重要 | 组③（P1 接口）+ 组④（P3 完整落地） | P1-P3 | 已写入正文（v1.2「六、模型选择机制」），P1 预留接口、P3 完整落地 |
-| I7 成本监控/限流/预算 | 重要 | 组④（P3，载体 D4 telemetry） | P2-P3 | 已写入风险表（v1.2，载体 D4 invest-telemetry 归 P3）；prefix-cache 观测并入 **P0-1 T5** |
+| I7 成本监控/限流/预算 | 重要 | 组④（P3，载体 D4 telemetry） | P2-P3 | 已写入风险表（v1.2，载体 D4 invest-telemetry 归 P3）；prefix-cache 观测 **P0-1 T5 已完成**（实测 79%，64-token 块对齐；成本模型下修块对齐上限，真实 persona 前缀重测后定稿） |
 | S1 MCP 跨容器传输 | 建议 | 组③（P1 容器网络设计时） | 实施过程 | 已完成（v1.2 已写入正文「三、MCP 传输方式」） |
 | S2 PE 非法定义 | 建议 | 组③（P1 schema 定义时） | 实施过程 | 已写入正文（v1.2「4.5 PE 非法判定」），落地归 P1 schema 定义 |
 | S3 会话日志留存 | 建议 | 组④（P4） | P4 | 已写入正文（v1.2「4.6 会话日志留存」），落地归 P4 |
@@ -610,7 +611,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | S8 范围边界声明 | 建议 | 组①（已落地） | 已落地 | ✅ 已完成（第一节范围声明） |
 | S9 standard preset 存在性 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T4：shipped preset 为 standard/minimal/code/cordis） |
 | S10 DSH 版本号时效 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T1：npm latest=rc.6，已统一锁定并回填 DSH_UPSTREAM） |
-| D1 PTC / D2 Fork / D6 Resume / Q3 Ralph（组② 待验证） | 高 | 组②（P0-1 验证后决策） | P0-1 → P2/P3/P4 | 待验证（P0 源码侦察：`tool-ralph` 存在、fork 仅持久化层、PTC 无 core 落点、checkpoint 为崩溃恢复；由 **P0-1** T1-T4 执行确认后回填） |
+| D1 PTC / D2 Fork / D6 Resume / Q3 Ralph（组② 已验证） | 高 | 组②（P0-1 验证后决策） | P0-1 → P2/P3/P4 | 已验证（P0-1 T1-T4：D1 PTC 存在（`DSH_TOOLS_MODE=code`）/ D2 Python SDK 无 fork 走退路 / D6 部分成立改 Orchestrator 幂等 / Q3 `ralph` 可触发） |
 | D3 内置守卫 / D4 telemetry / D5 上下文压缩 / Q1 证据引用 / Q2 置信度（组④ 深化项） | 中 | 组④（P2/P3 逐项实施） | P2-P3 | 已写入正文组件设计（v1.3：4.1 cordis 清单 / 4.3 输出 / 4.5 守卫表 / 4.6 记忆层 / 4.2 skill），实施归组④ P2-P3 |
 
 ---
@@ -644,7 +645,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 - 后续 ②-⑤ 步仍是标准 workflow pipeline（LLM 判断型），不受 PTC 影响。
 - 预期效果：read_context 阶段的上下文占用从"全量原始数据"降为"结论摘要"，结合 prefix-cache，长上下文成本进一步压缩。
 
-**落地载体**：workflow 脚本 ① 步声明 `mode: ptc`，DSH 框架自动切换该步骤为 Code Mode 执行。**待 P0 验证**：PTC 与 workflow pipeline 的组合是否支持（若不支持，退化为在 invest-data-tool 内做批量封装，单次调用返回聚合结果）。
+**落地载体**：PTC 路径——显式启用 `DSH_TOOLS_MODE=code`，① read_context 以 Code Mode 执行批量调用数据接口（模型仅拿 `run_code` 工具，程序体内批量调用数据/文件/命令工具，只回结论摘要）。**P0-1 T1 已验证**：PTC 存在（`core/tools` 的 `mode='code'`，`ToolPresentationMode`），headless 默认 `native`，须 `DSH_TOOLS_MODE=code` 显式启用才暴露 `run_code`；无需走 invest-data-tool 批量封装退路。
 
 #### D2. Session Fork —— 估值敏感性分析【高价值】
 
@@ -659,7 +660,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 - 主会话继续走 ⑤ 结论；Fork 结果作为 `sensitivity_analysis` 附加到 `stage_results.swing_zone_analysis` 下。
 - 前端可选展示"敏感性：PE ±10% → 评级变化矩阵"。
 
-**落地载体**：Orchestrator 在 ④ 步完成后调用 DSH SDK 的 Fork API，传入不同 PE 参数触发平行计算。**待 P0 验证**：Fork API 在 headless 模式下的可用性与性能开销。若 Fork 不可用，退化为 Orchestrator 串行触发两次额外分析（仅重跑 ④⑤ 步）。
+**落地载体**：退路落地——Orchestrator 串行触发两次额外分析（仅重跑 ④⑤，PE ±10% 敏感情景）。**P0-1 T2 已验证**：TS 客户端层有 `session.fork` 线协议 + `sessions.fork()` 服务，但 Python SDK（部署拓扑用的集成面）无 fork 方法，故不走 SDK Fork API，改串行重跑退路。
 
 #### D3. 内置守卫插件（循环卫生 + 工具超时）—— 生产稳定性兜底【中价值】
 
@@ -729,7 +730,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 - 新财报发布 → 必须重跑 ②③④⑤（定性可能变化）
 - 仅查看历史结果 → 直接读 DB，不触发 DSH
 
-**落地载体**：Orchestrator 增加 resume 判断逻辑 + DSH SDK 的 Resume API 调用。**待 P0 验证**：Resume API 在 headless 模式下的行为（是否自动恢复到最后一个 step，还是需要显式指定恢复点）。
+**落地载体**：Orchestrator 步骤级幂等 + `session_id` 复用上下文延续；重跑范围由数据新鲜度驱动（行情变 → ④⑤，新财报 → ②③④⑤，仅查看 → 读 DB）。**P0-1 T3 已验证**：`session_id` 复用上下文延续成立（同 session 两轮 turn=1→2），但无显式断点恢复原语（checkpoint 为崩溃恢复），无 SDK Resume 原语。
 
 ---
 
@@ -779,7 +780,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
   - 若发现问题，输出修正建议 → 主会话根据修正建议调整结论
 - **默认关闭**（增加一次完整 LLM 调用的延迟和成本），在"深度分析"模式（用户选择 V4-Pro）时开启。
 
-**落地载体**：workflow 脚本在 ⑤ 步后增加可选的 `ralph-review` 步骤，由 preset 配置开关控制。**待 P0 验证**：Ralph 循环在 headless 模式下的触发方式。
+**落地载体**：workflow 脚本在 ⑤ 步后增加可选的 `ralph-review` 步骤，由 preset 配置开关控制；触发工具名 **`ralph`**（`objective` 必填 + `maxRounds` 可选，默认 256）。**P0-1 T4 已验证**：工具实际注册名 `ralph`（非 `ralph-loop`，后者是 workflow meta 名），已在 headless base preset 注册，headless 可触发（`roundsStarted=2`）。
 
 ---
 
@@ -846,7 +847,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | E1 Skill 依赖声明 | 中 | P1 | frontmatter 扩展 + CI 脚本 |
 | E2 Skill 输出 Schema | 中 | P1（schema 定义）+ P2（校验钩子接入） | 每个 Skill 编写 output.schema.json |
 
-> **P0 验证清单更新**：在原有 P0（茅台全链路跑通）基础上，增加 4 项 API 验证：PTC 可用性（D1）、Fork API（D2）、Resume API（D6）、Ralph 触发方式（Q3）。验证结果决定对应深化项是否进入后续阶段。
+> **P0 验证清单更新（P0-1 已完成）**：在原有 P0（茅台全链路跑通）基础上增加的 4 项 API 验证现已全部执行——PTC 可用性（D1：✅ 存在，须 `DSH_TOOLS_MODE=code` 显式启用）、Fork API（D2：❌ Python SDK 无 fork，走串行重跑退路）、Resume API（D6：⚠️ 部分成立，上下文延续成立、无显式断点恢复原语）、Ralph 触发方式（Q3：✅ 工具名 `ralph`，headless 可触发）。结果已回填章节十四组②决策表。
 
 ---
 
@@ -877,10 +878,10 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | B2 cordis.yml 语法 | T4 已验证：composition vs patch、defineTool 真实签名 | 部分固化；**附录 A 占位已建**（文末附录节），可运行样例待 P1 产出（组③） |
 | S9 standard preset | T4 已确认：shipped preset = standard/minimal/code/cordis | ✅ 已确认 |
 | S10 版本号 | T1 已确认：npm latest = rc.6 | ✅ 已锁定并回填 DSH_UPSTREAM |
-| D1 PTC | **待验证**（不在 T1-T6 范围） | 通过 → P2 实施；失败 → invest-data-tool 内批量封装退路 |
-| D2 Session Fork | **待验证** | 通过 → P3 实施；失败 → Orchestrator 串行两次重跑退路 |
-| D6 Session Resume | **待验证** | 通过 → P3 实施；失败 → 全量重跑退路 |
-| Q3 Ralph 自审 | **待验证** | 通过 → P4 实施（深度模式）；失败 → 移除自审选项 |
+| D1 PTC | **P0-1 T1 已验证**：PTC 存在（`core/tools` 的 `mode='code'`，`ToolPresentationMode`），需 `DSH_TOOLS_MODE=code` 显式启用 | 通过 → P2 实施（显式启用 `DSH_TOOLS_MODE=code`） |
+| D2 Session Fork | **P0-1 T2 已验证**：TS 客户端层有 `session.fork` 线协议 + `sessions.fork()` 服务，但 Python SDK（部署拓扑用的集成面）无 fork 方法 | 走退路：Orchestrator 串行两次重跑 ④⑤（PE ±10%） |
+| D6 Session Resume | **P0-1 T3 已验证**：`session_id` 复用上下文延续成立（同 session 两轮 turn=1→2），无显式断点恢复原语（checkpoint 为崩溃恢复） | 部分成立 → P3（重跑范围改 Orchestrator 步骤级幂等 + 数据新鲜度驱动） |
+| Q3 Ralph 自审 | **P0-1 T4 已验证**：工具名 `ralph`，headless base 已注册，`roundsStarted=2` 可触发 | 通过 → P4 实施（深度模式，工具名 `ralph`） |
 
 > **进入条件**：P2 开工前完成 D1/D2/D6/Q3 四项验证（**P0-1 扩展验证**，见 `docs/superpowers/plans/2026-08-14-dsh-p0-1-api-extension.md`），结果回填本表。
 
