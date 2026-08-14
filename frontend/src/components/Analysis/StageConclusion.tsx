@@ -1,5 +1,6 @@
 import { Alert, Card, List } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
+import { EvidencePanel } from './EvidencePanel';
 
 const RATING_COLOR: Record<string, string> = {
   '🟢': '#52c41a',
@@ -41,6 +42,7 @@ export function StageConclusion({ snap }: { snap: WatchlistBoardRow }) {
           renderItem={(a: string, i: number) => <List.Item>{i + 1}. {a}</List.Item>}
         />
       )}
+      <EvidencePanel confidence={stage?.confidence} evidence={stage?.evidence} />
     </Card>
   );
 }

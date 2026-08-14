@@ -216,6 +216,23 @@ export interface FinancialRow {
   net_profit_deducted: number | null;
 }
 
+// ── 五段式证据与置信度（.dsh/skills/*/output.schema.json Q1/Q2）──
+
+// 单条支撑数据：source（来源）/ field（字段）/ value（取值）
+export interface EvidenceItem {
+  source?: string;
+  field?: string;
+  value?: number | string | null;
+}
+
+// 一条结论声明及其支撑数据列表
+export interface EvidenceClaim {
+  claim?: string;
+  evidence?: EvidenceItem[];
+}
+
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+
 // 五段结构化结果（各段字段 optional，前端宽容读取）
 export interface StageResult {
   title: string;
@@ -251,6 +268,9 @@ export interface StageResult {
   final_rating?: string;
   loss_exception_rationale?: string;
   forward_valuation_basis?: string;
+  // Q1 证据 + Q2 置信度（各段 schema 顶层均带）
+  evidence?: EvidenceClaim[];
+  confidence?: ConfidenceLevel;
 }
 
 // 逆向四类结论 + 重大风险（= stage_results.run_reverse_checklist）
@@ -259,4 +279,7 @@ export interface ReverseAnalysis {
   major_risks: string[];
   checklist_veto: boolean;
   overall_assessment: string;
+  // Q1 证据 + Q2 置信度（run_reverse_checklist schema 顶层）
+  evidence?: EvidenceClaim[];
+  confidence?: ConfidenceLevel;
 }

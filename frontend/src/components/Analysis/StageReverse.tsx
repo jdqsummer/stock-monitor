@@ -1,5 +1,6 @@
 import { Alert, Card, List } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
+import { EvidencePanel } from './EvidencePanel';
 
 const CONCLUSION_LABELS = [
   ['about_company', '关于公司本身'],
@@ -41,6 +42,7 @@ export function StageReverse({ snap }: { snap: WatchlistBoardRow }) {
           {rev.overall_assessment && (
             <div style={{ marginTop: 8, color: '#666', lineHeight: 1.8 }}>综合判断：{rev.overall_assessment}</div>
           )}
+          <EvidencePanel confidence={rev.confidence} evidence={rev.evidence} />
         </>
       ) : (
         <div style={{ color: '#999' }}>（该阶段未产生结果）</div>

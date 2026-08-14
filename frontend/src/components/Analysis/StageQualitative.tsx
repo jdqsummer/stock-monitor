@@ -1,5 +1,6 @@
 import { Card, List, Space, Tag } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
+import { EvidencePanel } from './EvidencePanel';
 
 function Block({ title, text }: { title: string; text?: string }) {
   return (
@@ -38,6 +39,7 @@ export function StageQualitative({ snap }: { snap: WatchlistBoardRow }) {
           )}
         </div>
       </Space>
+      <EvidencePanel confidence={stage?.confidence} evidence={stage?.evidence} />
     </Card>
   );
 }

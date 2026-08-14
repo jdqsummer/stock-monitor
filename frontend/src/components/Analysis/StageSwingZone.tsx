@@ -1,6 +1,7 @@
 import { Card, Descriptions } from 'antd';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import type { WatchlistBoardRow } from '@/types';
+import { EvidencePanel } from './EvidencePanel';
 
 export function StageSwingZone({ snap }: { snap: WatchlistBoardRow }) {
   const stage = snap.stage_results?.anchor_industry_pe;
@@ -34,6 +35,7 @@ export function StageSwingZone({ snap }: { snap: WatchlistBoardRow }) {
         </Descriptions.Item>
         <Descriptions.Item label="信号">{snap.signal_label || '—'}</Descriptions.Item>
       </Descriptions>
+      <EvidencePanel confidence={stage?.confidence} evidence={stage?.evidence} />
     </Card>
   );
 }
