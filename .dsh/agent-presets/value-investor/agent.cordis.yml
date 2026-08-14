@@ -1,0 +1,42 @@
+# `value-investor` agent preset —— 最小可运行组合（composition）。
+#
+# 结构（与 shipped preset 一致）：preset = 目录，内含一个 agent.cordis.yml（顶层为
+# 「裸插件行」列表 `- id/name/config`）+ 可选 preset.yml（展示元数据，本任务范围外）。
+# 本文件即「组合」（composition）。真实作者路径是 `ctx.agentPresets.copy(...)` 或
+# web 设置页；无 `dsh preset copy` CLI 子命令（P0 T4 实测）。
+#
+# ⚠️ 两种格式必须区分（P0 T4 实测坑位）：
+#   - composition（本文件）：顶层为「裸插件行」列表 `- id/name/config`，供 preset 目录
+#     mount（`ctx.agentPresets.mount(agentCtx, id)`，由 web/tui 的 agent 工厂 setup() 调）。
+#   - patch 覆盖层（cordis.patch.yml / `--patch`）：新增插件须包在 `- insert: [...]` 里，
+#     裸行是「对既有 id 的 config 覆盖/disable」。本 composition 不能直接当 `--patch` 用，
+#     否则新插件行被当成「对不存在 id 的覆盖」= 静默 no-op（hello_echo 未注册）。
+#
+# ⚠️ host-plane vs preset-plane（P0 T4 源码核实，与简报 Step 2 的差异）：
+#   - `agent-default-model` 提供 `ctx.agentDefaultModel`（进程级默认模型，README 明示
+#     "The service owns one process-wide default"）→ 属 HOST 组合（base.cordis.yml），
+#     非 preset 行；且插件 config 要求 `{ provider, model }`。
+#   - `skill`（`@deepseek-ai/dsh-skill`）提供 `ctx.skills` 注册表，host+per-scope 分层；
+#     shipped standard preset 不直接挂它（host 组合已挂），preset 挂的是
+#     `skill-filesystem`（provider）+ `tool-skill`（catalog + loader）。
+#   - 真正 preset-plane 的最小集 = `tool-skill` + 自定义工具（+ 可选 `persona` identity）。
+#   - 本文件按简报 Step 2 原文保留四行；`agent-default-model`/`skill` 的 host-plane 归属
+#     与 mount 行为标注「待 P2 验证点」，P2 在 web/tui 挂载验证前不视为定稿。
+
+# 默认模型选择（HOST-plane 服务，简报 Step 2 原文；待 P2 验证点）
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+
+# skill 注册表（HOST-plane 服务，简报 Step 2 原文；待 P2 验证点）
+- id: skill
+  name: '@deepseek-ai/dsh-skill'
+
+# skill 目录 + 加载工具（preset-plane，shipped standard preset 同款）
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# 自定义只读工具 hello_echo（preset-plane；相对路径在 preset 目录 mount 时重定向到
+# 该目录自身。headless 无 preset mount，验证须走 --patch 的 insert + file:// 绝对 URL，
+# 见 README.md「挂载方式」）
+- id: hello-tool
+  name: './hello-tool.mjs'
