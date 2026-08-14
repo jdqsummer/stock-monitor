@@ -77,4 +77,4 @@ Error: invest-guard 拒绝：禁止写入 .dsh/ 路径（脚本防篡改 I3）�
 设计文档第十二节「修订追踪」两行状态已回填（本报告提交同步编辑 `docs/superpowers/specs/2026-08-14-dsh-integration-design.md`）：
 
 - **D1（组② 已验证行）**：追加「P2 完成：D1 PTC 组合结论定稿（全局 code 模式替换工具集 → ① 步退路）」。
-- **D3/D4/D5/Q1/Q2（组④ 深化项行）**：追加「P2 完成：D3/D5 确认 base 内置（零自研，`p2-d3d5-verification.md`）、Q1/Q2 落 invest-schema（29 tests 全绿）；D4 telemetry 归 P3」。
+- **D3/D4/D5/Q1/Q2（组④ 深化项行）**：追加「P2 完成：D3/D5 确认 base 内置（零自研，`p2-d3d5-verification.md`）、Q1/Q2 纯函数层落 invest-schema（30 tests 全绿，producer schema 字段待 P3）；D4 telemetry 归 P3」。
