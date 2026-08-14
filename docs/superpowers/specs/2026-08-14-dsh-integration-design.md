@@ -1,6 +1,6 @@
 # 投资分析框架 DSH 深度集成设计
 
-> 版本：v1.2 ｜ 日期：2026-08-14 ｜ 状态：P0 已验证 + 章节 12-14 审核修订融入正文；深化项 D1/D2/D6/Q3 待 **P0-1** 扩展验证
+> 版本：v1.3 ｜ 日期：2026-08-14 ｜ 状态：P0 已验证 + 章节 12-14 审核修订**全量融入**正文（含章节十三深化项 D3/D4/D5/Q1/Q2 落位组件设计）；深化项 D1/D2/D6/Q3 待 **P0-1** 扩展验证
 > 目标：将投资分析框架深度融入 DeepSeek Harness (DSH)，充分利用 DSH 运行时/工具层/记忆层/Skill 层/Preset/多 Agent 能力，实现投资分析可扩展（skills 化）、可维护（方便更新升级），而非套壳。
 
 ---
@@ -122,6 +122,10 @@ DataBridge 跨容器走 **`streamable-http`**（backend 容器与 dsh-engine 容
 │    ├── invest-calc-tool       # 自研：确定性 TS
 │    ├── invest-guard           # 自研：否决/约束守卫
 │    ├── invest-schema          # 自研：输出形状校验
+│    ├── guard-loop-hygiene     # D3 内置守卫：循环卫生（组④ P2）
+│    ├── guard-tool-timeout     # D3 内置守卫：工具超时（组④ P2）
+│    ├── invest-telemetry       # D4 自研：生命周期钩子指标采集（组④ P3）
+│    ├── context-compaction     # D5 内置：上下文压缩，窗口 80% 触发（组④ P2）
 │    └── sandbox: danger-full-access   # 云端无人值守（受审计）
 └── ...（裁剪通用工具：文件编辑/shell/浏览器等不挂载）
 ```
@@ -174,6 +178,8 @@ version: 1.0.0
 - frontmatter 增加 `provides` / `consumes` 字段（版本变更时 CI 检查 `provides` 字段是否有删除/重命名 → 标记所有 `consumes` 该字段的下游 Skill 需审查；与 workflow 脚本 `depends_on` 互补——脚本管运行时顺序，依赖声明管静态兼容性）。
 - 每 Skill 目录旁增加 `output.schema.json`（该步输出的 JSON Schema）；workflow 每步执行后做**中间校验**（非最终校验），格式错误立即该步重试或降级，避免错误传播到后续步骤；invest-schema 最终校验保留作为 ⑤ 步整体把关。
 
+**置信度标注（Q2，组④ P2）**：Skill 正文增加置信度判断指引（3 期以上数据支撑 → `high`；单期或推断 → `low`）；输出带 `confidence` 枚举（见 4.5 invest-schema），⑤ 结论阶段综合各步：≥2 个关键步骤为 `low` → 整体加「置信度不足」警告。
+
 ### 4.3 Workflow 五段 pipeline（预置脚本，纪律硬约束）
 
 > **P0 已验证（载体调整）**：预置 pipeline **不是**原生 `workflow` 工具的能力（原生 `script` 是模型现场写的字符串参数，无 preset 模式）；须由**自定义工具插件**承载（官方 `tool-ralph` 范式：`FIXED_SCRIPT` 常量内嵌插件 + `defineTool` 只暴露参数 + `execute()` 调 `ctx.workflowEngine.start({script, meta, args})`）。脚本 realm **无 fs/network/timers/Node API**，确定性计算、`blocks/` 目录扫描、读 skill body 都必须在插件 `execute()`（host Node）完成、经 `args` 注入；脚本只保留 `agent()` 子代理编排与顺序。
@@ -185,7 +191,7 @@ version: 1.0.0
 | ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报 | 基础数据 |
 | ② analyze_qualitative | analyze-qualitative | financials/current_price/… | 经营质量：增长指标 + 利润质量确定性检查；**blocks/ 目录扫描驱动子块** | qualitative_analysis + business_model/moat_assessment/operating_quality + 各子块 output_field |
 | ③ run_reverse_checklist | run-reverse-checklist | qualitative_analysis/financials/… | 无（纯 LLM） | reverse_analysis + risk_factors/checklist_veto |
-| ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis + pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
+| ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis（含 `sensitivity_analysis`：PE ±10% 敏感性，D2 P0-1 验证通过后 P3）+ pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
 | ⑤ output_conclusion | output-conclusion | 1-4 全部 | 否决守卫 + 形状校验 | conclusion_analysis + final_rating/recommendation/action_items |
 
 > **子块可扩展性**：② 步运行时扫描 `analyze-qualitative/blocks/` 目录（**在插件 `execute()` host 侧执行，非脚本 realm**——脚本无 fs），动态遍历每个子块 skill（注入方法论 + depends_on 数据 → LLM 定性）。纯 LLM 子块（如新增市场情绪）零代码改动；仅需确定性计算的子块才在 invest-calc 加 TS 纯函数 + 声明 handler 引用。
@@ -215,7 +221,11 @@ invest-data/            # 规则数据（JSON，非代码，独立热更新）
 |:--|:--|:--|
 | invest-guard/veto | 单调安全守卫 | unassessable_risk / checklist_veto → 强制 🔴 + 坚决放弃，不可被后续步骤绕过 |
 | invest-guard/constraints | 守卫（新增强化） | 评级一致性（距击球区↔评级）、纪律红线（>50% 不追高）、PE 极端>100 下调——LLM 路径强制执行 |
+| guard-loop-hygiene（D3，内置） | 单调安全守卫 | 同一工具连续调用 ≥3 次且参数无变化 → 强制终止当前 step（组④ P2） |
+| guard-tool-timeout（D3，内置） | 单调安全守卫 | 单工具执行超 30s → 强制中断，返回超时错误（触发降级/重试）（组④ P2） |
 | invest-schema | 工具 schema + post-execute 钩子 | final_rating ∈ {🟢🟡🔴}；亏损非🔴必填 loss_exception_rationale + forward_valuation_basis |
+| invest-schema/evidence（Q1） | schema + post-execute 钩子 | 每个 `claim` 必须 ≥1 条 `evidence`，且 `evidence.source` 指向已注入上下文中存在的数据路径（防幻觉引用）（组④ P2） |
+| invest-schema/confidence（Q2） | schema 枚举 | 每个 LLM 输出字段带 `confidence ∈ {high, medium, low}`；low 结论前端灰标 + 提示人工验证（组④ P2） |
 
 > **P0 已验证（真实签名）**：
 > - 守卫 = `ctx.tools.guard(ToolGuard)`，`ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined`；返回字符串 = 拒绝（final 单调否决，**无 allow 方向、不可逆**），`undefined` = 放行。管线顺序 `tools/pre-execute`（allow/deny/ask）→ 守卫 → `tools/execute`（around）→ `tools/post-execute`（replace/block/附加 context）→ `finalizeContent` → `tools/result`。
@@ -230,6 +240,7 @@ invest-data/            # 规则数据（JSON，非代码，独立热更新）
 - **Python memory 蒸馏管道（保留）**：分析结论回写为投资笔记，跨会话经验沉淀继续走 L1→L3 蒸馏（平台业务：用户笔记/聊天记忆）。
 - **会话日志留存（S3）**：DSH append-only 日志 90 天热存储（本地 volume）+ 超期归档冷存储/清理；或按 session 数量上限滚动（保留最近 10,000 个会话）。
 - **经验进化路径（S7）**：投资笔记 → 定期人工审阅 → 更新对应 SKILL.md 正文（volume 热更新即时生效）。明确为**人工审阅 + 热更新**而非全自动蒸馏（避免噪声污染方法论资产）。
+- **运行时指标采集（D4 invest-telemetry，组④ P3）**：生命周期钩子 `tools/pre-execute` / `tools/post-execute` / `agent/request` / `agent/turn-stopping` 采集调用链、耗时、input/output token（分阶段成本归因）→ Prometheus 端点或结构化日志（**I7 成本监控载体**）。
 
 ---
 
@@ -392,13 +403,13 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | 双实现漂移（I4，已知取舍） | 中 | 短期黄金数据集 CI 把关；P4 后评估长期收敛：降级链调 DSH TS 端点（HTTP），消除 Python 侧确定性逻辑副本 |
 
 
-## 十一、实施路线（v1.2，融入章节十二/十三/十四）
+## 十一、实施路线（v1.3，融入章节十二/十三/十四）
 
 > 执行策略按章节十四「四组处置」：**组①** 已融入正文；**组②** 已验证项已回填、4 项深化 API 待 **P0-1** 验证；**组③** 全部融入 **P1** 设计；**组④** 按第十三节映射表逐项迭代。修订追踪表（章节十二）状态列随进展更新。
 
 - **P0 试跑（✅ 已完成）**：T1-T7 验证 DSH v0.1 真实能力 → `docs/superpowers/plans/2026-08-14-dsh-p0-report.md`（真实 API 签名 + spec 假设矩阵 + 版本裁决 rc.6 + 部署拓扑降级「容器内 SDK 宿主 + HTTP 触发」）。
 - **P0-1 扩展验证（新增，章节十四组②进入条件）**：D1 PTC / D2 Fork / D6 Resume / Q3 Ralph 四项 API 验证 + prefix-cache API 层观测（可选）→ `docs/superpowers/plans/2026-08-14-dsh-p0-1-api-extension.md`；结果回填章节十四组②决策表（通过 → 对应深化项进 P2/P3/P4；失败 → 走文档退路）。
-- **P1 资产迁移（含组③全部融入）**：SKILL 迁入 `.dsh/skills/`（kebab-case + frontmatter 精简 + **E1 `provides/consumes`** + **E2 `output.schema.json`**）；workflow 五段预置脚本（自定义工具插件承载，tool-ralph 范式）；确定性 TS + 黄金数据集（**S4** 6 类边界）；**I5 源头统一 snake_case 决策**；I6 模型选择预留接口；I3 脚本防篡改挂载（read-only volume）；I2 并发模型设计（max_sessions + 队列 + 同股票锁）；I1 开发环境（WSL2/Docker）；S1 MCP streamable-http；S2 PE 非法判定入 schema；**附录 A cordis.yml 可运行样例**（B2，插件开发首日产出）。
+- **P1 资产迁移（含组③全部融入）**：SKILL 迁入 `.dsh/skills/`（kebab-case + frontmatter 精简 + **E1 `provides/consumes`** + **E2 `output.schema.json`**）；workflow 五段预置脚本（自定义工具插件承载，tool-ralph 范式）；确定性 TS + 黄金数据集（**S4** 6 类边界）；**I5 源头统一 snake_case 决策**（首选；兜底附录 B 字段映射表，输出契约定稿时裁决）；I6 模型选择预留接口；I3 脚本防篡改挂载（read-only volume）；I2 并发模型设计（max_sessions + 队列 + 同股票锁）；I1 开发环境（WSL2/Docker）；S1 MCP streamable-http；S2 PE 非法判定入 schema；**附录 A cordis.yml 可运行样例**（B2，插件开发首日产出）。
 - **P2 插件开发（含组④ P2 项）**：invest-data-tool / invest-calc / invest-guard / invest-schema + **D1 PTC**（组②通过后）/ **D3 内置守卫**（循环卫生 + 工具超时，零依赖两行配置）/ **D5 上下文压缩**（窗口 80% 触发）/ **Q1 证据引用强制** / **Q2 置信度标注**。
 - **P3 桥接集成（含组④ P3 项）**：Orchestrator + DataBridge(MCP streamable-http) + 元数据契约（analysis_model/analysis_degraded）+ 前端展示（含 I6 模型选择完整落地）+ **5.1 容错策略落地为代码** / **D2 Fork**（组②通过后）/ **D4 invest-telemetry**（I7 成本监控载体）/ **D6 Resume**（组②通过后）/ I7 成本监控与预算 / S7 经验进化（人工审阅 + 热更新）。
 - **P4 清理与加固（含组④ P4 项）**：OpenHarness 退役、测试迁移、Docker 双容器、版本锁定 rc.6、DSH_UPSTREAM 六步升级流水线 + **Q3 Ralph**（组②通过后，深度模式）/ **I4 双实现收敛**（降级链调 DSH TS 端点）/ **S3 日志留存**（90 天热存储）/ **S6 回滚 runbook**。
@@ -586,7 +597,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | I2 并发模型 | 重要 | 组③（P1 任务调度设计时） | P1 | 已写入正文（v1.2「三、并发控制」），落地归 P1 |
 | I3 脚本防篡改 | 重要 | 组③（P1 挂载结构设计时） | P1 | 已写入正文（v1.2「4.1 脚本防篡改」），落地归 P1 |
 | I4 双实现漂移 | 重要 | 组④（P4 收敛） | P4 | 已写入风险表（v1.2），收敛方案归 P4 |
-| I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.2「I5 源头 snake_case」），P1 定稿 |
+| I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.3「I5 源头 snake_case + 附录 B 兜底」），P1 定稿 |
 | I6 多模型选择 | 重要 | 组③（P1 接口）+ 组④（P3 完整落地） | P1-P3 | 已写入正文（v1.2「六、模型选择机制」），P1 预留接口、P3 完整落地 |
 | I7 成本监控/限流/预算 | 重要 | 组④（P3，载体 D4 telemetry） | P2-P3 | 已写入风险表（v1.2，载体 D4 invest-telemetry 归 P3）；prefix-cache 观测并入 **P0-1 T5** |
 | S1 MCP 跨容器传输 | 建议 | 组③（P1 容器网络设计时） | 实施过程 | 已完成（v1.2 已写入正文「三、MCP 传输方式」） |
@@ -600,6 +611,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | S9 standard preset 存在性 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T4：shipped preset 为 standard/minimal/code/cordis） |
 | S10 DSH 版本号时效 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T1：npm latest=rc.6，已统一锁定并回填 DSH_UPSTREAM） |
 | D1 PTC / D2 Fork / D6 Resume / Q3 Ralph（组② 待验证） | 高 | 组②（P0-1 验证后决策） | P0-1 → P2/P3/P4 | 待验证（P0 源码侦察：`tool-ralph` 存在、fork 仅持久化层、PTC 无 core 落点、checkpoint 为崩溃恢复；由 **P0-1** T1-T4 执行确认后回填） |
+| D3 内置守卫 / D4 telemetry / D5 上下文压缩 / Q1 证据引用 / Q2 置信度（组④ 深化项） | 中 | 组④（P2/P3 逐项实施） | P2-P3 | 已写入正文组件设计（v1.3：4.1 cordis 清单 / 4.3 输出 / 4.5 守卫表 / 4.6 记忆层 / 4.2 skill），实施归组④ P2-P3 |
 
 ---
 
