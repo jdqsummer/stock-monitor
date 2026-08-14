@@ -153,6 +153,47 @@ def _block_text(block: object) -> str:
     return ""
 
 
+def build_context(state: dict) -> dict:
+    """从 AnalysisState 构建只读注入上下文（① read_context 直接读注入上下文，不绕回 Python）。
+
+    只挑确定性字段注入（financials/current_price/…），原始 JSON 不进上下文（D1 上下文节约精神）。
+    """
+    return {
+        "code": state.get("stock_code", ""),
+        "name": state.get("stock_name", ""),
+        "quote": state.get("quote"),
+        "financials": (state.get("financials") or [])[:8],
+        "news": state.get("news", [])[:10],
+        "industry_category": state.get("industry_category", ""),
+        "current_price": state.get("current_price", 0.0),
+        "total_market_cap": state.get("total_market_cap", 0.0),
+        "total_shares": state.get("total_shares", 0.0),
+        "net_profit_parent": state.get("net_profit_parent", 0.0),
+        "net_profit_deducted": state.get("net_profit_deducted", 0.0),
+    }
+
+
+class DshBudgetTracker:
+    """I7 成本监控：单次预算阈值（超限降级）+ 日累计上限（超限拒绝）。"""
+
+    def __init__(self, per_analysis: int, daily: int):
+        self._per_analysis = per_analysis
+        self._daily = daily
+        self._spent_today = 0
+
+    def check(self, usage: dict) -> str | None:
+        """返回违规原因（None=通过）。"""
+        used = int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
+        if self._per_analysis and used > self._per_analysis:
+            return f"单次分析 token 预算超限 {used} > {self._per_analysis}"
+        if self._daily and self._spent_today + used > self._daily:
+            return f"日累计 token 预算超限 {self._spent_today + used} > {self._daily}"
+        return None
+
+    def record(self, usage: dict) -> None:
+        self._spent_today += int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
+
+
 class DshOrchestrator:
     """五段分析编排器。Task 3 填充 analyze()；Task 5 填充 D6/D2；Task 7 填充预算。"""
 
@@ -162,9 +203,11 @@ class DshOrchestrator:
         base_url: str = "",
         timeout: float = 600.0,
         model_default: str = "deepseek-v4-flash",
+        budget: DshBudgetTracker | None = None,
     ):
         self._runner = runner or HttpDshRunner(base_url=base_url or "", timeout=timeout)
         self._model_default = model_default
+        self._budget = budget
 
     @staticmethod
     def is_available() -> bool:
@@ -175,3 +218,39 @@ class DshOrchestrator:
     def _session_id(self, code: str) -> str:
         """session_id = code-date（跨分析可续，I2 天然去重键）。"""
         return f"{code}-{date.today().isoformat()}"
+
+    async def analyze(self, state: dict, model: str = "") -> dict:
+        """执行 DSH 五段分析，返回 AnalysisState 兼容更新字典。
+
+        降级语义：本方法只做「DSH 路径 + 标记」，不实现降级链；调用方（Task 4）在
+        DSH 不可用/抛异常时负责降级 _rule_based 并补写 analysis_source/analysis_degraded。
+        """
+        from backend.agents.dsh_events import extract_model
+
+        requested = model or self._model_default
+        context = build_context(state)
+        session_id = self._session_id(state.get("stock_code", ""))
+        resp = await self._runner.run_five_stage(
+            code=state.get("stock_code", ""),
+            name=state.get("stock_name", ""),
+            context=context,
+            model=requested,
+            session_id=session_id,
+        )
+        if resp.get("error"):
+            raise RuntimeError(f"DSH 宿主错误: {resp['error']}")
+
+        updates = map_dsh_result_to_state(resp.get("result") or {})
+        updates["analysis_source"] = "dsh-llm"
+        updates["analysis_model"] = resp.get("model") or extract_model([]) or requested
+        updates["analysis_degraded"] = bool(resp.get("degraded"))
+
+        # I7 预算守卫：超限 → 附警告（不 block；前端据此提示成本异常）
+        if self._budget is not None:
+            violation = self._budget.check(resp.get("usage") or {})
+            if violation:
+                warnings = list(state.get("warnings") or [])
+                warnings.append(f"[成本监控] {violation}")
+                updates["warnings"] = warnings
+            self._budget.record(resp.get("usage") or {})
+        return updates

@@ -5,7 +5,13 @@ import json
 import httpx
 import pytest
 
-from backend.agents.dsh_orchestrator import HttpDshRunner, map_dsh_result_to_state
+from backend.agents.dsh_orchestrator import (
+    DshBudgetTracker,
+    DshOrchestrator,
+    HttpDshRunner,
+    build_context,
+    map_dsh_result_to_state,
+)
 
 # 供 map_dsh_result_to_state 与 HttpDshRunner 两个测试复用的五段结果 fixture
 RESULT = {
@@ -67,3 +73,89 @@ async def test_http_runner_posts_trigger_contract():
     assert captured["body"]["context"] == {"quote": {}}
     assert resp["result"]["anchor_industry_pe"]["pe_low"] == 18.0
     assert resp["model"] == "deepseek-v4-flash"
+
+
+class FakeRunner:
+    """测试用 DSH Runner：录制调用 + 返回可配置的 DshRunResponse。"""
+
+    def __init__(self, result=None, model="deepseek-v4-pro", usage=None, error=None):
+        self.result = result or RESULT
+        self.model = model
+        self.usage = usage or {"input_tokens": 10, "output_tokens": 5, "prompt_cache_hit_tokens": 0}
+        self.error = error
+        self.calls = []
+
+    async def run_five_stage(self, **kw):
+        self.calls.append(kw)
+        if self.error:
+            raise RuntimeError(self.error)
+        return {"result": self.result, "model": self.model, "usage": self.usage,
+                "degraded": False, "error": None}
+
+
+STATE = {
+    "stock_code": "600519", "stock_name": "贵州茅台",
+    "current_price": 1700.0, "total_market_cap": 21400.0, "total_shares": 12.56,
+    "net_profit_parent": 74.0, "net_profit_deducted": 73.0, "industry_category": "白酒",
+    "quote": {"code": "600519", "current_price": 1700.0}, "financials": [{"report_period": "2026H1"}],
+    "news": [], "llm_model": "deepseek-v4-pro",
+}
+
+
+def test_build_context_injects_readonly():
+    ctx = build_context(STATE)
+    assert ctx["code"] == "600519"
+    assert ctx["current_price"] == 1700.0
+    assert ctx["industry_category"] == "白酒"
+    assert ctx["financials"][0]["report_period"] == "2026H1"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_analyze_main_path():
+    orch = DshOrchestrator(runner=FakeRunner())
+    updates = await orch.analyze(STATE, model="deepseek-v4-pro")
+    assert updates["analysis_source"] == "dsh-llm"
+    assert updates["analysis_model"] == "deepseek-v4-pro"   # 真实路由模型回传（I6）
+    assert updates["analysis_degraded"] is False
+    assert updates["final_rating"] == "🟡"
+    assert updates["stage_results"]["anchor_industry_pe"]["pe_low"] == 18.0
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_analyze_uses_code_date_session_id():
+    orch = DshOrchestrator(runner=FakeRunner())
+    await orch.analyze(STATE, model="")
+    call = orch._runner.calls[0]
+    assert call["session_id"].startswith("600519-")
+    assert call["context"]["code"] == "600519"
+    # 未指定 model → 默认 flash
+    assert call["model"] == "deepseek-v4-flash"
+
+
+def test_budget_tracker_check_record():
+    b = DshBudgetTracker(per_analysis=10, daily=20)
+    assert b.check({"input_tokens": 5, "output_tokens": 2}) is None
+    b.record({"input_tokens": 5, "output_tokens": 2})  # 日累计 7
+    assert b.check({"input_tokens": 5, "output_tokens": 5}) is None  # 12 ≤ daily 20、per 10 通过
+    assert b.check({"input_tokens": 8, "output_tokens": 8}) == "单次分析 token 预算超限 16 > 10"
+    b.record({"input_tokens": 8, "output_tokens": 8})  # 日累计 23
+    assert "日累计 token 预算超限" in b.check({"input_tokens": 0, "output_tokens": 1})
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_analyze_budget_violation_appends_warning_not_block():
+    budget = DshBudgetTracker(per_analysis=5, daily=1_000_000)
+    orch = DshOrchestrator(runner=FakeRunner(), budget=budget)
+    updates = await orch.analyze(STATE, model="")
+    # 超预算不 block：DSH 结果仍回填，仅附加 warnings
+    assert updates["analysis_source"] == "dsh-llm"
+    assert updates["final_rating"] == "🟡"
+    assert "[成本监控]" in updates["warnings"][0]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_analyze_raises_on_host_error():
+    # Runner 抛异常 → analyze 不吞异常，原样抛给调用方（Task 4 负责降级链）
+    orch = DshOrchestrator(runner=FakeRunner(error="boom"))
+    with pytest.raises(RuntimeError, match="boom"):
+        await orch.analyze(STATE, model="")
