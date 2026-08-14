@@ -15,7 +15,7 @@ invest-guard 禁写规则：**拦截 Write / Edit 工具，若其目标路径命
 
 > **P0 T4 依据**：守卫 = `ctx.tools.guard(ToolGuard)`，`ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined`；返回字符串 = 拒绝（final 单调否决，**无 allow 方向、不可逆**），`undefined` = 放行。
 
-P2 在 invest-guard 插件 `apply(ctx)` 里注册守卫，骨架（**P1 只示意契约，字段名以 P2 实测为准**）：
+P2 在 invest-guard 插件 `apply(ctx)` 里注册守卫，骨架（**P1 只示意契约，字段名已 P2 定稿为 `execution.name` / `execution.arguments`**）：
 
 ```ts
 // invest-guard 插件骨架（P2 实现；P1 只定规则文本与拒绝字符串）
@@ -26,9 +26,9 @@ const DENY_DOT_DSH = '禁止修改 .dsh/ 资产（I3 脚本防篡改）'
 
 export function apply(ctx: any): void {
   ctx.tools.guard((execution) => {
-    // ⚠️ 待 P2 验证点：ToolExecution 上「工具名」与「目标路径」的确切字段名
-    const toolName = execution.toolName                       // 待 P2 以实测为准
-    const targetPath = execution.args?.file_path ?? execution.args?.path // 待 P2
+    // P2 已定稿：**execution.name** / **execution.arguments**（P0 T4 源码交叉验证）
+    const toolName = execution.name                       // P2 已定稿
+    const targetPath = execution.arguments?.file_path ?? execution.arguments?.path // P2 已定稿
     if (!isWriteTool(toolName)) return undefined              // 非写工具 → 放行
     if (matchesDotDsh(targetPath)) return DENY_DOT_DSH        // 命中 .dsh/ → 拒绝
     return undefined                                          // 放行
@@ -80,4 +80,4 @@ export function apply(ctx: any): void {
 | 规则文本 | 定稿：Write / Edit 命中 `.dsh/` → 返回拒绝字符串 | 实现 `matchesDotDsh` / `isWriteTool` |
 | 拒绝字符串 | 定稿建议值 `禁止修改 .dsh/ 资产（I3 脚本防篡改）` | 作为常量写入插件 |
 | 守卫注册 | 只引用 P0 T4 签名 `ctx.tools.guard(ToolGuard)` | 在 `apply(ctx)` 里 `ctx.tools.guard(...)` |
-| 字段名 | 标注「待 P2 验证点」（ToolExecution 工具名 / 路径字段） | 以实测定稿，不编造签名 |
+| 字段名 | P2 已定稿：`execution.name` / `execution.arguments`（P0 T4 源码交叉验证） | 已写入 invest-guard `apply(ctx)` |
