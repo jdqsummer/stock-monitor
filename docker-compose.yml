@@ -72,6 +72,10 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       - DSH_TOOLS_MODE=${DSH_TOOLS_MODE:-native}
+      # S3 会话日志留存清理（entrypoint 后台循环，值可被 .env 覆盖）
+      - DSH_SESSION_RETENTION_DAYS=${DSH_SESSION_RETENTION_DAYS:-90}
+      - DSH_SESSION_MAX_COUNT=${DSH_SESSION_MAX_COUNT:-10000}
+      - DSH_CLEANUP_INTERVAL_SECONDS=${DSH_CLEANUP_INTERVAL_SECONDS:-86400}
     volumes:
       # 会话日志持久化（S3 留存载体）：容器重建不丢
       - dsh_sessions:/app/sessions

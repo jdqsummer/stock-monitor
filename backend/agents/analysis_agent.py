@@ -21,6 +21,27 @@ from backend.llm.provider import LLMProvider, ProviderType
 
 logger = logging.getLogger(__name__)
 
+# S6 熔断：连续失败计数（进程内，模块级）。达阈值后 DSH 派发临时短路，全部走 _rule_based 降级；
+# 冷却期（open_until）内继续短路，冷却结束恢复探测。成功/失败分别清零/递增。
+_circuit_state = {"consecutive_failures": 0, "open_until": 0.0}
+
+
+def _circuit_open() -> bool:
+    """熔断是否开启：冷却期内恒 True；连续失败达阈值 → 开启并重置冷却窗口，返回 True。"""
+    import time
+
+    from backend.config import settings
+
+    now = time.time()
+    if now < _circuit_state["open_until"]:
+        return True
+    if _circuit_state["consecutive_failures"] >= settings.DSH_CIRCUIT_BREAK_THRESHOLD:
+        _circuit_state["open_until"] = now + settings.DSH_CIRCUIT_COOLDOWN_SECONDS
+        _circuit_state["consecutive_failures"] = 0
+        return True
+    return False
+
+
 # 纯规则降级子链：复用现有 LangGraph 节点逻辑
 RULE_BASED_STEPS = [
     check_profit_quality_node,
@@ -152,6 +173,13 @@ class AnalysisAgent:
             updates.update({"analysis_source": "rule-based", "analysis_model": "none",
                             "analysis_degraded": True})
             return updates
+        # S6 熔断：连续失败达阈值（冷却期内）→ 直接短路降级，不发 DSH 派发。
+        if _circuit_open():
+            logger.warning("DSH 熔断开启，短路降级纯规则子链")
+            updates = await self._rule_based(state)
+            updates.update({"analysis_source": "rule-based", "analysis_model": "none",
+                            "analysis_degraded": True})
+            return updates
         orch = DshOrchestrator()
         # 5.1 阶段级部分失败 → 整体重试 ≤ DSH_RETRY_COUNT 次（默认 1 = 首次失败后再试 1 次，
         # 共 2 次尝试）；重试仍失败才走降级。attempt < retries 时 continue，最后一次失败落入
@@ -161,9 +189,11 @@ class AnalysisAgent:
         for attempt in range(retries + 1):
             try:
                 updates = await orch.analyze(state, model=state.get("llm_model", ""))
+                _circuit_state["consecutive_failures"] = 0   # S6：成功清零熔断计数
                 updates.setdefault("analysis_source", "dsh-llm")
                 return updates
             except Exception as exc:
+                _circuit_state["consecutive_failures"] += 1   # S6：失败递增熔断计数
                 if attempt < retries:
                     logger.warning(
                         f"DSH 分析失败（第 {attempt + 1} 次），重试第 {attempt + 2}/{retries + 1} 次: {exc}"

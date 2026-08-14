@@ -372,3 +372,103 @@ async def test_rule_based_ts_calc_down_falls_back_to_python(monkeypatch):
     assert result["pe_low"] == 20.0
     assert result["signal"] in ("green", "yellow", "red")
     assert result["final_rating"]
+
+
+# ── S6 熔断自动降级（进程内计数器） ──
+
+
+@pytest.fixture
+def reset_circuit():
+    """熔断用例前后重置模块级熔断状态，避免跨用例污染（_circuit_state 为进程内共享）。"""
+    from backend.agents import analysis_agent as aa
+
+    aa._circuit_state["consecutive_failures"] = 0
+    aa._circuit_state["open_until"] = 0.0
+    yield
+    aa._circuit_state["consecutive_failures"] = 0
+    aa._circuit_state["open_until"] = 0.0
+
+
+def test_circuit_open_after_consecutive_failures(reset_circuit):
+    """连续失败达阈值 → _circuit_open() True 并设置冷却窗口；未达阈值 → False。"""
+    from backend.agents import analysis_agent as aa
+    from backend.config import settings
+
+    assert settings.DSH_CIRCUIT_BREAK_THRESHOLD == 3
+
+    aa._circuit_state["consecutive_failures"] = 2
+    assert aa._circuit_open() is False          # 未达阈值
+
+    aa._circuit_state["consecutive_failures"] = 3
+    assert aa._circuit_open() is True           # 达阈值 → 开启
+    assert aa._circuit_state["open_until"] > 0.0    # 冷却窗口已设置
+    assert aa._circuit_state["consecutive_failures"] == 0   # 开启后计数清零
+
+
+def test_circuit_open_during_cooldown(reset_circuit):
+    """冷却期内恒 True；冷却结束且计数未达阈值 → False。"""
+    import time
+
+    from backend.agents import analysis_agent as aa
+
+    aa._circuit_state["open_until"] = time.time() + 100   # 冷却期内
+    assert aa._circuit_open() is True
+
+    aa._circuit_state["open_until"] = 0.0
+    aa._circuit_state["consecutive_failures"] = 0
+    assert aa._circuit_open() is False
+
+
+@pytest.mark.asyncio
+async def test_analyze_circuit_open_short_circuits_to_rule_based(reset_circuit, monkeypatch):
+    """熔断开启（冷却期内）→ DSH 派发直接短路，走纯规则降级 + 三标记，不调 orch.analyze。"""
+    import time
+
+    from backend.agents import analysis_agent as aa
+    from backend.agents.dsh_orchestrator import DshOrchestrator
+    from backend.llm.provider import LLMConfig, ProviderType
+
+    called = {"n": 0}
+
+    async def _should_not_be_called(self, state, model=""):
+        called["n"] += 1
+        return {}
+
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
+    monkeypatch.setattr(DshOrchestrator, "analyze", _should_not_be_called)
+    aa._circuit_state["open_until"] = time.time() + 100   # 熔断冷却期内
+
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+    result = await agent.analyze(make_state())
+
+    assert called["n"] == 0                     # orch.analyze 未被调用（短路）
+    assert result["analysis_source"] == "rule-based"
+    assert result["analysis_model"] == "none"
+    assert result["analysis_degraded"] is True
+    assert result["final_rating"] in ("🟢", "🟡", "🔴")
+
+
+@pytest.mark.asyncio
+async def test_analyze_success_clears_circuit_failures(reset_circuit, monkeypatch):
+    """DSH 成功 → 熔断失败计数清零（失败计数预热 2 未达阈值 3，正常走 DSH 派发）。"""
+    from backend.agents import analysis_agent as aa
+    from backend.agents.dsh_orchestrator import DshOrchestrator
+    from backend.llm.provider import LLMConfig, ProviderType
+
+    sentinel = {"final_rating": "🟢", "analysis_source": "dsh-llm",
+                "analysis_model": "deepseek-v4-flash", "analysis_degraded": False}
+
+    async def _ok(self, state, model=""):
+        return sentinel
+
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
+    monkeypatch.setattr(DshOrchestrator, "analyze", _ok)
+    aa._circuit_state["consecutive_failures"] = 2   # 预热：失败计数 2（未达阈值 3）
+
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+    result = await agent.analyze(make_state())
+
+    assert result is sentinel
+    assert aa._circuit_state["consecutive_failures"] == 0   # 成功清零

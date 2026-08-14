@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     DSH_MODEL_DEFAULT: str = "deepseek-v4-flash"
     DSH_BUDGET_PER_ANALYSIS: int = 100_000   # 单次分析 input+output token 预算阈值，超限降级
     DSH_DAILY_BUDGET: int = 1_000_000        # 日累计上限（超限拒绝新分析）
+    DSH_SESSION_RETENTION_DAYS: int = 90     # S3：会话日志热存储天数
+    DSH_SESSION_MAX_COUNT: int = 10_000      # S3：会话数上限（滚动保留）
+    DSH_CIRCUIT_BREAK_THRESHOLD: int = 3     # S6：连续失败熔断阈值（连续 N 次失败自动切 _rule_based）
+    DSH_CIRCUIT_COOLDOWN_SECONDS: int = 300  # S6：熔断冷却期（恢复后重新探测）
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
