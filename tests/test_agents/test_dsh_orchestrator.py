@@ -1,6 +1,7 @@
 # stock-monitor/tests/test_agents/test_dsh_orchestrator.py
 """DSH Orchestrator 测试 —— 结果映射（五段 → state 扁平字段）+ HttpDshRunner 契约。"""
 import json
+from datetime import date, timedelta
 
 import httpx
 import pytest
@@ -10,6 +11,7 @@ from backend.agents.dsh_orchestrator import (
     DshOrchestrator,
     HttpDshRunner,
     build_context,
+    decide_rerun_scope,
     map_dsh_result_to_state,
 )
 
@@ -159,3 +161,57 @@ async def test_orchestrator_analyze_raises_on_host_error():
     orch = DshOrchestrator(runner=FakeRunner(error="boom"))
     with pytest.raises(RuntimeError, match="boom"):
         await orch.analyze(STATE, model="")
+
+
+# --- Task 5: D6 重跑范围 + D2 敏感性退路 ---
+
+
+class SnapshotStub:
+    """测试用快照桩：data_date + financials_8p 属性（data_date 为 datetime.date）。"""
+
+    def __init__(self, data_date, financials_period="2026H1"):
+        self.data_date = data_date
+        self.financials_8p = [{"period": financials_period}]
+
+
+def test_rerun_scope_no_snapshot_is_full():
+    assert decide_rerun_scope(None) == "full"
+
+
+def test_rerun_scope_quote_fresh_is_read_db():
+    # 无新行情/新财报 → 直接读 DB 不触发 DSH（D6）
+    assert decide_rerun_scope(SnapshotStub(data_date=date.today())) == "read_db"
+
+
+def test_rerun_scope_stale_quote_is_recompute45():
+    # 行情变（快照 data_date 非今天）→ 重跑 ④⑤（估值与结论）
+    old = date.today() - timedelta(days=2)
+    assert decide_rerun_scope(SnapshotStub(data_date=old)) == "recompute45"
+
+
+@pytest.mark.asyncio
+async def test_sensitivity_merges_two_runs():
+    class SensRunner:
+        def __init__(self):
+            self.pe_overrides = []
+        async def run_five_stage(self, **kw):
+            self.pe_overrides.append((kw.get("pe_low_override"), kw.get("pe_high_override")))
+            # 敏感性结果：低 PE → 距离变大；高 PE → 距离变小
+            lo, hi = kw.get("pe_low_override"), kw.get("pe_high_override")
+            return {"result": {"anchor_industry_pe": {"pe_low": lo, "pe_high": hi,
+                        "annual_profit_low": 32.0, "annual_profit_high": 35.0,
+                        "distance_pct": 30.0 if lo < 20 else -5.0,
+                        "signal": "red" if lo < 20 else "green", "signal_label": "x"}},
+                    "model": "deepseek-v4-flash", "usage": {}, "degraded": False, "error": None}
+    runner = SensRunner()
+    orch = DshOrchestrator(runner=runner)
+    base = {"anchor_industry_pe": {"pe_low": 20.0, "pe_high": 24.0, "pe_rationale": "基准",
+                                   "distance_pct": 10.0, "signal": "yellow", "signal_label": "y"}}
+    ctx = {"code": "600519"}
+    merged = await orch.run_sensitivity(
+        base, runner, "600519", "贵州茅台", ctx, "deepseek-v4-flash", "600519-x")
+    sens = merged["anchor_industry_pe"]["sensitivity_analysis"]
+    assert len(sens) == 2
+    assert {s["label"] for s in sens} == {"pe-10%", "pe+10%"}
+    assert sens[0]["distance_pct"] == 30.0   # 低 PE → 更保守
+    assert sens[1]["distance_pct"] == -5.0   # 高 PE → 更乐观

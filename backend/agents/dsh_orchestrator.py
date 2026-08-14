@@ -173,6 +173,21 @@ def build_context(state: dict) -> dict:
     }
 
 
+def decide_rerun_scope(existing_snapshot) -> str:
+    """D6 重跑范围：由数据新鲜度驱动（spec 章节十三 D6 / .dsh/docs/i2-concurrency.md 3.2）。
+
+    - 无快照 → "full"（从 ① 完整跑）
+    - 快照 data_date == 今天（无新行情/新财报）→ "read_db"（读 DB，不触发 DSH）
+    - 快照 data_date < 今天（行情变了）→ "recompute45"（重跑 ④⑤）
+    """
+    if existing_snapshot is None:
+        return "full"
+    snap_date = getattr(existing_snapshot, "data_date", None)
+    if snap_date == date.today():
+        return "read_db"
+    return "recompute45"
+
+
 class DshBudgetTracker:
     """I7 成本监控：单次预算阈值（超限降级）+ 日累计上限（超限拒绝）。"""
 
@@ -254,3 +269,45 @@ class DshOrchestrator:
                 updates["warnings"] = warnings
             self._budget.record(resp.get("usage") or {})
         return updates
+
+    async def run_sensitivity(
+        self,
+        base_result: dict,
+        runner: DshRunner,
+        code: str,
+        name: str,
+        context: dict,
+        model: str,
+        session_id: str,
+    ) -> dict:
+        """D2 敏感性退路：串行重跑两次 ④⑤（PE ±10%），合并进 anchor_industry_pe。
+
+        base_result 为主路径五段结果（含 anchor_industry_pe）。低 PE 场景 PE×0.9、
+        高 PE 场景 PE×1.1，用 pe_low_override/pe_high_override 注入（Task 9 插件参数）。
+        当前在 analyze 主流程默认不启用（真实 D2 依赖 Task 9 + 成本权衡），本方法只落能力。
+        """
+        anchor = base_result.get("anchor_industry_pe") or {}
+        pe_low = float(anchor.get("pe_low") or 20.0)
+        pe_high = float(anchor.get("pe_high") or 24.0)
+        scenarios = [
+            {"label": "pe-10%", "pe_low_override": round(pe_low * 0.9, 2), "pe_high_override": round(pe_high * 0.9, 2)},
+            {"label": "pe+10%", "pe_low_override": round(pe_low * 1.1, 2), "pe_high_override": round(pe_high * 1.1, 2)},
+        ]
+        sensitivities = []
+        for scenario in scenarios:
+            resp = await runner.run_five_stage(
+                code=code, name=name, context=context, model=model, session_id=session_id,
+                pe_low_override=scenario["pe_low_override"],
+                pe_high_override=scenario["pe_high_override"],
+            )
+            result = resp.get("result") or {}
+            a = result.get("anchor_industry_pe") or {}
+            sensitivities.append({
+                "label": scenario["label"],
+                "pe_low": a.get("pe_low"), "pe_high": a.get("pe_high"),
+                "distance_pct": a.get("distance_pct"), "signal": a.get("signal"),
+                "signal_label": a.get("signal_label"),
+            })
+        merged = dict(base_result)
+        merged["anchor_industry_pe"] = {**anchor, "sensitivity_analysis": sensitivities}
+        return merged
