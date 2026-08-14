@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Card, Descriptions, Empty, List, Tag, Space } from 'antd';
+import { Button, Card, Empty, Space, Tag } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
+import { FiveStageAnalysis } from '@/components/Analysis/FiveStageAnalysis';
 import { analysisApi } from '@/api/client';
 import type { WatchlistBoardRow } from '@/types';
 
@@ -54,58 +55,7 @@ export function StockDetail() {
         )}
       </Space>
 
-      <Card title="安全边际" style={{ marginBottom: 16 }}>
-        <Descriptions column={2} size="small">
-          <Descriptions.Item label="年化净利">{snap.annual_profit}</Descriptions.Item>
-          <Descriptions.Item label="方法">{snap.profit_method}</Descriptions.Item>
-          <Descriptions.Item label="击球区PE">{snap.swing_pe}</Descriptions.Item>
-          <Descriptions.Item label="行业">{snap.industry_category || snap.industry || '-'}</Descriptions.Item>
-          <Descriptions.Item label="击球区市值">{snap.swing_market_cap}</Descriptions.Item>
-          <Descriptions.Item label="对应股价">{snap.swing_price}</Descriptions.Item>
-          <Descriptions.Item label="当前市值">{snap.current_market_cap != null ? snap.current_market_cap.toFixed(0) : '-'}亿</Descriptions.Item>
-          <Descriptions.Item label="当前股价">{snap.current_price != null ? `¥${snap.current_price.toFixed(2)}` : '-'}</Descriptions.Item>
-          <Descriptions.Item label="距击球区">
-            {snap.distance_pct != null ? `${snap.distance_pct > 0 ? '+' : ''}${snap.distance_pct.toFixed(1)}%` : '-'}
-          </Descriptions.Item>
-          <Descriptions.Item label="利润质量">
-            {snap.profit_quality_ok ? '✅ 良好' : '⚠️ 存疑'}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
-
-      <Card title="定性分析" style={{ marginBottom: 16 }}>
-        <Descriptions column={1} size="small" bordered>
-          <Descriptions.Item label="商业模式/护城河">{snap.moat_assessment || '（未评估）'}</Descriptions.Item>
-          <Descriptions.Item label="PE 设定理由">{snap.pe_rationale || '（未说明）'}</Descriptions.Item>
-        </Descriptions>
-        <List
-          size="small"
-          header={<b>重大风险</b>}
-          dataSource={snap.risk_factors || []}
-          locale={{ emptyText: '（未识别）' }}
-          renderItem={(r: string) => <List.Item>{r}</List.Item>}
-        />
-        {snap.profit_quality_warnings && snap.profit_quality_warnings.length > 0 && (
-          <List
-            size="small"
-            header={<b>利润质量警示</b>}
-            dataSource={snap.profit_quality_warnings}
-            renderItem={(w: string) => <List.Item style={{ color: '#faad14' }}>{w}</List.Item>}
-          />
-        )}
-      </Card>
-
-      <Card title="结论与建议" style={{ marginBottom: 16 }}>
-        {snap.unassessable_risk && (
-          <div style={{ color: '#ff4d4f', fontWeight: 600, marginBottom: 8 }}>
-            ⚠️ 安全边际无法评估，即使价格低廉也坚决放弃
-          </div>
-        )}
-        {snap.conclusion && (
-          <p style={{ fontSize: 14, color: '#666', lineHeight: 1.8 }}>{snap.conclusion}</p>
-        )}
-        <p style={{ fontSize: 16 }}>{snap.recommendation || '（未给出）'}</p>
-      </Card>
+      <FiveStageAnalysis snap={snap} />
     </div>
   );
 }
