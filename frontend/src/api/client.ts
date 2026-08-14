@@ -69,8 +69,8 @@ export const watchlistApi = {
 
 // 自选股自动安全边际分析
 export const analysisApi = {
-  analyzeWatchlist: (codes: string[]) =>
-    client.post<ApiResponse<{ job_id: string }>>('/analysis/watchlist/analyze', { codes }),
+  analyzeWatchlist: (codes: string[], model?: string) =>
+    client.post<ApiResponse<{ job_id: string }>>('/analysis/watchlist/analyze', { codes, model }),
   watchlistStatus: (jobId: string) =>
     client.get<ApiResponse<JobStatus>>('/analysis/watchlist/status', { params: { job_id: jobId } }),
   getSnapshot: (code: string) =>

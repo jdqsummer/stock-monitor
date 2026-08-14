@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
-import { Button, Space, Table, Tag, message } from 'antd';
+import { Button, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
@@ -38,6 +38,7 @@ export function SignalBoard({ data, loading, onRefresh }: {
 }) {
   const navigate = useNavigate();
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [model, setModel] = useState<string>('deepseek-v4-flash');
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState('');
 
@@ -52,7 +53,7 @@ export function SignalBoard({ data, loading, onRefresh }: {
     setAnalyzing(true);
     setProgress('提交任务...');
     try {
-      const res = await analysisApi.analyzeWatchlist(selectedKeys.map(String));
+      const res = await analysisApi.analyzeWatchlist(selectedKeys.map(String), model);
       const jobId = res.data.data.job_id;
       if (pollTimer.current) window.clearInterval(pollTimer.current);
       pollTimer.current = window.setInterval(async () => {
@@ -84,6 +85,11 @@ export function SignalBoard({ data, loading, onRefresh }: {
   return (
     <div>
       <Space style={{ marginBottom: 12 }}>
+        <Select value={model} onChange={setModel} style={{ width: 180 }}
+          options={[
+            { value: 'deepseek-v4-flash', label: 'V4-Flash（省成本·默认）' },
+            { value: 'deepseek-v4-pro', label: 'V4-Pro（深度分析）' },
+          ]} />
         <Button type="primary" disabled={selectedKeys.length === 0 || analyzing}
           loading={analyzing} onClick={handleAnalyze}>
           {analyzing ? progress || '分析中...' : `立即分析${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}
