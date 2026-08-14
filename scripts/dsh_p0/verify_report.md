@@ -27,7 +27,7 @@
 node: v22.14.0
 pnpm: 10.22.0
 npx dsh: 0.1.0-rc.6
-DEEPSEEK_API_KEY: set (prefix sk-b9b...)
+DEEPSEEK_API_KEY: set (prefix sk-***)
 ```
 
 ### npm 安装（Step 3）
