@@ -66,6 +66,8 @@ export interface WatchlistBoardRow {
   analysis_date: string | null;
   signal_label?: string | null;
   analysis_source?: string | null;
+  analysis_model?: string | null;
+  analysis_degraded?: boolean;
   analysis_completed_at?: string | null;
   moat_assessment?: string | null;
   risk_factors?: string[];

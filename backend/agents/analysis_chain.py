@@ -115,6 +115,9 @@ class AnalysisReport:
     warnings_list: list[str] = field(default_factory=list)
     analysis_started: str = ""
     analysis_completed: str = ""
+    analysis_source: str = "manual"          # dsh-llm | rule-based | mock | manual
+    analysis_model: str = ""                 # 实际路由模型；降级 none
+    analysis_degraded: bool = False          # rule-based/mock 时为 True
 
     @classmethod
     def from_state(cls, state: dict) -> "AnalysisReport":
@@ -168,6 +171,9 @@ class AnalysisReport:
             warnings_list=state.get("warnings", []),
             analysis_started=state.get("analysis_started", ""),
             analysis_completed=state.get("analysis_completed", ""),
+            analysis_source=state.get("analysis_source", "manual"),
+            analysis_model=state.get("analysis_model", ""),
+            analysis_degraded=state.get("analysis_degraded", False),
         )
 
     def to_dict(self) -> dict:

@@ -71,7 +71,11 @@ class SnapshotService:
         existing.financials_8p = (
             json.dumps(report.financials_8p, ensure_ascii=False) if report.financials_8p else None
         )
-        existing.analysis_source = source
+        # 语义变化：analysis_source 从「触发来源」扩展为「引擎类型」；
+        # P3 起以 report.analysis_source 为准，source 参数保留为兼容兜底。
+        existing.analysis_source = report.analysis_source or source or "manual"
+        existing.analysis_model = report.analysis_model or None
+        existing.analysis_degraded = bool(report.analysis_degraded)
         existing.analysis_completed_at = datetime.now()
         try:
             existing.data_date = date.fromisoformat(report.data_date)

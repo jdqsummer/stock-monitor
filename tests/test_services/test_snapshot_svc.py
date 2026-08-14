@@ -76,6 +76,7 @@ async def test_save_snapshot_qualitative(db_session):
     report.signal_label = "击球区"
     report.profit_quality_ok = False
     report.profit_quality_warnings = ["扣非低于净利"]
+    report.analysis_source = "scheduled"  # 引擎来源以 report 为准落库（往返一致）
     saved = await SnapshotService.save_snapshot(db_session, "u1", report, source="scheduled")
     assert saved.industry_category == "白酒"
     assert saved.moat_assessment == "品牌护城河强"
@@ -136,3 +137,33 @@ async def test_save_snapshot_writes_stage_results_and_financials_8p(db_session):
     snap = await SnapshotService.save_snapshot(db_session, "u1", report)
     assert snap.stage_results
     assert "2026H1" in snap.financials_8p
+
+
+@pytest.mark.asyncio
+async def test_save_snapshot_writes_engine_metadata(db_session):
+    from datetime import date
+    from backend.agents.analysis_chain import AnalysisReport
+    from backend.services.snapshot_svc import SnapshotService
+
+    report = AnalysisReport(
+        code="600519", name="贵州茅台",
+        annual_profit_low=32.0, annual_profit_high=35.0,
+        pe_low=18.0, pe_high=22.0, swing_price_high=51.0,
+        data_date=date.today().isoformat(),
+        analysis_source="dsh-llm", analysis_model="deepseek-v4-pro",
+        analysis_degraded=False,
+    )
+    snap = await SnapshotService.save_snapshot(db_session, "user-p3", report)
+    assert snap.analysis_source == "dsh-llm"
+    assert snap.analysis_model == "deepseek-v4-pro"
+    assert snap.analysis_degraded is False
+
+    # 降级路径：rule-based + none + degraded=true
+    report2 = AnalysisReport(
+        code="000858", name="五粮液", data_date=date.today().isoformat(),
+        analysis_source="rule-based", analysis_model="none", analysis_degraded=True,
+    )
+    snap2 = await SnapshotService.save_snapshot(db_session, "user-p3", report2)
+    assert snap2.analysis_source == "rule-based"
+    assert snap2.analysis_model == "none"
+    assert snap2.analysis_degraded is True

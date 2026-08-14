@@ -105,5 +105,7 @@ class AnalysisSnapshot(Base):
     stage_results: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON：五段结构化结果
     financials_8p: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON：近8期明细
     analysis_source: Mapped[str] = mapped_column(String(20), default="manual")
+    analysis_model: Mapped[str | None] = mapped_column(String(50), nullable=True)   # 实际路由模型（dsh-llm 路径）；降级 none
+    analysis_degraded: Mapped[bool] = mapped_column(Boolean, default=False)         # rule-based/mock 时为 True
     analysis_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -134,6 +134,8 @@ class StockDataService:
             "industry_category": snapshot.industry_category,
             "analysis_date": snapshot.data_date.isoformat() if snapshot.data_date else None,
             "analysis_source": snapshot.analysis_source,
+            "analysis_model": snapshot.analysis_model,
+            "analysis_degraded": snapshot.analysis_degraded,
             "analysis_completed_at": (
                 snapshot.analysis_completed_at.isoformat() if snapshot.analysis_completed_at else None
             ),

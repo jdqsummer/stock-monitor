@@ -93,3 +93,29 @@ def test_migration_from_head_adds_new_columns(tmp_path):
     _run_alembic(db_path, "head")
     after = _snapshot_cols(db_path)
     assert "conclusion" in after and "unassessable_risk" in after
+
+
+# ── P3 Task 1：元数据契约三字段（analysis_model / analysis_degraded）──
+
+ENGINE_META_COLS = ["analysis_model", "analysis_degraded"]
+
+
+def test_head_has_engine_metadata_columns(tmp_path):
+    """head 版本 analysis_snapshots 必须含 analysis_model/analysis_degraded 列"""
+    db_path = str(tmp_path / "head_meta.db")
+    _run_alembic(db_path, "head")
+    cols = _snapshot_cols(db_path)
+    missing = set(ENGINE_META_COLS) - cols
+    assert not missing, f"head 版本缺列: {missing}"
+
+
+def test_migration_from_head_adds_engine_metadata_columns(tmp_path):
+    """从 6b4d8e2f1a9c（上一 head）升到 head 补齐 analysis_model/analysis_degraded 列"""
+    db_path = str(tmp_path / "up_meta.db")
+    _run_alembic(db_path, "6b4d8e2f1a9c")
+    before = _snapshot_cols(db_path)
+    assert "analysis_model" not in before and "analysis_degraded" not in before
+
+    _run_alembic(db_path, "head")
+    after = _snapshot_cols(db_path)
+    assert "analysis_model" in after and "analysis_degraded" in after
