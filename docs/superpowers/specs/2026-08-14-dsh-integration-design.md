@@ -207,6 +207,12 @@ invest-data/            # 规则数据（JSON，非代码，独立热更新）
 - **主路径**：`collect_data` 在 Python 侧采集（westock/东财 provider 链成熟、永不阻断），采好的数据作为只读 context 注入 DSH 会话；`read_context` 步骤直接读注入上下文（少一跳、不绕回 Python）。
 - **辅助通道**：`invest-data-tool` → MCP server，供 DSH 内按需补充查询（更多财报期数/行业对比/新闻明细），可选扩展通道，非主路径依赖。
 
+### 数据链路承诺（仪表盘 vs 分析）
+
+- **仪表盘（数据库定期更新）**：`stock_snapshots` / `financials`（A 表原始数据）由定时调度更新——行情 30min（`run_quote_refresh`）、财报 30min（`run_financials_refresh`）、收盘重算（`run_recompute_analysis`）；仪表盘显示的总市值/现价/动态PE 一律从 DB 读。**DSH 集成不触碰此链路**。
+- **安全边际分析（手动触发实时拉取）**：`collect_data` 每次分析经 `WestockClient` provider 链实时拉取最新行情/财报/新闻（不经 DB、不经 Redis 缓存），注入 DSH 会话；结果落 `analysis_snapshots`（B 表衍生数据）。
+- **两条通道正交**：A 表定时刷新服务仪表盘，B 表分析触发更新；DSH 只是分析引擎，不替代、不阻断数据链路。
+
 ---
 
 ## 六、分析来源元数据契约（LLM 版本 + 降级提示）
