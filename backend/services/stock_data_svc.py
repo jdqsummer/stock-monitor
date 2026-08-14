@@ -126,6 +126,7 @@ class StockDataService:
             "swing_price": f"{snapshot.swing_price_low:.0f}-{snapshot.swing_price_high:.0f}元",
             "current_market_cap": snapshot.current_market_cap,
             "current_price": snapshot.current_price,
+            "pe_dynamic": quote.pe_dynamic if quote else None,   # A 表行情动态 PE（无行情为 None，前端宽容渲染 —）
             "distance_pct": snapshot.distance_pct,
             "signal": snapshot.signal,
             "signal_label": snapshot.signal_label,

@@ -94,3 +94,32 @@ async def test_get_board_rows_skips_when_no_quote(db_session, monkeypatch):
     monkeypatch.setattr("backend.services.stock_data_svc.WestockClient.fetch_quote", boom)
     rows = await StockDataService.get_board_rows(db_session, "u1", items)
     assert rows == []
+
+
+def _min_snapshot() -> AnalysisSnapshot:
+    """snapshot_to_dict 所需的完整数值字段快照（模型对象构造不触发 column default）"""
+    return AnalysisSnapshot(
+        user_id="u1", stock_code="600519",
+        annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
+        pe_low=20, pe_high=35,
+        swing_market_cap_low=13760, swing_market_cap_high=29470,
+        swing_price_low=1147, swing_price_high=2456,
+        current_market_cap=19500, current_price=1560,
+        distance_pct=-38.9, signal="green",
+    )
+
+
+@pytest.mark.asyncio
+async def test_snapshot_to_dict_includes_pe_dynamic():
+    """snapshot_to_dict 输出动态 PE（A 表行情 quote 携带）"""
+    quote = StockQuote(code="600519", name="贵州茅台", current_price=1560.0,
+                       total_market_cap=19500.0, pe_dynamic=25.3)
+    d = StockDataService.snapshot_to_dict(_min_snapshot(), quote)
+    assert d["pe_dynamic"] == 25.3
+
+
+@pytest.mark.asyncio
+async def test_snapshot_to_dict_pe_dynamic_none_without_quote():
+    """quote 为 None（无行情）时 pe_dynamic 输出 None，前端宽容渲染 —"""
+    d = StockDataService.snapshot_to_dict(_min_snapshot(), None)
+    assert d["pe_dynamic"] is None
