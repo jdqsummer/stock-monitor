@@ -1,17 +1,17 @@
 # stock-monitor/requirements.txt
 fastapi==0.111.0
-uvicorn[standard]==0.30.1
+uvicorn[standard]==0.31.1
 sqlalchemy[asyncio]==2.0.30
 aiosqlite==0.20.0
 alembic==1.13.1
-pydantic==2.7.4
-pydantic-settings==2.3.4
+pydantic==2.12.3
+pydantic-settings==2.14.2
 python-jose[cryptography]==3.3.0
 bcrypt==4.2.0
 aiosmtplib==3.0.1
 python-multipart==0.0.9
 email-validator==2.2.0
-httpx==0.27.0
+httpx==0.27.2
 redis==5.0.7
 apscheduler==3.10.4
 
@@ -23,6 +23,11 @@ litellm==1.40.7
 # Agent framework
 langgraph==0.6.7
 langgraph-checkpoint==2.1.1
+
+# vendored openharness（/app/vendor）运行时依赖 — LLM 分析链（harness_component）必需，缺失会降级纯规则子链
+# mcp 1.28.1 需 pydantic>=2.11/uvicorn>=0.31.1；用 mcp 1.28.1 与本地测试环境一致（1.10.0 无 streamable_http_client）
+croniter==6.2.4
+mcp==1.28.1
 
 # SSE streaming
 # 1.8.2 与 fastapi==0.111.0 的 starlette<0.38 兼容（2.2.1 需 starlette>=0.41.3，冲突）
