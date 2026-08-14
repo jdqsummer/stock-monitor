@@ -1,4 +1,4 @@
-"""OpenHarnessAgent 测试"""
+"""AnalysisAgent 测试（原 test_openharness.py 迁移，P4 语义退役）"""
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +17,7 @@ def _ensure_vendor_on_path():
 
 _ensure_vendor_on_path()
 
-from backend.agents.openharness import OpenHarnessAgent, apply_veto  # noqa: E402
+from backend.agents.analysis_agent import AnalysisAgent, apply_veto  # noqa: E402
 
 
 def make_state(**overrides) -> dict:
@@ -46,7 +46,7 @@ def make_state(**overrides) -> dict:
 @pytest.mark.asyncio
 async def test_analyze_without_llm_runs_rule_based():
     """无 LLM → 纯规则子链，产出完整分析字段"""
-    agent = OpenHarnessAgent(llm_provider=None)
+    agent = AnalysisAgent(llm_provider=None)
     state = make_state()
     result = await agent.analyze(state)
 
@@ -64,7 +64,7 @@ async def test_analyze_without_llm_runs_rule_based():
 @pytest.mark.asyncio
 async def test_analyze_with_real_llm_delegates_to_dsh(monkeypatch):
     """有真实 LLM + DSH 可用 → 委托 DshOrchestrator.analyze"""
-    from backend.agents import openharness as oh
+    from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.llm.provider import LLMConfig, ProviderType
 
@@ -77,7 +77,7 @@ async def test_analyze_with_real_llm_delegates_to_dsh(monkeypatch):
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
     monkeypatch.setattr(DshOrchestrator, "analyze", _fake_analyze)
 
-    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
     agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
     result = await agent.analyze(make_state())
     assert result is sentinel
@@ -86,13 +86,13 @@ async def test_analyze_with_real_llm_delegates_to_dsh(monkeypatch):
 @pytest.mark.asyncio
 async def test_analyze_dsh_unavailable_falls_back_to_rule_based(monkeypatch):
     """DSH 未配置（is_available=False）→ 降级规则子链 + 降级标记"""
-    from backend.agents import openharness as oh
+    from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.llm.provider import LLMConfig, ProviderType
 
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: False)
 
-    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
     agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
     result = await agent.analyze(make_state())
     assert result["analysis_source"] == "rule-based"
@@ -104,7 +104,7 @@ async def test_analyze_dsh_unavailable_falls_back_to_rule_based(monkeypatch):
 @pytest.mark.asyncio
 async def test_analyze_dsh_failure_falls_back_to_rule_based(monkeypatch):
     """DSH 可用但抛错 → 降级规则子链 + 降级标记 + errors 记录"""
-    from backend.agents import openharness as oh
+    from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.llm.provider import LLMConfig, ProviderType
 
@@ -114,7 +114,7 @@ async def test_analyze_dsh_failure_falls_back_to_rule_based(monkeypatch):
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
     monkeypatch.setattr(DshOrchestrator, "analyze", _boom)
 
-    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
     agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
     result = await agent.analyze(make_state())
     assert result["final_rating"] in ("🟢", "🟡", "🔴")
@@ -127,7 +127,7 @@ async def test_analyze_dsh_failure_falls_back_to_rule_based(monkeypatch):
 @pytest.mark.asyncio
 async def test_analyze_dsh_retries_once_then_succeeds(monkeypatch):
     """DSH_RETRY_COUNT=1：首次失败 → 重试第 2 次成功，不降级，orch.analyze 恰好调用 2 次"""
-    from backend.agents import openharness as oh
+    from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.config import settings
     from backend.llm.provider import LLMConfig, ProviderType
@@ -146,7 +146,7 @@ async def test_analyze_dsh_retries_once_then_succeeds(monkeypatch):
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
     monkeypatch.setattr(DshOrchestrator, "analyze", _flaky)
 
-    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
     agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
     result = await agent.analyze(make_state())
     assert result is sentinel
@@ -156,7 +156,7 @@ async def test_analyze_dsh_retries_once_then_succeeds(monkeypatch):
 @pytest.mark.asyncio
 async def test_analyze_dsh_retry_exhausted_falls_back_to_rule_based(monkeypatch):
     """DSH_RETRY_COUNT=1 且始终失败：重试耗尽（2 次）→ 降级规则子链 + 三标记 + errors"""
-    from backend.agents import openharness as oh
+    from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.config import settings
     from backend.llm.provider import LLMConfig, ProviderType
@@ -171,7 +171,7 @@ async def test_analyze_dsh_retry_exhausted_falls_back_to_rule_based(monkeypatch)
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
     monkeypatch.setattr(DshOrchestrator, "analyze", _always_boom)
 
-    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
     agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
     result = await agent.analyze(make_state())
     assert calls["n"] == 2          # 首试 + 1 次重试均失败
@@ -185,7 +185,7 @@ async def test_analyze_dsh_retry_exhausted_falls_back_to_rule_based(monkeypatch)
 @pytest.mark.asyncio
 async def test_rule_based_when_no_llm_marks_degraded():
     """无 LLM → 纯规则降级 + 引擎标记（analysis_source 全路径）"""
-    agent = OpenHarnessAgent(llm_provider=None)
+    agent = AnalysisAgent(llm_provider=None)
     state = make_state()
     updates = await agent.analyze(state)
     assert updates.get("analysis_source") in {"rule-based", "mock"}
@@ -198,7 +198,7 @@ async def test_analyze_mock_llm_marks_mock():
     """Mock LLM → has_real_llm=False 且 _is_mock=True → analysis_source=mock"""
     from backend.llm.provider import LLMConfig, MockLLMProvider, ProviderType
 
-    agent = OpenHarnessAgent(
+    agent = AnalysisAgent(
         llm_provider=MockLLMProvider(LLMConfig(provider=ProviderType.MOCK, model_id="mock"))
     )
     result = await agent.analyze(make_state())
@@ -207,13 +207,17 @@ async def test_analyze_mock_llm_marks_mock():
     assert result["analysis_degraded"] is True
 
 
-def test_build_investment_tools_excludes_validate_constraints():
-    """validate_constraints 工具已移除（硬约束软化）；至少 8 工具 = 只读 + 4 阶段 + 3 定量"""
-    from backend.agents.harness_tools import build_investment_tools
-
-    names = [t.name for t in build_investment_tools(None)]
-    assert "validate_constraints" not in names
-    assert len(names) >= 8
+# ── P4 Task 1 迁移说明：以下用例测 harness_tools.build_investment_tools，harness_tools
+#    由 P4 Task 2 删除，故不迁移进 test_analysis_agent.py。原用例逻辑保留在此注释，供
+#    Task 2 随 harness_tools 一并删除/迁移（原 test_openharness.py:210-216）。
+#
+# def test_build_investment_tools_excludes_validate_constraints():
+#     """validate_constraints 工具已移除（硬约束软化）；至少 8 工具 = 只读 + 4 阶段 + 3 定量"""
+#     from backend.agents.harness_tools import build_investment_tools
+#
+#     names = [t.name for t in build_investment_tools(None)]
+#     assert "validate_constraints" not in names
+#     assert len(names) >= 8
 
 
 # ── 硬约束校验（规则子链兜底用） ──
@@ -222,7 +226,7 @@ def test_build_investment_tools_excludes_validate_constraints():
 @pytest.mark.asyncio
 async def test_apply_hard_constraints_writes_errors():
     """硬约束失败写入 state.errors"""
-    agent = OpenHarnessAgent(llm_provider=None)
+    agent = AnalysisAgent(llm_provider=None)
     state = make_state()
     from backend.agents.state import ConstraintResult
     results = [
@@ -237,7 +241,7 @@ async def test_apply_hard_constraints_writes_errors():
 @pytest.mark.asyncio
 async def test_apply_hard_constraints_dedupes_errors():
     """硬约束重复校验时 errors 不重复追加"""
-    agent = OpenHarnessAgent(llm_provider=None)
+    agent = AnalysisAgent(llm_provider=None)
     from backend.agents.state import ConstraintResult
     results = [
         ConstraintResult(constraint_name="纪律红线", passed=False, severity="error",
@@ -295,7 +299,7 @@ async def test_rule_based_path_still_enforces_constraints():
        （亏损不机械判红，软规则语义已由「统一亏损语义」提交确立）
     2. 非经常性水分 > 50% → 硬约束（纪律红线·利润质量）→ 🔴
     """
-    agent = OpenHarnessAgent(llm_provider=None)
+    agent = AnalysisAgent(llm_provider=None)
 
     # 亏损：确定性 🟡 观察区，安全边际无法量化
     loss = make_state(net_profit_deducted=-2.0, net_profit_parent=-2.0)

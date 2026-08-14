@@ -1,5 +1,5 @@
 # stock-monitor/backend/agents/__init__.py
-"""Plan-4 AI Agent 系统 — LangGraph + OpenHarness + 9 步分析链"""
+"""Plan-4 AI Agent 系统 — LangGraph + DSH + 9 步分析链"""
 
 from backend.agents.analysis_chain import (
     AnalysisChain,
@@ -30,7 +30,7 @@ from backend.agents.state import (
     DataCollectionState,
     ToolCall,
 )
-from backend.agents.openharness import OpenHarnessAgent
+from backend.agents.analysis_agent import AnalysisAgent
 from backend.agents.workflow import (
     NodeName,
     WorkflowRunner,
@@ -64,8 +64,8 @@ __all__ = [
     "ConstraintResult",
     "DataCollectionState",
     "ToolCall",
-    # OpenHarness
-    "OpenHarnessAgent",
+    # 分析智能体
+    "AnalysisAgent",
     # 工作流
     "NodeName",
     "WorkflowRunner",

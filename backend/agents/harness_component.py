@@ -136,7 +136,7 @@ async def run_analysis_agent(state: dict, *, llm_provider, model: str | None = N
 
     from backend.agents.harness_output import validate_output_shape
     from backend.agents.harness_tools import build_investment_tools
-    from backend.agents.openharness import apply_veto
+    from backend.agents.analysis_agent import apply_veto
 
     model = model or os.environ.get("OPENHARNESS_MODEL", "deepseek-chat")
 

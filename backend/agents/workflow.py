@@ -64,8 +64,8 @@ class NodeName(str, Enum):
     MANUAL_ADJUST = "manual_adjust"
     CROSS_CHECK_AND_OUTPUT = "cross_check_and_output"
 
-    # OpenHarness 单节点分析
-    OPENHARNESS_ANALYZE = "openharness_analyze"
+    # 单节点分析
+    ANALYZE = "analyze"
 
     # 约束检查
     VALIDATE_CONSTRAINTS = "validate_constraints"
@@ -87,13 +87,13 @@ def should_continue_after_collect(state: AnalysisState) -> Literal["parse_target
     return "parse_target"
 
 
-def should_continue_after_parse(state: AnalysisState) -> Literal["openharness_analyze", "handle_error"]:
+def should_continue_after_parse(state: AnalysisState) -> Literal["analyze", "handle_error"]:
     """标的解析后的路由决策"""
     if state.get("current_price", 0) <= 0:
         errors = state.setdefault("errors", [])
         errors.append("标的解析失败：无法获取有效股价")
         return "handle_error"
-    return "openharness_analyze"
+    return "analyze"
 
 
 def should_continue_after_profit_check(state: AnalysisState) -> Literal["estimate_annual_profit", "mechanical_rating"]:
@@ -592,25 +592,25 @@ async def handle_error_node(state: AnalysisState) -> dict:
     }
 
 
-def _make_openharness_node(llm_provider):
-    """创建 OpenHarness 分析节点闭包 — 接管全部判断类分析（Step 3-8）"""
+def _make_analysis_node(llm_provider):
+    """创建 AnalysisAgent 分析节点闭包 — 接管全部判断类分析（Step 3-8）"""
     async def _node(state: AnalysisState) -> dict:
-        logger.info("[Step 3/4] OpenHarness 分析智能体")
-        # 延迟 import 避免 workflow <-> openharness 循环依赖
-        from backend.agents.openharness import OpenHarnessAgent
+        logger.info("[Step 3/4] DSH 分析智能体（AnalysisAgent）")
+        # 延迟 import 避免 workflow <-> analysis_agent 循环依赖
+        from backend.agents.analysis_agent import AnalysisAgent
         try:
-            agent = OpenHarnessAgent(llm_provider=llm_provider)
+            agent = AnalysisAgent(llm_provider=llm_provider)
             result = await agent.analyze(state)
-            # 返回 OpenHarness 产出的状态更新
+            # 返回 AnalysisAgent 产出的状态更新
             return {
                 k: v for k, v in result.items()
                 if k in AnalysisState.__annotations__
             }
         except Exception as e:
-            logger.error(f"OpenHarness 分析失败: {e}", exc_info=True)
+            logger.error(f"AnalysisAgent 分析失败: {e}", exc_info=True)
             errors = state.get("errors", [])
             if isinstance(errors, list):
-                errors.append(f"OpenHarness 分析失败: {str(e)}")
+                errors.append(f"AnalysisAgent 分析失败: {str(e)}")
             return {"errors": errors}
     return _node
 
@@ -637,7 +637,7 @@ def create_analysis_workflow(
     [2. parse_target] ───(error)──▶ [handle_error] ──▶ END
           │
           ▼
-    [3. openharness_analyze] ──▶ [4. cross_check_and_output] ──▶ END
+    [3. analyze] ──▶ [4. cross_check_and_output] ──▶ END
 
     Args:
         llm_provider: LLM Provider（可选，用于 LLM 增强节点）
@@ -652,7 +652,7 @@ def create_analysis_workflow(
     # 注册节点（4 节点精简图）
     workflow.add_node(NodeName.COLLECT_DATA, collect_data_node)
     workflow.add_node(NodeName.PARSE_TARGET, parse_target_node)
-    workflow.add_node(NodeName.OPENHARNESS_ANALYZE, _make_openharness_node(llm_provider))
+    workflow.add_node(NodeName.ANALYZE, _make_analysis_node(llm_provider))
     workflow.add_node(NodeName.CROSS_CHECK_AND_OUTPUT, cross_check_and_output_node)
     workflow.add_node(NodeName.HANDLE_ERROR, handle_error_node)
 
@@ -666,9 +666,9 @@ def create_analysis_workflow(
     workflow.add_conditional_edges(
         NodeName.PARSE_TARGET,
         should_continue_after_parse,
-        {"openharness_analyze": NodeName.OPENHARNESS_ANALYZE, "handle_error": NodeName.HANDLE_ERROR},
+        {"analyze": NodeName.ANALYZE, "handle_error": NodeName.HANDLE_ERROR},
     )
-    workflow.add_edge(NodeName.OPENHARNESS_ANALYZE, NodeName.CROSS_CHECK_AND_OUTPUT)
+    workflow.add_edge(NodeName.ANALYZE, NodeName.CROSS_CHECK_AND_OUTPUT)
     workflow.add_edge(NodeName.CROSS_CHECK_AND_OUTPUT, END)
     workflow.add_edge(NodeName.HANDLE_ERROR, END)
 

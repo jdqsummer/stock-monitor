@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agents.data_agent import DataAgent
-from backend.agents.openharness import OpenHarnessAgent
+from backend.agents.analysis_agent import AnalysisAgent
 
 from backend.agents.state import AnalysisState
 from backend.agents.workflow import (
@@ -98,10 +98,10 @@ class TestRoutingDecisions:
         assert result == "handle_error"
 
     def test_should_continue_after_parse_valid_price(self):
-        """有有效股价 → openharness_analyze"""
+        """有有效股价 → analyze"""
         state = make_state(current_price=50.0)
         result = should_continue_after_parse(state)
-        assert result == "openharness_analyze"
+        assert result == "analyze"
 
     def test_should_continue_after_parse_zero_price(self):
         """股价为 0 → handle_error"""
@@ -607,8 +607,8 @@ async def test_workflow_runs_4_node_graph_without_llm():
     assert result["annual_profit_low"] > 0
     assert result["final_rating"]
     assert result["recommendation"]
-    # 验证新图结构：4 节点图包含 OPENHARNESS_ANALYZE
-    assert NodeName.OPENHARNESS_ANALYZE in {n for n, _ in workflow.nodes.items()}
+    # 验证新图结构：4 节点图包含 ANALYZE
+    assert NodeName.ANALYZE in {n for n, _ in workflow.nodes.items()}
 
 
 # ── data_to_state 转换器 ──
@@ -693,7 +693,7 @@ async def test_cross_check_loss_yellow_with_honest_conclusion():
 @pytest.mark.asyncio
 async def test_rule_based_applies_veto():
     """纯规则路径尾部执行 apply_veto"""
-    agent = OpenHarnessAgent(llm_provider=None)
+    agent = AnalysisAgent(llm_provider=None)
     state = {
         "stock_code": "600519", "stock_name": "测试股",
         "current_price": 50.0, "total_market_cap": 750.0, "total_shares": 15.0,
@@ -727,11 +727,11 @@ async def test_cross_check_preserves_existing_conclusion():
 
 @pytest.mark.asyncio
 async def test_rule_based_veto_survives_node4():
-    """模拟图 node3(openharness_analyze)→node4(cross_check)：_rule_based 否决后不被 node4 覆盖"""
-    from backend.agents.openharness import OpenHarnessAgent
+    """模拟图 node3(analyze)→node4(cross_check)：_rule_based 否决后不被 node4 覆盖"""
+    from backend.agents.analysis_agent import AnalysisAgent
     from backend.agents.workflow import cross_check_and_output_node
 
-    agent = OpenHarnessAgent(llm_provider=None)
+    agent = AnalysisAgent(llm_provider=None)
     state = {
         "stock_code": "600519", "stock_name": "测试股",
         "current_price": 50.0, "total_market_cap": 750.0, "total_shares": 15.0,

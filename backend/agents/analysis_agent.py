@@ -1,5 +1,5 @@
-# stock-monitor/backend/agents/openharness.py
-"""OpenHarness 价值投资分析智能体 — LLM 模式经 DSH 派发（DshOrchestrator → dsh-engine /trigger），规则子链降级保留"""
+# stock-monitor/backend/agents/analysis_agent.py
+"""AnalysisAgent 价值投资分析智能体 — LLM 模式经 DSH 派发（DshOrchestrator → dsh-engine /trigger），规则子链降级保留（P4 OpenHarness 语义退役）"""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def apply_veto(state: dict) -> dict:
     return {}
 
 
-class OpenHarnessAgent:
+class AnalysisAgent:
     """基于约束的价值投资分析智能体。
 
     LLM 模式 → DSH 五段分析（DshOrchestrator，经 HttpDshRunner 派发 dsh-engine /trigger）；

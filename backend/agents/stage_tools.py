@@ -170,7 +170,7 @@ class StageTool(BaseTool):
             if llm is None:
                 return {}
             from backend.agents.harness_output import validate_output_shape
-            from backend.agents.openharness import apply_veto
+            from backend.agents.analysis_agent import apply_veto
             loss_note = "（当前亏损，年化利润不可得，请基于商业模式/技术壁垒判断）" if st.get("annual_profit_low") is not None and st.get("annual_profit_low") <= 0 else ""
             prompt = (
                 f"{self.stage.skill_content}\n\n"
