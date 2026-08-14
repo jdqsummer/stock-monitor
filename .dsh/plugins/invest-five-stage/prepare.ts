@@ -114,7 +114,11 @@ export function loadStageSchemas(dshRoot: string): StageSchemas {
   const readSchema = (name: string): Record<string, unknown> => {
     const p = path.join(skillsDir, name, 'output.schema.json')
     if (!fs.existsSync(p)) return {}
-    return JSON.parse(fs.readFileSync(p, 'utf-8'))
+    const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'))
+    // DSH agent() schema 只接受受限子集（type/oneOf/properties/required/additionalProperties/
+    // items/enum/const），剥离 draft-07 元数据键 $schema（backend 仍用原始 draft-07 文件）。
+    delete parsed.$schema
+    return parsed
   }
   return {
     qualitative: readSchema('analyze-qualitative'),

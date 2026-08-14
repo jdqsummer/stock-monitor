@@ -66,7 +66,7 @@ export function apply(ctx: any): void {
       // 简报简化的 `return ctx.workflowEngine.start(...)` 会错误返回 run 对象；以 t5_workflow/fixed-script-plugin.mjs 为准。
       const run = ctx.workflowEngine.start({
         script: FIXED_SCRIPT,
-        meta: { name: 'invest-five-stage' },
+        meta: { name: 'invest-five-stage', description: '价值投资五段式安全边际分析预置脚本' },
         args: prepared,
         parent: exec.agent,
         signal: exec.signal,
