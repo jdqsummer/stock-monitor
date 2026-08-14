@@ -15,7 +15,9 @@
         transport: stdio
         command: python
         args:
-          - 'D:/project/github/stock-monitor/backend/data/dsh_bridge.py'   # P3 落地 DataBridge
+          # -m 模块形态：cwd 进 sys.path，`import backend` 才可解析（script 路径形态不行）
+          - '-m'
+          - 'backend.data.dsh_bridge'   # P3 落地 DataBridge（backend/data/dsh_bridge.py）
         cwd: 'D:/project/github/stock-monitor'
         failOnStartupError: true
       # --- streamable-http 形态（跨容器，P3 启用，取消下面注释并注释上方 stdio）---
