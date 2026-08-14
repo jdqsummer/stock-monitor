@@ -1,0 +1,5 @@
+# --patch 覆盖层：插入 t5 预置脚本工具插件（验证「预置脚本 + 模型只填参数」）。
+# `name` 用绝对 file: URL，让 Loader 直接 ESM import 本地插件文件。
+- insert:
+    - id: t5-fixed-script-plugin
+      name: file:///D:/project/github/stock-monitor/scripts/dsh_p0/t5_workflow/fixed-script-plugin.mjs

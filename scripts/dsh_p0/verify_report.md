@@ -8,7 +8,7 @@
 - [x] T2 DeepSeek API 接入与基础对话
 - [x] T3 Skill 子系统 + 现有 SKILL.md 兼容性
 - [x] T4 Preset 定制 + 工具插件 + 守卫
-- [ ] T5 workflow 工具 + 确定性步骤
+- [x] T5 workflow 工具 + 确定性步骤
 - [ ] T6 Python SDK 连接 + MCP 数据桥
 - [ ] T7 验证报告汇总与 spec 假设对照
 
@@ -271,3 +271,72 @@ export function apply(ctx: Context): void {
 2. **工具插件**：`defineTool` 从 `@deepseek-ai/dsh-tools` 导入，参数用 `parameters`（类型化 DSL），必填 `output`，`execute` 返回规范值；schema 校验由 `defineTool` 内建（缺参/错型 → `ToolArgsError`/`INVALID_ARGS`）。
 3. **守卫**：`ctx.tools.guard()` 单调拒绝，不可逆；「post-processing」是 `tools/post-execute` 瀑布（`PostToolDecision` 支持 replace/block/附加 context），另有 `tools/execute`（around）与 `tools/result`（observe）。
 4. **spec 4.1/4.5 对照**：spec 假设的 `defineTool`/`inputSchema` 命名需修正为 `@deepseek-ai/dsh-tools` 的 `parameters`/`output`；「单调安全守卫 + pre-policy → guard → execute → post-processing」顺序**成立**（源码逐行确认）；「拒绝不可逆」**成立**（守卫无 allow 方向 + denial 短路 dispatch）。
+
+## T5 workflow 工具 + 确定性步骤
+
+### 结论（一句话）
+✅ **workflow 工具实测跑通；但「预置脚本」不是 `workflow` 工具的能力——它是「模型现场自由写脚本」。spec 4.3 的「预置脚本 + 模型只填参数」纪律硬约束可落地，但必须走自定义工具插件（官方 `tool-ralph` 范式），而非原生 `workflow` 工具的 preset 模式（原生根本没有 preset 模式）。**
+
+### Step 1：pipeline()/parallel() 真实签名（源码 + 实测双向确认）
+
+**核心纠正（简报假设错误）**：`import { pipeline } from '@deepseek-ai/dsh/workflow'` 不存在。
+
+- `@deepseek-ai/dsh-workflow` 包（`lib/index.js`，npm 实测）只导出：`WorkflowEngine`（抽象服务类，`ctx.workflowEngine`）、`WorkflowError`、`isFatalWorkflowError`、`WorkflowRunId`、`default`。**没有 `pipeline`/`parallel` 导出**。
+- `pipeline()`/`parallel()`/`agent()`/`phase()`/`log()`/`args` 是**脚本体挂钩**（script-body hooks），由 workflow 引擎在 `node:vm` realm 内注入为全局变量（`workflow-worker-thread/src/runtime.ts` 的 `globals` 表），**不是可 import 的 Node 函数**。
+
+真实脚本挂钩签名（源码 `runtime.ts` + `tool-workflow` 的 DESCRIPTION）：
+
+```
+agent(prompt, opts?)     → Promise<any>   一个子代理跑完；无 schema 返回文本，有 schema 返回校验对象；子代理失败 resolve null
+                          opts 仅支持 label/phase/schema/provider/model（effort/isolation/agentType 拒绝）
+pipeline(items, ...stages) → Promise<any[]>  每个 item 独立跑完所有 stage，stage 间无 barrier；stage 签名 (prev, item, index)；普通 stage 抛错→该 item 置 null
+parallel(thunks)         → Promise<any[]>   零参函数并发，await 全部（barrier）；thunk 抛错→null；fatal WorkflowError 则重抛
+phase(title)             → void             进度分组；log(message) → void 叙述；args → 工具 args 全局（只读）
+```
+
+workflow 工具（`@deepseek-ai/dsh-tool-workflow`，默认工具名 `workflow`）三个参数：`script`（string，纯 JS 脚本体，顶格 await，`return <json>`）、`meta`（`{name, description, whenToUse?, phases?}` 纯数据）、`args`（可选 JSON，注入脚本内 `args` 全局）。输出规范 `{runId, agentsStarted, result}`（result=脚本 return 值，JSON 化）。
+
+### Step 2：headless 实测（原生 workflow 工具 = 模型现场写脚本）
+
+`workflow-worker-thread` + `tool-workflow` + `subagent-spawn-in-process` 都在 `dsh-base`（`packages/bundle/base/cordis.patch.yml` 335-341 行），**headless 默认即有 workflow 工具**（无需 preset 挂载）。命令与输出：
+
+```bash
+dsh --profile headless 'Use the workflow tool ... deterministic script ...'
+# 模型现场写 script 字符串，调用 workflow 工具
+```
+
+模型输出（verbatim）：
+```
+The workflow `t5-demo` completed (0 agents). The exact returned JSON value, verbatim:
+{ "status": "ok", "out": [ { "swing": 50, "profit": 10 } ], "sums": [2, 3], "total": 5 }
+```
+
+→ `pipeline([{price:100,profit:10}], s1, s2)` 顺序执行（swing=100×0.5=50）、`parallel([()=>2,()=>3])` 并发返回 [2,3]、确定性纯 JS 步骤内联、输出 JSON 收集，全部成立。
+
+### Step 3：「预置脚本 + 模型只填参数」可行性（spec 关键假设）
+
+- **原生 `workflow` 工具：❌ 无预置脚本模式**。`script` 是模型现场写的字符串参数，模型每次重写全脚本，无法「只填参数不改脚本」。`args` 只是注入给脚本的只读数据，不限制脚本写法。
+- **官方 `tool-ralph` 范式：✅ 正是「预置脚本 + 模型只填参数」**。`tool-ralph`（`packages/workflow/tool-ralph/src/index.ts`）把固定脚本 `RALPH_SCRIPT` 作为 `String.raw` 常量内嵌在插件里，`defineTool` 只暴露 `objective`/`maxRounds` 两个参数，`execute()` 调 `ctx.workflowEngine.start({script: RALPH_SCRIPT, meta, args: {objective, maxRounds, ...}})`。源码注释明示：「The model supplies data only; it cannot alter the loop, provider route, schema, or handoff validation」。
+- **自定义工具插件实测（双向确认）**：本任务新增 `t5_workflow/fixed-script-plugin.mjs`，仿 ralph 范式内嵌 `FIXED_SCRIPT`，只暴露 `price`/`profit`，`execute()` 里 `ctx.workflowEngine.start({script: FIXED_SCRIPT, meta, args})`。headless `--patch` 加载后，模型调用 `invest_five_stage(price=100, profit=10)` → 返回 `{"status":"ok","out":[{"swing":50,"profit":10}],"sums":[2,3],"total":5}`，exit 0。**模型只能填参数，脚本不可改，纪律硬约束成立。**
+
+### 关键差异：确定性步骤与「目录扫描」不能内联进脚本
+
+脚本 realm **无 fs / network / timers / Node.js API**（`tool-workflow` DESCRIPTION 明示「the agents do the work, the script only coordinates them」）。因此：
+
+- ✅ **纯 JS 确定性计算**（年化/击球区/安全边际算术、PE 回退判断）可内联进脚本，实测成立。
+- ❌ **spec 4.3 的「② 步运行时扫描 `analyze-qualitative/blocks/` 目录」不能内联**（无 fs）。必须在**工具插件的 `execute()` 里用 host Node.js 完成目录扫描 + 读 skill body + 跑 `invest-calc` TS 纯函数**，把确定性结果合并进 `args` 注入脚本；脚本只负责编排 LLM `agent()` 调用与顺序。
+- ❌ **`读 skill`（惰性加载 SKILL.md）也不能在脚本里做**：脚本只有 `agent()`，没有 skill 工具；skill 加载要么在 host `execute()` 里预读、要么交给 `agent()` 子代理用 `skill` 工具。
+
+### spec 4.3 落地判定
+
+| spec 4.3 假设 | 判定 | 落地方式 |
+|:--|:--|:--|
+| workflow 预置 pipeline 脚本（模型只填参数） | **成立（但载体不是原生 workflow 工具）** | 自定义工具插件（仿 `tool-ralph`）：`invest-five-stage` 工具内嵌固定脚本，只暴露参数；`execute()` 调 `ctx.workflowEngine.start({script: FIXED_SCRIPT, ...})` |
+| pipeline()/parallel() 确定性编排 | ✅ 成立（脚本挂钩，非 import） | 脚本体里 `pipeline(items, s1..s5)`（单 item 顺序五段）或顺序 `await` 语句 |
+| 五段顺序/单次/不并行 | ✅ 由固定脚本硬保证 | 脚本是部署方常量，模型不可改；顺序 `await` / 单 item pipeline |
+| 确定性步骤内联纯函数 | ⚠️ 部分成立 | 纯算术可内联；但 TS 纯函数模块、目录扫描、读 skill 必须在插件 `execute()`（host）里跑，结果经 `args` 注入 |
+| ② 步 blocks/ 目录扫描驱动 | ⚠️ 需调整 | 不能脚本内 fs；移到插件 `execute()` host 侧扫描，或 `agent()` 子代理读文件 |
+| 输出 JSON 收集 | ✅ 成立 | 脚本 `return <json>` → 引擎 materialize 成纯 JSON → 工具返回 `{runId, agentsStarted, result}` |
+| 纪律硬约束（否决/PE 回退不可绕过） | ✅ 成立 | 固定脚本 + `ctx.tools.guard()`（T4 单调守卫）+ 插件 `execute()` 形状校验 |
+
+**结论：spec 4.3 的「预置脚本 + 纪律硬约束」成立，但落地需一个调整点——把「五段预置 pipeline」从「原生 workflow 工具」改为「自定义工具插件内嵌固定脚本 + `ctx.workflowEngine.start()`」，并把确定性计算/目录扫描/读 skill 从脚本 realm 移到插件 host 侧（`args` 注入），脚本只保留 LLM 子代理编排与顺序。这与 spec 4.4（invest-calc TS 模块）的边界也吻合：TS 纯函数本就该在 host 侧跑，不在脚本 vm 里。**
