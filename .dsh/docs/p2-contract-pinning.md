@@ -15,6 +15,8 @@
 
 > anchor 特例（正文明文）：`swing_zone_analysis` / `distance_pct` / `signal_label` **不在 anchor 的 LLM 输出内**，由确定性节点自动合并写入（见第四条）。
 
+> ⏳ #1 正文输出键 → schema 映射：见 Task 3（invest-schema）。
+
 ## 二、redlines.json 量纲
 
 `redlines.json` 的 `signal_thresholds` 是**比率域**（`{green: 0, yellow: 0.5, red_above: 0.5}`），而 `backend` 侧 `safetyMargin.ts` 用**百分比域**（`0` / `50`）。P2 invest-schema 消费时须做 **×100 转换**约定：
@@ -23,9 +25,13 @@
 - `safetyMargin.ts` 百分比域：`distance_pct ≤ 0` → green、`0 < distance_pct ≤ 50` → yellow、`distance_pct > 50` → red
 - 转换约定：比率 `0.5` ↔ 百分比 `50`（即 `distance_pct`（%）`/ 100` 得到比率；阈值比较统一到同一域后再判灯）。
 
+> ⏳ #2 redlines 量纲 ×100 转换：见 Task 3（invest-schema 单元测试）。
+
 ## 三、script.ts return 键粒度
 
 `script.ts` 的 `return` 顶层键 `qualitative` / `reverse` / `conclusion` 是**单字段词脚本标签**，与各 stage schema 的**多字段 snake_case 输出**（如 `qualitative_analysis`、`checklist_results`、`conclusion`）存在粒度差。P2 需统一：return 键是否改为与 schema 字段名对齐（或明确「标签 → 字段集」的映射关系）。
+
+> ✅ P2 已定稿（Task 1）：return 顶层键改为 **stage 键**——`analyze_qualitative` / `run_reverse_checklist` / `anchor_industry_pe` / `output_conclusion`，与前端 `stage_results` 键逐字一致（I5 源头 snake_case 决策延伸）。step 标签（`qualitative/reverse/anchor/conclusion`）仅作日志/phase 标识，不再是 return 键。
 
 ## 四、anchor 合并形状
 
@@ -35,9 +41,11 @@ script.ts ④ 步 `const merged = { ...anchor, ...args.calc }` 生成 `swing_zon
 - `args.calc`（确定性节点注入）含年化利润 / 击球区市值 / 击球区股价 / `distance_pct` / `signal` / `signal_label` 等。
 - `merged = { ...anchor, ...args.calc }` 的最终字段集合（含是否覆盖 anchor 字段、字段名是否与 state `AnalysisState` 逐字一致）待 P2 钉死。
 
+> ✅ P2 已定稿（Task 1）：`merged = { ...anchor, ...args.calc }` 最终字段集 = anchor schema 三字段（`pe_low` / `pe_high` / `pe_rationale`）+ calc 确定性字段（`annual_profit_*` / `profit_method` / `swing_*` / `distance_pct` / `signal` / `signal_label` / `pe_anchor` / `profit_quality_*` / `growth_metrics` 等）。return 键由 `swing_zone_analysis` 改为 stage 键 `anchor_industry_pe`。
+
 ## 附：钉死动作清单
 
 - [ ] P2 invest-schema：正文输出键 → state 字段映射落为 JSON Schema + 落库代码。
 - [ ] P2 redlines 量纲：×100 转换统一实现 + 单元测试。
-- [ ] P2 script.ts return 键：统一标签 / 字段名。
-- [ ] P2 anchor 合并 shape：`swing_zone_analysis` 最终字段契约。
+- [x] P2 script.ts return 键：统一标签 / 字段名（已定稿为 stage 键，见第三节）。
+- [x] P2 anchor 合并 shape：`swing_zone_analysis` 最终字段契约（已定稿 `merged = { ...anchor, ...args.calc }`，见第四节）。

@@ -10,14 +10,21 @@
 //
 // 说明：本 .ts 为源码存档；DSH Loader 加载编译后的 .js/.mjs（cordis-plugin-loader 会把
 // `.ts` 相对导入重写为 `.js`），P2 插件挂载时需编译/以 mjs 挂载（同 t4_plugin/t5_workflow）。
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { FIXED_SCRIPT } from './script'
+import { prepareArgs } from './prepare'
 
 /** cordis 插件名（loader 诊断用）。 */
 export const name = 'invest-five-stage'
 
 /** 注入 ToolRuntime + WorkflowEngine 服务（ctx key: tools / workflowEngine）。 */
 export const inject = ['tools', 'workflowEngine']
+
+/** .dsh 根目录：插件位于 .dsh/plugins/invest-five-stage/，上溯 2 级即 .dsh/。 */
+const dshRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 /** prepareArgs 的返回值：host 侧组装的脚本只读上下文。 */
 interface PreparedArgs {
@@ -38,35 +45,6 @@ interface PreparedArgs {
   calc: Record<string, unknown>
 }
 
-/**
- * prepareArgs —— host 侧确定性上下文组装（P1 只搭接口 + mock 桩，⚠️ 待 P2 定稿）。
- *
- * 脚本 realm 无 fs/network，以下三件只能在 host Node 完成、经 args 注入脚本：
- *   待 P2 验证点 ①：`analyze-qualitative/blocks/` 目录扫描 + 子块 frontmatter
- *     `output_field/title/order` 的 raw parse（复用 backend/agents/skills `_load_stages`
- *     同构机制，host 侧读文件，不经 DSH skill 机制）→ 组装 `blocks`。
- *   待 P2 验证点 ②：读各 stage `output.schema.json` → 注入 `schemas`（E2 中间校验 P2 接入）。
- *   待 P2 验证点 ③：调 `invest-calc` TS 纯函数（Task 3）算 `calc`（年化/击球区/信号灯）。
- *
- * P1 交付：函数签名 + 注释 + mock 桩（返回固定 args），不实现真实数据桥、不调用 Task 3 尚未实现的函数。
- */
-async function prepareArgs(stockCode: string, stockName: string): Promise<PreparedArgs> {
-  // P1 mock 桩：返回固定 args（真实数据桥待 P2 ①②③ 填充）。
-  return {
-    stock_code: stockCode,
-    stock_name: stockName,
-    context: { stock: {}, financials: {}, industry: {}, pe_anchor: {} }, // 待 P2：真实行情/财报注入
-    blocks: [],                                                         // 待 P2 ①：blocks 目录扫描
-    schemas: {                                                          // 待 P2 ②：读 output.schema.json
-      qualitative: { type: 'object' },
-      reverse: { type: 'object' },
-      anchor: { type: 'object' },
-      conclusion: { type: 'object' },
-    },
-    calc: {},                                                           // 待 P2 ③：invest-calc 确定性结果
-  }
-}
-
 /** 注册 `invest-five-stage` 工具：模型只填股票参数，脚本不可改。 */
 export function apply(ctx: any): void {
   ctx.tools.register(defineTool({
@@ -81,8 +59,8 @@ export function apply(ctx: any): void {
       render: (_args: any, value: any) => [{ type: 'text', text: JSON.stringify(value) }],
     },
     async execute(args: any, exec: any) {
-      // host 侧：blocks 目录扫描 + 读 skill + 跑 invest-calc 确定性计算 + 组装 args（⚠️ 待 P2 定稿，见 prepareArgs）
-      const prepared = await prepareArgs(args.stock_code, args.stock_name)
+      // host 侧：blocks 目录扫描 + 读 schema + 跑 invest-calc 确定性计算 + 组装 args（P2 真实现，见 prepare.ts）
+      const prepared = prepareArgs(args.stock_code, args.stock_name, { dshRoot })
 
       // P0 T5 真实签名：start() 返回 run 对象（非最终值），须 await run.result 并判 stopReason。
       // 简报简化的 `return ctx.workflowEngine.start(...)` 会错误返回 run 对象；以 t5_workflow/fixed-script-plugin.mjs 为准。
