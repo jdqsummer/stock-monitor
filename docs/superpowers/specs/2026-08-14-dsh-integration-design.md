@@ -42,7 +42,7 @@
 | 1 | 组织形态 | **Preset 单 Agent 起步**，多 Agent 协作留二期 | 五段式本质是"单 agent 带纪律"顺序流程，平滑复用；多 agent 硬拆引入协调成本 |
 | 2 | 确定性资产 | **全部 DSH 原生重写（TypeScript）** | 用户明确否决"Python 套壳"；分析逻辑彻底进入 DSH 运行时 |
 | 3 | 部署桥接 | **DSH headless 常驻服务 + Python 后端桥接** | FastAPI/前端/DB 保留；DSH 作为分析引擎子进程 |
-| 4 | 五段纪律载体 | **workflow 预置 pipeline 脚本**（模型只填参数，不自由写脚本） | 顺序/单次/不并行由脚本硬保证，纪律从 prompt 软约束升级为脚本硬约束 |
+| 4 | 五段纪律载体 | **workflow 预置 pipeline 脚本**（模型只填参数，不自由写脚本） | 顺序/单次/不并行由脚本硬保证，纪律从 prompt 软约束升级为脚本硬约束（**P0 T5 已验证**：原生 workflow 无预置脚本模式，改自定义工具插件承载，见 4.3；B1 退路因载体调整自动消解） |
 | 5 | 旧引擎去留 | **OpenHarness 退役 + 纯规则降级链保留** | 双轨维护成本高违背可维护初衷；降级链延续"优雅降级"原则 |
 | 6 | DSH 来源 | **部署用 npm（精确版本锁定），源码 clone 仅 P0 开发辅助** | 符合 `DSH_UPSTREAM.md` 版本纪律；源码仅用于 v0.1 API 探索 |
 
@@ -188,7 +188,7 @@ version: 1.0.0
 
 | 步 | skill | 输入（depends_on） | 确定性逻辑 | 输出 |
 |:--|:--|:--|:--|:--|
-| ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报 | 基础数据 |
+| ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报（D1 P0-1 验证通过后改 PTC 批量拉数+本地计算，见第十三节 D1） | 基础数据 |
 | ② analyze_qualitative | analyze-qualitative | financials/current_price/… | 经营质量：增长指标 + 利润质量确定性检查；**blocks/ 目录扫描驱动子块** | qualitative_analysis + business_model/moat_assessment/operating_quality + 各子块 output_field |
 | ③ run_reverse_checklist | run-reverse-checklist | qualitative_analysis/financials/… | 无（纯 LLM） | reverse_analysis + risk_factors/checklist_veto |
 | ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis（含 `sensitivity_analysis`：PE ±10% 敏感性，D2 P0-1 验证通过后 P3）+ pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
@@ -251,10 +251,10 @@ invest-data/            # 规则数据（JSON，非代码，独立热更新）
   → LangGraph collect_data                         【Python 数据层，westock/provider 链不变】
   → LangGraph parse_target
   → openharness_analyze 节点 → DSH Orchestrator    【替换 OpenHarnessAgent】
-      ① 构造/复用 DSH 会话（session_id = code-date，跨分析可续）
+      ① 构造/复用 DSH 会话（session_id = code-date，跨分析可续；重分析 Resume 流程见第十三节 D6）
       ② 注入只读 context：stock info + financials 摘要 + industry + 行业锚点
       ③ 运行 value-investor preset 的 workflow 五段
-      ④ 收集结构化输出 → 映射回 snake_case → 回填 AnalysisState
+      ④ 收集结构化输出 → 映射回 snake_case（I5 决策：源头统一 snake_case 后本步骤免映射，见实施路线 P1）→ 回填 AnalysisState
       ⑤ 会话轨迹落 DSH append-only log
       ▼（失败 → _rule_based 纯规则降级链）
   → LangGraph cross_check_and_output                【保留】
@@ -591,13 +591,13 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | 修订项 | 级别 | 执行组别 | 负责阶段 | 状态 |
 |:--|:--|:--|:--|:--|
 | B1 workflow API 标注假设 + 退路 | 阻断 | 组②（P0 已验证） | 文档修订（立即） | 已完成（P0 T5：pipeline/parallel 为脚本挂钩、无 restrict()，预置脚本须自定义插件承载；退路已写入 4.3） |
-| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 组②（T4 已固化）+ 组③（附录 A，P1 产出） | 文档修订 + P0 验证 | 部分完成（P0 T4 固化 composition vs patch、defineTool 真实签名；**附录 A 可运行样例待 P1 产出**，见实施路线 P1 项） |
+| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 组②（T4 已固化）+ 组③（附录 A，P1 产出） | 文档修订 + P0 验证 | 部分完成（P0 T4 固化 composition vs patch、defineTool 真实签名；**附录 A 占位已建**（文末附录节），可运行样例待 P1 产出） |
 | B3 会话容错小节 5.1 | 阻断 | 组①（立即融入） | 文档修订（立即） | 已完成（本版已新增 5.1「会话生命周期与容错」） |
 | I1 Windows 开发环境约束 | 重要 | 组③（P1 设计时写入正文） | P1 | 已完成（v1.2 已写入正文「三、开发环境」） |
 | I2 并发模型 | 重要 | 组③（P1 任务调度设计时） | P1 | 已写入正文（v1.2「三、并发控制」），落地归 P1 |
 | I3 脚本防篡改 | 重要 | 组③（P1 挂载结构设计时） | P1 | 已写入正文（v1.2「4.1 脚本防篡改」），落地归 P1 |
 | I4 双实现漂移 | 重要 | 组④（P4 收敛） | P4 | 已写入风险表（v1.2），收敛方案归 P4 |
-| I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.3「I5 源头 snake_case + 附录 B 兜底」），P1 定稿 |
+| I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.3「I5 源头 snake_case + 附录 B 兜底」，**附录 B 占位已建**），P1 定稿 |
 | I6 多模型选择 | 重要 | 组③（P1 接口）+ 组④（P3 完整落地） | P1-P3 | 已写入正文（v1.2「六、模型选择机制」），P1 预留接口、P3 完整落地 |
 | I7 成本监控/限流/预算 | 重要 | 组④（P3，载体 D4 telemetry） | P2-P3 | 已写入风险表（v1.2，载体 D4 invest-telemetry 归 P3）；prefix-cache 观测并入 **P0-1 T5** |
 | S1 MCP 跨容器传输 | 建议 | 组③（P1 容器网络设计时） | 实施过程 | 已完成（v1.2 已写入正文「三、MCP 传输方式」） |
@@ -844,7 +844,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | Q2 置信度标注 | 中 | P2 | Skill 正文更新 + schema 扩展 |
 | Q3 Ralph 自审循环 | 可选 | P4 | P0 验证 Ralph 可用性 |
 | E1 Skill 依赖声明 | 中 | P1 | frontmatter 扩展 + CI 脚本 |
-| E2 Skill 输出 Schema | 中 | P1-P2 | 每个 Skill 编写 output.schema.json |
+| E2 Skill 输出 Schema | 中 | P1（schema 定义）+ P2（校验钩子接入） | 每个 Skill 编写 output.schema.json |
 
 > **P0 验证清单更新**：在原有 P0（茅台全链路跑通）基础上，增加 4 项 API 验证：PTC 可用性（D1）、Fork API（D2）、Resume API（D6）、Ralph 触发方式（Q3）。验证结果决定对应深化项是否进入后续阶段。
 
@@ -874,7 +874,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | 项 | P0 验证结果 | 结论 |
 |:--|:--|:--|
 | B1 workflow API（pipeline/restrict） | T5 已验证：pipeline/parallel 为脚本挂钩、无 restrict() | 已采纳修正：预置脚本由自定义工具插件承载（tool-ralph 范式），退路写入 4.3 |
-| B2 cordis.yml 语法 | T4 已验证：composition vs patch、defineTool 真实签名 | 部分固化；**附录 A 可运行样例待 P1 产出**（组③） |
+| B2 cordis.yml 语法 | T4 已验证：composition vs patch、defineTool 真实签名 | 部分固化；**附录 A 占位已建**（文末附录节），可运行样例待 P1 产出（组③） |
 | S9 standard preset | T4 已确认：shipped preset = standard/minimal/code/cordis | ✅ 已确认 |
 | S10 版本号 | T1 已确认：npm latest = rc.6 | ✅ 已锁定并回填 DSH_UPSTREAM |
 | D1 PTC | **待验证**（不在 T1-T6 范围） | 通过 → P2 实施；失败 → invest-data-tool 内批量封装退路 |
@@ -889,7 +889,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | 项 | 内容 | 进入条件 |
 |:--|:--|:--|
 | I5 | DSH 侧 invest-* 插件输出**源头统一 snake_case**（契约首选方案；兜底附录 B 映射表） | P1 插件输出契约定稿时决策 |
-| E1 + E2 | Skill frontmatter `provides/consumes` + 每 Skill `output.schema.json` | P1 SKILL 迁移窗口（与 frontmatter 精简、kebab-case 同批） |
+| E1 + E2 | Skill frontmatter `provides/consumes` + 每 Skill `output.schema.json` | P1 SKILL 迁移窗口（E2 schema 定义同批；E2 校验钩子接入归 P2，见第十三节映射表） |
 | I6 | 多模型选择机制（前端下拉 + Preset providers 双卡片 + `analysis_model` 记录） | P1 至少留接口，P3 完整落地 |
 | I3 | 脚本防篡改：workflow 脚本目录 read-only volume + invest-guard 禁写 `.dsh/` 路径 | P1 挂载结构设计时 |
 | I2 | 并发模型：`max_sessions`（4-8）+ FastAPI 队列 + Redis 同股票锁 | P1 任务调度设计时 |
@@ -913,3 +913,12 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 2. **P0-1 扩展**（`2026-08-14-dsh-p0-1-api-extension.md`）：验证 D1/D2/D6/Q3 四项 API + prefix-cache API 层观测，结果回填组② 表（决定对应深化项进 P2/P3/P4 还是走退路）。
 3. **P1 开工前**：组③ 全部融入 P1 设计（重点：I5 源头 snake_case 决策 + E1/E2 的 SKILL 模板 + B2 附录 A 样例）。
 4. **P1-P4**：组④ 按映射表迭代；修订追踪表（第十二节）随进展更新状态列。
+
+---
+
+## 附录（P1 产出）
+
+> 以下附录为组③ P1 阶段产出物占位，产出后回填本节。
+
+- **附录 A：cordis.yml 可运行样例**（B2，P1 插件开发首日产出）——最小 `cordis.yml` 跑通"注册一个自定义工具"，固化 Cordis composition/patch 真实语法（`inject`/`apply`/`config` 字段结构、bundle 与 patch 组合格式）。
+- **附录 B：字段映射表**（I5 兜底方案，P1 输出契约定稿时裁决）——若 I5 首选"DSH 侧源头统一 snake_case"不采纳，则列 `stage_results` 各阶段键的「DSH 输出字段名 → Python snake_case → DB JSON key」三列对照。
