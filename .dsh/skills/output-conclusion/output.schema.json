@@ -1,11 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["conclusion_analysis", "final_rating", "recommendation", "action_items"],
+  "required": ["conclusion", "recommendation", "unassessable_risk", "final_rating", "action_items"],
   "properties": {
-    "conclusion_analysis": { "type": "object" },
-    "final_rating": { "type": "string" },
+    "conclusion": { "type": "string" },
     "recommendation": { "type": "string" },
-    "action_items": { "type": "array", "items": { "type": "string" } }
+    "unassessable_risk": { "type": "boolean" },
+    "final_rating": { "type": "string" },
+    "action_items": { "type": "array", "items": { "type": "string" } },
+    "loss_exception_rationale": { "type": "string" },
+    "forward_valuation_basis": { "type": "string" }
   }
 }

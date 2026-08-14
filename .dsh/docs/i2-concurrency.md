@@ -94,7 +94,7 @@ P1 不新建调度框架，P3 Orchestrator 复用以下现有件：
 
 | 现有件 | 位置 | 复用方式 |
 |:--|:--|:--|
-| 异步分析队列 | `backend/services/analysis_job_svc.py` `AnalysisJobService` | 已有 `asyncio.Semaphore(max_concurrency=3)` + `asyncio.create_task`/`gather` + `job_id` 内存状态（`pending/running/done/failed/skipped`）——P3 将其并发闸对齐到 DSH `max_sessions`，任务体换成「HTTP 触发 DSH」 |
+| 异步分析队列 | `backend/services/analysis_job_svc.py` `AnalysisJobService` | 已有 `asyncio.Semaphore(max_concurrency=3)` + `asyncio.create_task`/`gather` + `job_id` 内存状态（`pending/running/done/failed/skipped_llm_unavailable`）——P3 将其并发闸对齐到 DSH `max_sessions`，任务体换成「HTTP 触发 DSH」 |
 | 进度轮询端点 | `backend/api/analysis.py` `/watchlist/analyze`（提交）+ `/watchlist/status`（轮询） | 已存在的 `job_id` 提交/查询双端点即「排队 + 前端轮询」的落地范式，P3 复用 |
 | 定时调度 | `backend/data/scheduler.py` `TaskScheduler`（APScheduler） | 仪表盘 A 表刷新（行情 30min / 财报 30min / 收盘重算）不变，DSH 分析为**手动触发**，不并入定时链 |
 

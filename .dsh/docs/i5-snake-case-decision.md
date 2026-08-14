@@ -36,16 +36,16 @@ DSH 工具参数本身（如 `stock_code`）是工具 DSL 内部名，不在本�
 - **输出字段名（schema 字段 / 函数返回 / 脚本 return 键）**：snake_case，是本决策约束的对象。
 - **`stage_results` 阶段键**：沿用 snake_case 技能名（`analyze_qualitative` / `run_reverse_checklist` / `anchor_industry_pe` / `output_conclusion`），由 `backend/` 侧 skill 的 frontmatter `name` 决定，前端契约不可破。
 
-> 注：`script.ts` 的 `return` 顶层键 `qualitative`/`reverse`/`conclusion` 是脚本 DSL 内部标签（单字段词），与对应 schema 输出字段 `qualitative_analysis`/`reverse_analysis`/`conclusion_analysis` 存在粒度差——P2 契约钉死时需统一（列为待 P2 契约项）。
+> 注：`script.ts` 的 `return` 顶层键 `qualitative`/`reverse`/`conclusion` 是脚本 DSL 内部标签（单字段词），与对应 stage 的 schema 输出字段（snake_case 多字段集，如 `qualitative_analysis`、`checklist_results`、`conclusion`）存在粒度差——P2 契约钉死时需统一（列为待 P2 契约项，详见 `.dsh/docs/p2-contract-pinning.md` 第三条）。
 
 ## 已落地证据
 
 ### Task 1 — `.dsh/skills/*/output.schema.json`（4 个 stage）
 
 - `analyze-qualitative`：`qualitative_analysis`、`business_model`、`moat_assessment`、`operating_quality`
-- `run-reverse-checklist`：`reverse_analysis`、`risk_factors`、`checklist_veto`
-- `anchor-industry-pe`：`pe_low`、`pe_high`、`swing_zone_analysis`、`distance_pct`、`signal_label`
-- `output-conclusion`：`conclusion_analysis`、`final_rating`、`recommendation`、`action_items`
+- `run-reverse-checklist`：`checklist_results`、`conclusions`、`major_risks`、`checklist_veto`、`overall_assessment`
+- `anchor-industry-pe`：`pe_low`、`pe_high`、`pe_rationale`
+- `output-conclusion`：`conclusion`、`recommendation`、`unassessable_risk`、`final_rating`、`action_items`（亏损特例可选 `loss_exception_rationale`、`forward_valuation_basis`）
 
 ### Task 2 — `.dsh/plugins/invest-five-stage/script.ts` 的 `return`
 

@@ -38,9 +38,9 @@ P1 只定义结构与三档策略，具体 compose 卷声明在 P4 Docker 化时
 services:
   dsh-engine:
     volumes:
-      - ./dsh/plugins:/dsh/plugins:ro          # workflow 脚本 + TS 纯函数（第一道）
-      - ./dsh/skills:/dsh/skills:ro            # 方法论正文（第一道）
-      - ./dsh/invest-data:/dsh/invest-data:ro  # 规则 JSON，模型侧只读
+      - ./.dsh/plugins:/dsh/plugins:ro          # workflow 脚本 + TS 纯函数（第一道）
+      - ./.dsh/skills:/dsh/skills:ro            # 方法论正文（第一道）
+      - ./.dsh/invest-data:/dsh/invest-data:ro  # 规则 JSON，模型侧只读
 ```
 
 > ⚠️ 上为结构示意。三档策略与「invest-data 独立热更新」的落地机制（独立卷 / 热重载信号 / 是否需引擎重载）在 P4 定稿，P1 只固化「哪些路径对模型只读、哪些可独立热更新」的边界。
