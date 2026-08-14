@@ -147,12 +147,13 @@ class StageTool(BaseTool):
                 return {"stage_results": {self.name: {"title": self.name, "error": "无 LLM"}},
                         self.output_field: {}}
             from backend.agents.analysis_chain import run_reverse_checklist
+            data = _inject(st, self.stage.depends_on)
             stock_info = (
                 f"股票: {st.get('stock_name', '')}({st.get('stock_code', '')})，"
-                f"现价: {st.get('current_price')} 元，动态PE: {st.get('pe_dynamic')}，"
-                f"扣非净利: {st.get('net_profit_deducted')} 亿，行业: {st.get('industry_category')}"
+                f"行业: {st.get('industry_category', '未知')}\n"
+                f"注入数据（depends_on）: {data}"
             )
-            rv = await run_reverse_checklist(llm, stock_info)
+            rv = await run_reverse_checklist(llm, stock_info, self.stage.skill_content)
             compat = {
                 "checklist_results": rv["checklist_results"],
                 "checklist_veto": rv["checklist_veto"],

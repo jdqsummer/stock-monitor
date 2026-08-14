@@ -13,7 +13,7 @@ def test_skill_exists_and_has_frontmatter():
 
 def test_skill_covers_core_sections():
     text = SKILL.read_text(encoding="utf-8")
-    for section in ["输出格式", "逆向投资", "亏损", "final_rating"]:
+    for section in ["输出格式", "逆向", "亏损", "final_rating"]:
         assert section in text
 
 

@@ -542,66 +542,22 @@ class AnalysisChain:
 # 清单评估（14 道逆向反问）
 # ═══════════════════════════════════════════
 
-REVERSE_CHECKLIST_PROMPT = """你是一个逆向投资分析师。请以"证伪"心态回答以下 14 道反问。
-
-不要走过场——真正挑战你的买入逻辑。如果某道题让你感到不安，不要忽略它。
-
-### 关于公司本身
-
-1. 如果我是这家公司的竞争对手，手握无限资金，我会如何击溃它？
-2. 这家公司最大的三个风险是什么？这些风险发生的概率有多大？
-3. 公司的核心竞争优势在未来五年会不会被技术颠覆或行业变化削弱？
-4. 如果现任 CEO 明天离职，公司的运营会受到多大影响？
-5. 公司的财务报表中，有哪些数字让我不舒服？
-
-### 关于估值
-
-6. 假设公司未来三年的增速比预期低 50%，当前股价还值得买吗？
-7. 如果市场给这家公司的估值永远回不到历史平均水平，我的回报会怎样？
-8. 我的内在价值估算中，哪个假设最脆弱？如果这个假设错了，估值会下降多少？
-
-### 关于市场共识
-
-9. 市场当前对这只股票的乐观/悲观程度如何？这种情绪是否已经反映在价格中？
-10. 为什么其他人没有看到我所看到的机会？是他们错了，还是我漏掉了什么？
-11. 如果所有人都认同我的观点，这只股票的价格还会是现在这样吗？
-
-### 关于自己
-
-12. 我买这只股票，是因为理性分析，还是因为 FOMO（害怕错过）或别的情绪？
-13. 如果我今天手里全是现金，我还会按现在的价格买入这只股票吗？
-14. 如果我买入后股价再跌 30%，我还会认为这是一个好投资吗？我有资金和心理准备承受这种跌幅吗？
-
----
-
-**股票信息**：
-{stock_info}
-
-请以 JSON 格式返回回答：
-```json
-{{
-    "checklist_results": {{
-        "Q1": "回答", ..., "Q14": "回答"
-    }},
-    "conclusions": {{
-        "about_company": "关于公司本身的结论",
-        "about_valuation": "关于估值的结论",
-        "about_market": "关于市场共识的结论",
-        "about_self": "关于自己的结论"
-    }},
-    "major_risks": ["可能颠覆商业模式或竞争力的重大风险1", "风险2"],
-    "checklist_veto": false,
-    "overall_assessment": "综合证伪判断"
-}}
-```"""
-
-
 async def run_reverse_checklist(
     llm: LLMProvider,
     stock_info: str,
+    skill_content: str,
 ) -> dict:
     """
     运行 14 道逆向反问清单，输出四类结论 + 重大风险。
+
+    方法论正文来自阶段 SKILL.md（skill_content，见
+    backend/agents/skills/stages/reverse-checklist/SKILL.md），
+    数据由调用方注入 stock_info（含近 8 期财报摘要）。
+
+    Args:
+        llm: LLM provider
+        stock_info: 股票信息与注入数据
+        skill_content: 逆向清单 SKILL.md 正文（14 问 / 输出格式 / 全局约束）
 
     Returns:
         {
@@ -612,7 +568,11 @@ async def run_reverse_checklist(
             "overall_assessment": str,
         }
     """
-    prompt = REVERSE_CHECKLIST_PROMPT.format(stock_info=stock_info)
+    prompt = (
+        f"{skill_content}\n\n"
+        f"**股票信息与注入数据**：\n{stock_info}\n\n"
+        f"请严格按上方「输出格式」以 JSON 返回，不要输出其他内容。"
+    )
 
     try:
         result = await llm.json_chat([{"role": "user", "content": prompt}])
