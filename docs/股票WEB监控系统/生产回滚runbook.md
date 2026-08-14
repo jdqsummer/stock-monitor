@@ -4,7 +4,7 @@
 
 ## 1. 健康检查与探针
 
-- dsh-engine 容器 healthcheck：`GET /health`（每 30s，3 次失败标记 unhealthy）。
+- dsh-engine 容器 healthcheck：`GET /openapi.json`（每 30s，3 次失败标记 unhealthy；sdk_host 仅暴露 POST /trigger，无 /health，用 FastAPI 自动生成的 /openapi.json 探活）。
 - backend 侧：`DshOrchestrator.is_available()`（DSH_ENABLED + DSH_ENGINE_URL 非空）。
 - 熔断：连续 `DSH_CIRCUIT_BREAK_THRESHOLD`（默认 3）次失败 → 自动切 `_rule_based`，冷却 `DSH_CIRCUIT_COOLDOWN_SECONDS`（默认 300s）后重新探测。
 
@@ -24,7 +24,7 @@
 ## 4. 恢复
 
 - 熔断冷却期后自动重新探测 DSH；健康 → 恢复 DSH 路径（`analysis_source=dsh-llm`）。
-- 手动恢复：`docker compose restart dsh-engine` + 观察 `/health` 与熔断日志。
+- 手动恢复：`docker compose restart dsh-engine` + 观察 `/openapi.json` 与熔断日志。
 
 ## 5. 版本回滚（DSH 引擎）
 

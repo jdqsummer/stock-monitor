@@ -88,7 +88,7 @@ async def test_analyze_dsh_unavailable_falls_back_to_rule_based(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_analyze_dsh_failure_falls_back_to_rule_based(monkeypatch):
+async def test_analyze_dsh_failure_falls_back_to_rule_based(reset_circuit, monkeypatch):
     """DSH 可用但抛错 → 降级规则子链 + 降级标记 + errors 记录"""
     from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
@@ -111,7 +111,7 @@ async def test_analyze_dsh_failure_falls_back_to_rule_based(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_analyze_dsh_retries_once_then_succeeds(monkeypatch):
+async def test_analyze_dsh_retries_once_then_succeeds(reset_circuit, monkeypatch):
     """DSH_RETRY_COUNT=1：首次失败 → 重试第 2 次成功，不降级，orch.analyze 恰好调用 2 次"""
     from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
@@ -140,7 +140,7 @@ async def test_analyze_dsh_retries_once_then_succeeds(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_analyze_dsh_retry_exhausted_falls_back_to_rule_based(monkeypatch):
+async def test_analyze_dsh_retry_exhausted_falls_back_to_rule_based(reset_circuit, monkeypatch):
     """DSH_RETRY_COUNT=1 且始终失败：重试耗尽（2 次）→ 降级规则子链 + 三标记 + errors"""
     from backend.agents import analysis_agent as aa
     from backend.agents.dsh_orchestrator import DshOrchestrator
@@ -447,6 +447,7 @@ async def test_analyze_circuit_open_short_circuits_to_rule_based(reset_circuit, 
     assert result["analysis_model"] == "none"
     assert result["analysis_degraded"] is True
     assert result["final_rating"] in ("🟢", "🟡", "🔴")
+    assert any("DSH 熔断开启" in e for e in result["errors"])   # 熔断原因写入 errors
 
 
 @pytest.mark.asyncio

@@ -38,7 +38,7 @@ def compute_evictions(root: Path, retention_days: int, max_count: int) -> list[s
     keep = [name for name, ts in sessions if ts >= cutoff]
     over = len(keep) - max_count
     if over > 0:
-        evict += [name for name, _ in sessions[:over]]
+        evict += keep[:over]
     return sorted(set(evict))
 
 
@@ -66,7 +66,8 @@ def main() -> int:
 
     root = Path(args.root)
     if args.interval <= 0:
-        return cleanup(root, args.days, args.max, dry_run=not args.apply)
+        cleanup(root, args.days, args.max, dry_run=not args.apply)
+        return 0
 
     while True:
         try:

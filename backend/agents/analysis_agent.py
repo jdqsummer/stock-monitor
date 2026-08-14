@@ -175,7 +175,12 @@ class AnalysisAgent:
             return updates
         # S6 熔断：连续失败达阈值（冷却期内）→ 直接短路降级，不发 DSH 派发。
         if _circuit_open():
+            from backend.config import settings
             logger.warning("DSH 熔断开启，短路降级纯规则子链")
+            errors = state.setdefault("errors", [])
+            msg = f"DSH 熔断开启（连续失败 ≥ {settings.DSH_CIRCUIT_BREAK_THRESHOLD} 次），降级规则子链"
+            if msg not in errors:
+                errors.append(msg)
             updates = await self._rule_based(state)
             updates.update({"analysis_source": "rule-based", "analysis_model": "none",
                             "analysis_degraded": True})
