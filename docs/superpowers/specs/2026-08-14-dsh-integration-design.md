@@ -140,6 +140,8 @@ version: 1.0.0
 ---
 ```
 
+**blocks 子块目录扫描驱动**：`analyze-qualitative/blocks/` 由 workflow ② 步**运行时扫描**（非写死列表），新增定性子块 = 放一个 SKILL.md（frontmatter 声明 `output_field/title/order`，正文含方法论 + 输出格式），脚本/代码零改动、自动纳入定性分析。复用现有 `_load_stages` 同构机制。
+
 ### 4.3 Workflow 五段 pipeline（预置脚本，纪律硬约束）
 
 每一步 = `{ skill 引用, 输入契约, 确定性逻辑, 输出契约 }`：
@@ -147,10 +149,12 @@ version: 1.0.0
 | 步 | skill | 输入（depends_on） | 确定性逻辑 | 输出 |
 |:--|:--|:--|:--|:--|
 | ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报 | 基础数据 |
-| ② analyze_qualitative | analyze-qualitative | financials/current_price/… | 经营质量：增长指标 + 利润质量确定性检查 | qualitative_analysis + business_model/moat_assessment/operating_quality |
+| ② analyze_qualitative | analyze-qualitative | financials/current_price/… | 经营质量：增长指标 + 利润质量确定性检查；**blocks/ 目录扫描驱动子块** | qualitative_analysis + business_model/moat_assessment/operating_quality + 各子块 output_field |
 | ③ run_reverse_checklist | run-reverse-checklist | qualitative_analysis/financials/… | 无（纯 LLM） | reverse_analysis + risk_factors/checklist_veto |
 | ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis + pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
 | ⑤ output_conclusion | output-conclusion | 1-4 全部 | 否决守卫 + 形状校验 | conclusion_analysis + final_rating/recommendation/action_items |
+
+> **子块可扩展性**：② 步脚本运行时扫描 `analyze-qualitative/blocks/` 目录，动态遍历每个子块 skill（注入方法论 + depends_on 数据 → LLM 定性）。纯 LLM 子块（如新增市场情绪）零代码改动；仅需确定性计算的子块才在 invest-calc 加 TS 纯函数 + 声明 handler 引用。
 
 **PE 锚定规则（硬约束）**：击球 PE 由 LLM 综合前序定性/逆向结论设定；行业 PE 表仅作参考锚点与非法输入的兜底回退，**不作为取值来源**。LLM 输出非法（≤0 或 high<low）才回退锚点。`pe_rationale` 必须说明相对锚点的偏离理由。
 
@@ -246,7 +250,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 
 | 扩展场景 | 动作 | 改动载体 |
 |:--|:--|:--|
-| 新增定性子块 | blocks/ 加 SKILL.md + workflow ② 步加一条目 | 文档 + 脚本一步 |
+| 新增定性子块 | blocks/ 加 SKILL.md（workflow ② 步目录扫描自动纳入） | 纯文档，脚本/代码零改动 |
 | 更新方法论 | 改对应 SKILL.md 正文 | 纯文档，volume 热更新 |
 | 新增分析阶段 | 新 skill + workflow 加一步 | skill + 脚本 |
 | 调整顺序/依赖 | 改 workflow 脚本 | 脚本 |
