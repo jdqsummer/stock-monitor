@@ -6,7 +6,7 @@
 ## 验证清单（每个 Task 完成后勾选）
 - [x] T1 环境与双方式安装
 - [x] T2 DeepSeek API 接入与基础对话
-- [ ] T3 Skill 子系统 + 现有 SKILL.md 兼容性
+- [x] T3 Skill 子系统 + 现有 SKILL.md 兼容性
 - [ ] T4 Preset 定制 + 工具插件 + 守卫
 - [ ] T5 workflow 工具 + 确定性步骤
 - [ ] T6 Python SDK 连接 + MCP 数据桥
@@ -145,3 +145,33 @@ run #2（同 task，观察 prefix-cache，耗时 5.4s）：
 ### 环境备注（影响 T3-T6）
 1. **Node 版本是硬门槛**：所有后续 DSH 命令（T3/T4/T5）都必须用 Node ≥ 22.15.0 运行，否则启动即崩。已装便携 `node@22.23.2` 到临时目录（不入库）。建议后续任务沿用同一临时 node，或升级系统 Node。
 2. **原生模块**：`tool-bash` 在 win32 被 `disabled`（`process.platform === 'win32'`），`tool-pwsh` 反向启用；`sandbox-policy` 默认 `workspace-write`，`approval` 默认 `ask`。T1 记录的 node-pty 未 build 不影响 headless（无终端工具），但 T4/T5 涉及 bash/pwsh 工具时需留意。
+
+## T3 Skill 子系统 + 自研 frontmatter 兼容性
+
+### 结论（一句话）
+✅ **惰性加载与 kebab-case 均成立；但自研 frontmatter 字段（type/output_field/order/depends_on/blocks_dir/tags）经 `skill` 工具一律不可见——DSH 只向模型暴露 `name` + `description`（目录注入）+ 正文 body。** P1 迁移须把自研编排字段剥离到 workflow（或转译为 DSH 已知字段），不能指望模型经 skill 机制读取它们。
+
+### 惰性加载: ✅
+- 机制确认：`skill-filesystem` 提供方扫描 skill 根目录，`list()` 只返回 `name`/`description` 摘要（注入 `<available_skills>` 目录）；`skill({name})` 工具（`tool-skill`）再按名惰性读取正文 body，经 `renderSkillContent` 渲染为 `<skill_content name=...><skill_instructions>body</skill_instructions></skill_content>`。
+- 实测：headless 单任务「先调用 hello-world，再调用 invest-framework-probe」→ 模型成功 `skill` 加载两个 skill 并分别复述用途。成功路径 stderr 为空，exit 0。
+
+### kebab-case 要求: ✅（但对自研技能是硬伤）
+- 源码 `SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/`，`isSkillName()` 拒绝一切非 kebab-case（含下划线）。
+- 自研技能名实况：`investment-framework` / `business-model` / `moat` / `operating-quality` 合规；但 **`analyze_qualitative` / `run_reverse_checklist` / `anchor_industry_pe` / `output_conclusion` 四个 stage 技能名是 snake_case（下划线），会被 DSH `parseSkillFile` 以「invalid skill name」警告并整体丢弃**。P1 迁移须重命名这 4 个技能为 kebab-case（或改由 workflow 编排、技能名不再作唯一标识）。
+
+### 自研字段兼容: ❌（经 skill 机制不可见；仅 `fs` 工具读原始文件可见）
+- 源码 `parseSkillFile` 解析 YAML frontmatter 后**只保留** `name`（必填）/ `description`（必填）/ `whenToUse`（可选）/ `metadata`（可选对象）/ `disable-model-invocation` / `user-invocable`；其余字段（`type`/`output_field`/`order`/`depends_on`/`blocks_dir`/`tags`）被解析后**静默丢弃**。
+- `renderSkillContent` 只渲染 `name` + `content`（= frontmatter 剥离后的 body）。`metadata` 虽在内部 definition 对象上，但 `tool-skill.execute` 返回体只含 `{name, provider, resourceBase, content}`，未把 `metadata` 透传给模型。
+- 受控实测（**禁止读文件，只允许 `skill` 工具**）：模型明确回答「**无法读取自定义字段**……skill 工具返回内容里没有这些字段的实际内容」。
+- 反例说明：若不禁止读文件，模型会用 base preset 里的 `tool-fs` 直接读 `~/.dsh/skills/.../SKILL.md` 原始文件，从而"看到"这些字段并**看似兼容**——这是**假阳性**，必须区分「skill 机制」与「fs 工具直读文件」两条路径。
+
+### 目录约定确认
+- 用户级 `~/.dsh/skills/` 生效 ✅（rank 400；实测加载成功）。
+- 项目级 `.dsh/skills/`（repo 根，`findProjectRoot` 找到 `.git`）生效 ✅（rank 100，优先级最高；实测加载成功，resourceBase 指向 `D:\project\github\stock-monitor\.dsh\skills\hello-world`）。
+- 另存在 `.agents/skills`（rank 200/500）与 `bundledSkillDir`（rank 600）根；优先级 `project-dsh(100) > project-agents(200) > custom(300) > user-dsh(400) > user-agents(500) > bundled(600)`。
+
+### P1 迁移策略建议
+- **frontmatter 需精简为 DSH 已知字段**（`name`/`description`/`whenToUse`/`metadata`），把 `type`/`output_field`/`order`/`depends_on`/`blocks_dir`/`tags` 等编排元数据**移到 workflow 层**（LangGraph `StateGraph` 的节点顺序/依赖/输出字段），或折叠进 `metadata`（注意：`metadata` 目前也不经 `skill` 工具透传给模型，仅插件内部可读，须经 workflow 插件消费）。
+- **skill 名改为 kebab-case**（4 个 snake_case stage 技能须重命名），否则被 DSH 静默丢弃。
+- 主框架 SKILL.md（`investment-framework`）本身仅 `name`/`description`/`version` 且 kebab-case，可直接作为 DSH skill 保留；其正文里「按 order 调工具」的编排语义仍须 workflow 承载。
+- 需注意：DSH 的 `skill` 机制是「模型按名自取」，无「依赖解析/顺序强制/输出字段契约」——这些正是自研 frontmatter 承担的编排职责，DSH 原生不提供等价物，P1 必须由 `tool-workflow`（T5 详查）承接。
