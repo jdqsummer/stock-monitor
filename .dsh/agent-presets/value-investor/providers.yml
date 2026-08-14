@@ -1,0 +1,15 @@
+# DSH 原生多 provider 模型卡片（P1 占位）
+#
+# P0 T2 事实（已固化）：
+#   - 模型目录 = deepseek-v4-flash / deepseek-v4-pro
+#   - 默认 agent-default-model = v4-flash
+#   - harness 模型名 == wire 模型名（下方 id 即 wire 名，无映射层）
+#
+# P1 只定契约占位；P3 完整落地：前端下拉可选模型 → Orchestrator 传 model 到
+# SDK DeepSeekHarness(model=...) → 会话结束从 DSH 会话事件 llm/* 回传真实路由模型
+# 写入 analysis_model（记录用户实际选择，非配置默认值）。
+providers:
+  - id: deepseek-v4-flash
+    description: 默认省成本模型（常规五段分析）
+  - id: deepseek-v4-pro
+    description: 深度分析（Q3 Ralph 自审仅在 V4-Pro 开启，P4）
