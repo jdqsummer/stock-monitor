@@ -23,6 +23,8 @@ async def main(code: str) -> None:
             print("get_industry_pe:", res.content[0].text)
             res = await session.call_tool("search_stock", {"keyword": code})
             print("search_stock:", res.content[0].text)
+            res = await session.call_tool("get_financials", {"code": code})
+            print("get_financials:", res.content[0].text)
 
 
 if __name__ == "__main__":
