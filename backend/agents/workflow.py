@@ -802,6 +802,7 @@ class WorkflowRunner:
         financials=None,
         news=None,
         user_query: str = "",
+        initial_state: Optional[dict] = None,
     ) -> dict:
         """
         使用已有数据运行分析（跳过数据采集）。
@@ -811,6 +812,7 @@ class WorkflowRunner:
             quote: 已有行情数据
             financials: 已有财报数据
             news: 已有新闻数据
+            initial_state: 初始状态覆盖（如 I6 用户选择模型 → llm_model）
 
         Returns:
             最终的 AnalysisState
@@ -827,6 +829,7 @@ class WorkflowRunner:
             "retry_count": 0,
             "llm_model": self.llm.model_id if self.llm else "none",
             "analysis_started": datetime.now().isoformat(),
+            **(initial_state or {}),
         }
 
         # 使用数据
@@ -887,6 +890,7 @@ class WorkflowRunner:
         self,
         codes: list[str],
         names: Optional[list[str]] = None,
+        initial_state: Optional[dict] = None,
     ) -> list[dict]:
         """
         批量运行分析。
@@ -894,6 +898,7 @@ class WorkflowRunner:
         Args:
             codes: 股票代码列表
             names: 股票名称列表（可选）
+            initial_state: 每只股票统一应用的初始状态覆盖（如 I6 批量单模型 → llm_model）
 
         Returns:
             每只股票的分析结果列表
@@ -903,7 +908,7 @@ class WorkflowRunner:
         if names is None:
             names = [""] * len(codes)
 
-        tasks = [self.run(code, name) for code, name in zip(codes, names)]
+        tasks = [self.run(code, name, initial_state=initial_state) for code, name in zip(codes, names)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         output = []

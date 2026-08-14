@@ -63,7 +63,7 @@ class FakeChain:
     def __init__(self, fail_codes: set[str] | None = None):
         self.fail_codes = fail_codes or set()
 
-    async def analyze(self, code, stock_name="", user_query="", industry=""):
+    async def analyze(self, code, stock_name="", user_query="", industry="", model=""):
         if code in self.fail_codes:
             raise RuntimeError("boom")
         return _report(code, name=stock_name or "测试股", industry=industry or "")
@@ -141,7 +141,7 @@ async def test_concurrency_limited(db_session, test_session_factory):
             self.active = 0
             self.max_active = 0
 
-        async def analyze(self, code, stock_name="", user_query="", industry=""):
+        async def analyze(self, code, stock_name="", user_query="", industry="", model=""):
             self.active += 1
             self.max_active = max(self.max_active, self.active)
             await asyncio.sleep(0.05)
@@ -163,7 +163,7 @@ async def test_queued_codes_stay_pending_while_running(db_session, test_session_
     from backend.services.analysis_job_svc import STATUS_PENDING, STATUS_RUNNING
 
     class SlowChain:
-        async def analyze(self, code, stock_name="", user_query="", industry=""):
+        async def analyze(self, code, stock_name="", user_query="", industry="", model=""):
             await asyncio.sleep(0.2)
             return _report(code)
 
@@ -180,3 +180,57 @@ async def test_queued_codes_stay_pending_while_running(db_session, test_session_
 
     await task
     assert svc.get_status(job_id)["done"] == 2
+
+
+@pytest.mark.asyncio
+async def test_job_service_concurrent_same_code_serialized(db_session, test_session_factory):
+    """同股票并发：asyncio 锁保证同秒重复提交被串行化（I2 第二道防线）。
+
+    两个 job 同时对同一 code 发起分析（如定时刷新 + 手动触发撞车）→ _code_locks
+    保证两次进入 chain.analyze 的时间窗口不重叠（跨 job 的 code 锁）。
+    """
+    from backend.services.analysis_job_svc import AnalysisJobService
+
+    windows = []  # (code, start, end)
+
+    class StubChain:
+        async def analyze(self, code, stock_name="", industry="", model=""):
+            start = asyncio.get_event_loop().time()
+            await asyncio.sleep(0.05)
+            end = asyncio.get_event_loop().time()
+            windows.append((code, start, end))
+            return _report(code)
+
+    svc = AnalysisJobService(chain=StubChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_a = svc.create_job("u1", ["600519"], "manual")
+    job_b = svc.create_job("u1", ["600519"], "scheduled")
+    await asyncio.gather(svc._run(job_a), svc._run(job_b))
+
+    assert len(windows) == 2
+    (c1, s1, e1), (c2, s2, e2) = windows
+    assert c1 == c2 == "600519"
+    # 串行化：第二次进入不早于第一次结束（两窗口不重叠）
+    assert s2 >= e1
+
+
+@pytest.mark.asyncio
+async def test_process_one_reads_model_from_job(db_session, test_session_factory):
+    """I6：submit 的 model 存 job["model"]，_process_one 读并透传给 chain.analyze"""
+    from backend.services.analysis_job_svc import AnalysisJobService
+
+    seen = {}
+
+    class ModelChain:
+        async def analyze(self, code, stock_name="", industry="", model=""):
+            seen["model"] = model
+            return _report(code)
+
+    svc = AnalysisJobService(chain=ModelChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "manual")
+    svc._jobs[job_id]["model"] = "deepseek-v4-pro"   # submit 会写入；此处直接模拟
+    await svc._run(job_id)
+
+    assert seen.get("model") == "deepseek-v4-pro"
+    assert svc.get_status(job_id)["results"]["600519"] == STATUS_DONE

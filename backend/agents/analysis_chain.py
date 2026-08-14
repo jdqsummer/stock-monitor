@@ -357,6 +357,7 @@ class AnalysisChain:
         stock_name: str = "",
         user_query: str = "",
         industry: str = "",
+        model: str = "",
     ) -> AnalysisReport:
         """
         执行完整 9 步分析。
@@ -366,6 +367,7 @@ class AnalysisChain:
             stock_name: 股票名称（可选）
             user_query: 用户查询（可选）
             industry: 行业分类（可选，用于 PE 锚定）
+            model: 用户选择的分析模型（I6，DSH 路径消费）；空=默认 provider model_id
 
         Returns:
             AnalysisReport 分析报告
@@ -375,6 +377,8 @@ class AnalysisChain:
         initial_state = {}
         if industry:
             initial_state["industry_category"] = industry
+        if model:
+            initial_state["llm_model"] = model        # I6：用户选择模型透传（DSH 路径消费）
 
         # 运行 LangGraph 工作流
         state = await self.workflow_runner.run(
@@ -397,6 +401,7 @@ class AnalysisChain:
         financials=None,
         news=None,
         industry: str = "",
+        model: str = "",
     ) -> AnalysisReport:
         """
         使用已有数据执行分析（跳过数据采集）。
@@ -407,6 +412,7 @@ class AnalysisChain:
             financials: 已有财报数据 list[FinancialReport]
             news: 已有新闻数据 list[CompanyNews]
             industry: 行业分类
+            model: 用户选择的分析模型（I6，DSH 路径消费）；空=默认 provider model_id
 
         Returns:
             AnalysisReport
@@ -414,28 +420,36 @@ class AnalysisChain:
         initial_state = {}
         if industry:
             initial_state["industry_category"] = industry
+        if model:
+            initial_state["llm_model"] = model        # I6：用户选择模型透传（DSH 路径消费）
 
         state = await self.workflow_runner.run_with_data(
             code=code,
             quote=quote,
             financials=financials,
             news=news,
+            initial_state=initial_state,
         )
 
         # 分析智能体已内建 LLM 定性/清单/约束；无需后处理增强
         return AnalysisReport.from_state(state)
 
-    async def analyze_batch(self, codes: list[str]) -> list[AnalysisReport]:
+    async def analyze_batch(self, codes: list[str], model: str = "") -> list[AnalysisReport]:
         """
         批量分析多只股票。
 
         Args:
             codes: 股票代码列表
+            model: 批量统一模型（I6，对整批次生效）；空=默认 provider model_id
 
         Returns:
             分析报告列表
         """
-        states = await self.workflow_runner.run_batch(codes)
+        initial_state = {}
+        if model:
+            initial_state["llm_model"] = model        # 批次单模型：整批次统一（Task 11 前端只传一个 model）
+
+        states = await self.workflow_runner.run_batch(codes, initial_state=initial_state)
 
         reports = []
         for state in states:

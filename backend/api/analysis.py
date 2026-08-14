@@ -31,6 +31,7 @@ class AnalyzeRequest(BaseModel):
     name: str = Field(default="", description="股票名称")
     industry: str = Field(default="", description="行业分类（可选）")
     use_llm: bool = Field(default=True, description="是否使用 LLM 增强定性分析")
+    model: str = Field(default="", description="用户选择的分析模型（I6）：deepseek-v4-flash/pro；空=默认")
 
 
 class QuickAnalyzeRequest(BaseModel):
@@ -55,6 +56,7 @@ class BatchAnalyzeRequest(BaseModel):
 class WatchlistAnalyzeRequest(BaseModel):
     """自选股批量分析请求"""
     codes: list[str] = Field(..., min_length=1, max_length=50, description="股票代码列表")
+    model: str = Field(default="", description="批量分析统一模型（I6）：空=默认，全批次同模型")
 
 
 class AnalyzeResponse(BaseModel):
@@ -92,6 +94,7 @@ async def analyze_stock(
             code=req.code,
             stock_name=req.name,
             industry=req.industry,
+            model=req.model,   # I6：用户选择模型透传（DSH 路径消费）
         )
         await SnapshotService.save_snapshot(db, current_user.id, report)
         return {"code": 0, "data": report.to_dict(), "message": "ok"}
@@ -253,7 +256,7 @@ async def analyze_watchlist(
     current_user: User = Depends(get_current_user),
 ):
     """手动批量分析自选股（多选/全选）→ 异步 job"""
-    job_id = analysis_job_service.submit(current_user.id, req.codes, source="manual")
+    job_id = analysis_job_service.submit(current_user.id, req.codes, source="manual", model=req.model)
     return {"code": 0, "data": {"job_id": job_id}, "message": "分析任务已提交"}
 
 

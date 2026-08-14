@@ -29,8 +29,8 @@ class TestWatchlistAnalyzeAPI:
         from backend.api import analysis as analysis_api
 
         calls = []
-        def fake_submit(user_id, codes, source):
-            calls.append((user_id, codes, source))
+        def fake_submit(user_id, codes, source, model=""):
+            calls.append((user_id, codes, source, model))
             return "job_abc"
         monkeypatch.setattr(analysis_api.analysis_job_service, "submit", fake_submit)
 
@@ -43,6 +43,27 @@ class TestWatchlistAnalyzeAPI:
         assert resp.json()["data"]["job_id"] == "job_abc"
         assert calls and calls[0][1] == ["600519", "000858"]
         assert calls[0][2] == "manual"
+
+    @pytest.mark.asyncio
+    async def test_watchlist_analyze_accepts_model(self, client, monkeypatch):
+        """I6：批量分析统一模型透传 → submit(model=...)（Task 11 前端模型下拉消费）"""
+        from backend.api import analysis as analysis_api
+
+        calls = []
+        def fake_submit(user_id, codes, source, model=""):
+            calls.append((user_id, codes, source, model))
+            return "job_model"
+        monkeypatch.setattr(analysis_api.analysis_job_service, "submit", fake_submit)
+
+        token = await _auth_token(client)
+        resp = await client.post(
+            "/api/analysis/watchlist/analyze",
+            json={"codes": ["600519"], "model": "deepseek-v4-pro"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["job_id"] == "job_model"
+        assert calls and calls[0][3] == "deepseek-v4-pro"
 
     @pytest.mark.asyncio
     async def test_status_returns_progress(self, client):
