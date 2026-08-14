@@ -19,3 +19,7 @@ node_modules/
 
 # DSH P0 验证产物（嵌套 repo / 便携 node 不入库）
 scripts/dsh_p0/deepseek-harness/
+
+# DSH 运行时产物（headless 会话日志 / home 目录，不入库）
+scripts/dsh_p0/_session_*.jsonl
+scripts/dsh_p0/.dsh-home/
