@@ -63,6 +63,8 @@ bundles（内置，如 dsh-base）
 ⑥ 灰度/回滚→ 通过则灰度切流；失败则 lockfile 回退重装（见 §5）
 ```
 
+> **P4 已脚本化**：一键执行 `bash scripts/dsh_upgrade/upgrade.sh <new-version>`（六步含人工阻断点）；回归集 `python scripts/dsh_upgrade/regression.py`；回滚 `bash scripts/dsh_upgrade/rollback.sh <old-version>`。
+
 ---
 
 ## 3. 冲突点清单（每次升级逐项检查）
