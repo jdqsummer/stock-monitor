@@ -23,6 +23,8 @@
 2. **可扩展（skills 化）**：新增分析维度/阶段/子块 = 加 Skill 资产，不改框架代码。
 3. **可维护（方便更新升级）**：方法论与代码分离、规则数据与逻辑分离、版本锁定、升级流程化。
 
+> **范围声明（S8）**：本设计范围限于分析引擎的 DSH 深度集成；聊天对话与跨会话记忆持久化（用户笔记/蒸馏管道）为平台既有功能模块，属独立设计，不在本文档展开。
+
 ### 硬约束（本次设计承诺）
 
 1. 前端 `stage_results` 契约不变（`FiveStageAnalysis.tsx` 各阶段键 + DB `AnalysisSnapshot.stage_results` JSON 结构不破）。
@@ -228,6 +230,21 @@ invest-data/            # 规则数据（JSON，非代码，独立热更新）
 - **安全边际分析（手动触发实时拉取）**：`collect_data` 每次分析经 `WestockClient` provider 链实时拉取最新行情/财报/新闻（不经 DB、不经 Redis 缓存），注入 DSH 会话；结果落 `analysis_snapshots`（B 表衍生数据）。
 - **两条通道正交**：A 表定时刷新服务仪表盘，B 表分析触发更新；DSH 只是分析引擎，不替代、不阻断数据链路。
 
+### 5.1 会话生命周期与容错（Orchestrator 设计输入，B3）
+
+Orchestrator 须覆盖"DSH 会话整体失败"之外的中间态失败，处置策略：
+
+| 场景 | 处置策略 |
+|:--|:--|
+| 单会话超时 | 阈值 **120s**（可配置）；超时即整体降级 `_rule_based` |
+| 阶段级部分失败 | 阶段级幂等（已产出 step 结果缓存）+ 整体重试 ≤1 次；重试仍失败 → 降级 |
+| SDK JSON-RPC 断线 | 重连 ≤2 次（间隔 5s）；超限废弃会话 → 降级；DSH 侧仍在运行的会话追加审计标记 |
+| DSH 进程异常 | 心跳探针（每 30s）+ 自动重启（容器重启策略），重启后未完成会话按降级处置 |
+| 同股票并发 | `session_id = code-date` 天然去重 + Redis 分布式锁防同秒重复提交 |
+| 慢分析占资源 | FastAPI 任务队列（复用现有调度）+ DSH 容器 `max_sessions` 上限（建议 4-8） |
+
+> 降级统一入口：`_rule_based` 纯规则链（无 LLM），平台永不因引擎不可用而阻断（硬约束 5）。
+
 ---
 
 ## 六、分析来源元数据契约（LLM 版本 + 降级提示）
@@ -241,6 +258,8 @@ invest-data/            # 规则数据（JSON，非代码，独立热更新）
 | `analysis_source` | 复用现有列（语义扩展） | `dsh-llm` / `rule-based` / `mock` / `manual` | 分析引擎类型 |
 | `analysis_model` | 新增列 | 如 `deepseek-v4-pro` / `deepseek-v4-flash`；降级为 `none` | 实际路由模型（Orchestrator 从 DSH 会话事件回传真实模型，非配置默认值） |
 | `analysis_degraded` | 新增列 | bool | `rule-based`/`mock` 时为 `true` |
+
+> **`mock` 值语义（S5）**：`mock` = 测试环境假数据（mock LLM 响应），生产环境不出现；测试用例不通过 `analysis_source` 列断言。
 
 配套改动：`state.py` 加 `analysis_model`/`analysis_degraded` → `AnalysisSnapshot` 加列（alembic migration）→ `snapshot_to_dict`/`stock_data_svc` 返回 → 前端 `WatchlistBoardRow` 加字段。
 
@@ -510,18 +529,18 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 
 ### 修订追踪
 
-| 修订项 | 级别 | 负责阶段 | 状态 |
-|:--|:--|:--|:--|
-| B1 workflow API 标注假设 + 退路 | 阻断 | 文档修订（立即） | 已完成（P0 T5：pipeline/parallel 为脚本挂钩、无 restrict()，预置脚本须自定义插件承载；退路已写入 4.3） |
-| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 文档修订 + P0 验证 | 部分完成（P0 T4 固化 composition vs patch、defineTool 真实签名；附录 A 可运行样例待 P1 产出） |
-| B3 会话容错小节 5.1 | 阻断 | 文档修订（立即） | 待修改（P3 补齐） |
-| I1 Windows 开发环境约束 | 重要 | P2-P3 | 已坐实（P0 T6：win32 无 SDK runtime exe，本地联调需 WSL2/Docker） |
-| I2-I6 并发/防篡改/漂移/映射/多模型 | 重要 | P2-P3 | 待修改 |
-| I7 成本监控/限流/预算 | 重要 | P2-P3 | 部分坐实（P0 T2：prefix-cache 不可 CLI 观测，「99% 命中」待生产监控验证） |
-| S1 MCP 跨容器传输 | 建议 | 实施过程 | 已坐实（P0 T6：stdio 同容器实测跑通，跨容器须 streamable-http） |
-| S2-S8 建议项 | 建议 | 实施过程 | 待修改 |
-| S9 standard preset 存在性 | 建议 | 实施过程 | 已确认（P0 T4：shipped preset 为 standard/minimal/code/cordis） |
-| S10 DSH 版本号时效 | 建议 | 实施过程 | 已确认（P0 T1：npm latest=rc.6，已统一锁定并回填 DSH_UPSTREAM） |
+| 修订项 | 级别 | 执行组别 | 负责阶段 | 状态 |
+|:--|:--|:--|:--|:--|
+| B1 workflow API 标注假设 + 退路 | 阻断 | 组②（P0 已验证） | 文档修订（立即） | 已完成（P0 T5：pipeline/parallel 为脚本挂钩、无 restrict()，预置脚本须自定义插件承载；退路已写入 4.3） |
+| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 组②（T4 已固化）+ 组③（附录 A，P1 产出） | 文档修订 + P0 验证 | 部分完成（P0 T4 固化 composition vs patch、defineTool 真实签名；附录 A 可运行样例待 P1 产出） |
+| B3 会话容错小节 5.1 | 阻断 | 组①（立即融入） | 文档修订（立即） | 已完成（本版已新增 5.1「会话生命周期与容错」） |
+| I1 Windows 开发环境约束 | 重要 | 组③（P1 设计时写入正文） | P1 | 已坐实（P0 T6：win32 无 SDK runtime exe，本地联调需 WSL2/Docker），待写入正文 |
+| I2-I6 并发/防篡改/漂移/映射/多模型 | 重要 | 组③（I2/I3/I5/I6，P1）+ 组④（I4 双实现收敛，P4） | P1-P4 | 待修改 |
+| I7 成本监控/限流/预算 | 重要 | 组④（P3，载体 D4 telemetry） | P2-P3 | 部分坐实（P0 T2：prefix-cache 不可 CLI 观测，「99% 命中」待生产监控验证） |
+| S1 MCP 跨容器传输 | 建议 | 组③（P1 容器网络设计时） | 实施过程 | 已坐实（P0 T6：stdio 同容器实测跑通，跨容器须 streamable-http），待写入正文 |
+| S2-S8 建议项 | 建议 | 组③（S2 PE 非法定义 / S4 黄金数据边界，P1）+ 组①（S5/S8，已落地）+ 组④（S3 留存 P4 / S6 runbook P4 / S7 经验进化 P3） | 实施过程 | 部分完成 |
+| S9 standard preset 存在性 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T4：shipped preset 为 standard/minimal/code/cordis） |
+| S10 DSH 版本号时效 | 建议 | 组②（P0 已确认） | 实施过程 | 已确认（P0 T1：npm latest=rc.6，已统一锁定并回填 DSH_UPSTREAM） |
 
 ---
 
@@ -757,3 +776,69 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | E2 Skill 输出 Schema | 中 | P1-P2 | 每个 Skill 编写 output.schema.json |
 
 > **P0 验证清单更新**：在原有 P0（茅台全链路跑通）基础上，增加 4 项 API 验证：PTC 可用性（D1）、Fork API（D2）、Resume API（D6）、Ralph 触发方式（Q3）。验证结果决定对应深化项是否进入后续阶段。
+
+---
+
+## 十四、12/13 章修订执行策略（按返工成本分四组）
+
+> 决策日期：2026-08-14 ｜ 原则：**既不"全部融入再实现"（阻塞开工），也不"实现后再补 12/13"（错过返工窗口）**——按返工成本分四组处置，每组有明确里程碑与进入条件。
+
+### 为什么两个极端都不成立
+
+- **"等实现后再补"不成立**：12/13 混着两类"错过就贵"的项——B1/B2/B3 是零成本文档修订却决定"按什么假设实施"，不做可能按错误 API 假设写代码；I5/E1/E2/I6 是契约与迁移窗口（I5 实现后再改 = 所有 invest-* 插件 + Orchestrator 映射全改；E1/E2 在 SKILL 资产 P1 迁移时顺手写最便宜，迁移完再补 = 二次迁移）。
+- **"全部融入再实现"不成立**：D 类深化项（D1/D2/D6/Q3）依赖 DSH v0.1 实际 API 验证，验证前融入 = 猜；且原始方案 1-11 节不依赖其中任何一项（全是增量），不应阻塞主线开工。
+
+### 四组处置明细
+
+#### 组① 立即融入（零成本文档修订，本版已完成）
+
+| 项 | 内容 | 状态 |
+|:--|:--|:--|
+| B3 | 新增 5.1「会话生命周期与容错」小节（Orchestrator 设计的输入，P3 写代码前必须有） | ✅ 本版已落地 |
+| S5 | `mock` 值语义一行声明 | ✅ 本版已落地 |
+| S8 | 范围边界声明（聊天/记忆持久化归独立设计） | ✅ 本版已落地 |
+
+#### 组② P0 验证后决策（验证通过才融入，不通过走文档退路）
+
+| 项 | P0 验证结果 | 结论 |
+|:--|:--|:--|
+| B1 workflow API（pipeline/restrict） | T5 已验证：pipeline/parallel 为脚本挂钩、无 restrict() | 已采纳修正：预置脚本由自定义工具插件承载（tool-ralph 范式），退路写入 4.3 |
+| B2 cordis.yml 语法 | T4 已验证：composition vs patch、defineTool 真实签名 | 部分固化；**附录 A 可运行样例待 P1 产出**（组③） |
+| S9 standard preset | T4 已确认：shipped preset = standard/minimal/code/cordis | ✅ 已确认 |
+| S10 版本号 | T1 已确认：npm latest = rc.6 | ✅ 已锁定并回填 DSH_UPSTREAM |
+| D1 PTC | **待验证**（不在 T1-T6 范围） | 通过 → P2 实施；失败 → invest-data-tool 内批量封装退路 |
+| D2 Session Fork | **待验证** | 通过 → P3 实施；失败 → Orchestrator 串行两次重跑退路 |
+| D6 Session Resume | **待验证** | 通过 → P3 实施；失败 → 全量重跑退路 |
+| Q3 Ralph 自审 | **待验证** | 通过 → P4 实施（深度模式）；失败 → 移除自审选项 |
+
+> **进入条件**：P2 开工前完成 D1/D2/D6/Q3 四项验证（并入下一轮 P0 扩展验证），结果回填本表。
+
+#### 组③ P1 设计时融入（错过窗口就返工，P1 开工前必须含）
+
+| 项 | 内容 | 进入条件 |
+|:--|:--|:--|
+| I5 | DSH 侧 invest-* 插件输出**源头统一 snake_case**（契约首选方案；兜底附录 B 映射表） | P1 插件输出契约定稿时决策 |
+| E1 + E2 | Skill frontmatter `provides/consumes` + 每 Skill `output.schema.json` | P1 SKILL 迁移窗口（与 frontmatter 精简、kebab-case 同批） |
+| I6 | 多模型选择机制（前端下拉 + Preset providers 双卡片 + `analysis_model` 记录） | P1 至少留接口，P3 完整落地 |
+| I3 | 脚本防篡改：workflow 脚本目录 read-only volume + invest-guard 禁写 `.dsh/` 路径 | P1 挂载结构设计时 |
+| I2 | 并发模型：`max_sessions`（4-8）+ FastAPI 队列 + Redis 同股票锁 | P1 任务调度设计时 |
+| I1 | 开发环境：WSL2/Docker 联调（P0 已坐实，写入正文） | P0 联调即用 |
+| S1 | MCP transport = streamable-http（跨容器），开发期 stdio | P1 容器网络设计时 |
+| S2 | PE 非法定义四条件（`≤0` / `high<low` / `>200` 兜底）写入 invest-schema | P1 schema 定义时 |
+| S4 | 黄金数据集 6 类边界用例 + 浮点容差（`abs<0.01` 或 `rel<1e-6`） | P1 测试集定义时 |
+| B2-附录A | 最小 cordis.yml 可运行样例（跑通"注册一个自定义工具"）固化 | P1 插件开发首日产出 |
+
+#### 组④ 实现后迭代（按第十三节映射表逐项补，不阻塞主线）
+
+| 阶段 | 项 |
+|:--|:--|
+| P2 | D1（组②验证通过后）、D3 内置守卫（零依赖两行配置）、D5 上下文压缩、Q1 证据引用强制、Q2 置信度标注 |
+| P3 | 5.1 容错策略落地为代码、D2 Fork 实施（验证通过后）、D4 invest-telemetry（I7 成本监控载体）、D6 Resume 实施（验证通过后）、I7 成本监控/预算、S7 经验进化（人工审阅+热更新）、I2/I6 完整落地 |
+| P4 | Q3 Ralph（验证通过后）、I4 双实现收敛（降级链调 TS 端点）、S3 日志留存、S6 回滚 runbook |
+
+### 落地清单（文档即执行清单）
+
+1. **今天**：组① 三项已写入本文档正文（5.1 / S5 / S8）——本版已完成。
+2. **P0 扩展**：验证 D1/D2/D6/Q3 四项 API，结果回填组② 表（决定对应深化项进 P2/P3/P4 还是走退路）。
+3. **P1 开工前**：组③ 全部融入 P1 设计（重点：I5 源头 snake_case 决策 + E1/E2 的 SKILL 模板 + B2 附录 A 样例）。
+4. **P1-P4**：组④ 按映射表迭代；修订追踪表（第十二节）随进展更新状态列。
