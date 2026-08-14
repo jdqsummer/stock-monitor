@@ -82,6 +82,7 @@ function buildNotice(text, summary) {
 	};
 }
 function apply(ctx) {
+	// ⚠️ 本文件为 transpiled 运行时 bundle，必须与 index.ts 源码保持同步。改逻辑两处都要改。
 	ctx.tools.guard((execution) => {
 		if (isWriteToDshPath(execution?.name, execution?.arguments)) return `invest-guard 拒绝：禁止写入 .dsh/ 路径（脚本防篡改 I3）。工具 ${execution.name} 目标路径命中 .dsh/`;
 	});

@@ -35,6 +35,8 @@ function buildNotice(text: string, summary: string): any {
 }
 
 export function apply(ctx: any): void {
+  // ⚠️ 本 .mjs（invest-schema/index.mjs）为 transpiled 运行时 bundle，必须与 .ts 源码保持同步。
+  // 改逻辑两处都要改（.ts 源码 + .mjs 运行时 bundle）。
   ctx.on('tools/post-execute', async (exec: any, result: any, next: any) => {
     if (exec?.name !== 'invest-five-stage') {
       return next()

@@ -50,6 +50,7 @@ export function apply(ctx: any): void {
   ctx.tools.register(defineTool({
     name: 'invest-five-stage',
     description: '价值投资五段式安全边际分析：读上下文→定性→逆向→PE锚定→结论，模型只填股票参数',
+    // ⚠️ 与 index.mjs 的原始 ToolDefinition 注册保持同步：改参数两处都要改（.ts 源码 + .mjs 运行时 bundle）。
     parameters: {
       stock_code: { type: 'string', required: true, description: '股票代码' },
       stock_name: { type: 'string', required: true, description: '股票名称' },

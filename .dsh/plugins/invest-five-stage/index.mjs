@@ -535,6 +535,7 @@ function apply(ctx) {
 	ctx.tools.register({
 		name: "invest-five-stage",
 		description: "价值投资五段式安全边际分析：读上下文→定性→逆向→PE锚定→结论，模型只填股票参数",
+		// ⚠️ 与 index.ts 源码保持同步：改参数两处都要改（.ts 源码 + .mjs 运行时 bundle）。
 		parameters: {
 			type: "object",
 			properties: {

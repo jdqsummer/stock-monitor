@@ -155,6 +155,7 @@ function buildNotice(text, summary) {
 	};
 }
 function apply(ctx) {
+	// ⚠️ 本文件为 transpiled 运行时 bundle，必须与 index.ts 源码保持同步。改逻辑两处都要改。
 	ctx.on("tools/post-execute", async (exec, result, next) => {
 		if (exec?.name !== "invest-five-stage") return next();
 		const value = result?.value ?? result;

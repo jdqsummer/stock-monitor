@@ -42,6 +42,8 @@ function buildNotice(text: string, summary: string): any {
 }
 
 export function apply(ctx: any): void {
+  // ⚠️ 本 .mjs（invest-guard/index.mjs）为 transpiled 运行时 bundle，必须与 .ts 源码保持同步。
+  // 改逻辑两处都要改（.ts 源码 + .mjs 运行时 bundle）。
   // I3 禁写守卫：拦截 Write/Edit 目标路径命中 .dsh/
   ctx.tools.guard((execution: any) => {
     if (isWriteToDshPath(execution?.name, execution?.arguments)) {
