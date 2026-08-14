@@ -4,7 +4,7 @@
 
 ## 验证清单
 - [x] T1 D1 PTC / Code Mode 可用性
-- [ ] T2 D2 Session Fork 可用性
+- [x] T2 D2 Session Fork 可用性
 - [ ] T3 D6 Session Resume 语义
 - [ ] T4 Q3 Ralph 循环触发
 - [ ] T5 prefix-cache API 层观测（可选）
@@ -77,3 +77,70 @@ ls packages/code-runtime/*/src   # worker: bootstrap/index/invariant/output-json
 ### T1 副作用说明
 
 native 模式探针中模型自述创建 `scripts/dsh_p0/demo_quote_financials_yoy.py`（探针副作用产物），已删除、未纳入提交。提交仅含本报告与 `p0_1_t1_ptc.mjs` 两个文件。
+
+## T2 D2 Session Fork
+- 源码侦察:
+  - 包布局核对：brief 的 `packages/sdk/src`、`packages/session/src` **均不存在**（实际 `packages/sdk/{client,protocol,server}`，`packages/session/<若干子包>`）；`packages/client/runtime/src/client/sessions/session.ts` **存在**。
+  - **TS 客户端层命中 fork**（修正 P0「fork 仅持久化层注释」的预期）：
+    - `packages/client/runtime/src/client/contract/sessions.ts:97` — `fork(opts: { sessionId; atSeq?; increaseTitle? }): Promise<SessionId>`（客户端契约）
+    - `packages/client/runtime/src/client/sessions/service.ts:507` — `async fork(...)` 实现，`manager.ts:580` — `async fork(...)` 调 `this.api.sessions.fork(...)`
+    - `packages/client/connection/src/client/fixture.ts:3087` — 线协议方法名 `session.fork`
+    - `packages/session/session-persistence/src/coordinator.ts:1117` — `persist a fork's seed once`（P0 提示的持久化注释，已确认）
+  - **Python SDK（deepseek-harness-sdk = `python/sdk`）无 fork**：grep `fork/resume/restore/checkpoint/branch` 于 `python/sdk/src` → **零命中**；`python/sdk-runtime/src` 仅 `cordis.yml` 里 `session-checkpoints` 插件名（崩溃恢复 checkpoint，非 fork 原语）。
+- SDK 自省（`p0_1_t2_fork.py` 实测输出）:
+  - `DeepSeekHarness` 公开方法：`close` / `run` / `start` / `start_session`（**无 fork**）
+  - `Session` 公开方法：`run`（**无 fork**）
+  - `HarnessClient` 公开方法：`close` / `initialize` / `next_notification` / `next_request` / `notify` / `request` / `respond` / `respond_error` / `session_prompt` / `start` / `subscribe_notifications` / `subscribe_session_notifications`（**无 fork**）
+  - `hasattr` 探针：`DeepSeekHarness`/`Session`/`HarnessClient` 三实例对 `fork`/`fork_session`/`forkSession`/`branch` 均**未命中**
+- 结论: ❌ **DSH Python SDK 无 Session Fork API** → spec D2 走退路「Orchestrator 串行触发两次额外分析（仅重跑 ④⑤ 估值与结论，PE ±10%）」。
+  - 关键 nuance：fork 原语**存在于 TS 客户端层**（`session.fork` 线协议 + `sessions.fork()` 服务），但 Python Orchestrator 的集成面是 Python SDK（`deepseek-harness-sdk`），该 SDK 未暴露 fork。理论上唯一可达路径是 `HarnessClient.request("session/fork", {...})` 手搓裸 JSON-RPC，但属通用 `request` 而非一等 Fork API，且须 runtime 侧支持该线方法（fake_runtime 不支持、真实 runtime 未在本机验证）；本任务按「Python SDK 是否暴露一等 Fork 原语」判定为无。
+  - 对应 spec 章节十四组② D2 行：P0 验证结果 = **失败**，结论 = Orchestrator 串行两次重跑退路（P3 不再依赖 Fork API）。
+
+### T2 源码侦察命令与输出
+
+```bash
+cd scripts/dsh_p0/deepseek-harness
+# 1) 包布局核对
+ls packages/sdk/src        # No such file or directory
+ls packages/session/src    # No such file or directory
+ls packages/client/runtime/src/client/sessions/session.ts   # 存在（35130 bytes）
+# 2) fork 关键词（TS 客户端层）
+grep -rn -i "fork" packages/sdk packages/session packages/client/runtime/src 2>/dev/null \
+  | grep -v -i "test\|spec\|\.snap" | head -40
+#   packages/session/session-persistence/src/coordinator.ts:1117: // ... persist a fork's seed once.
+#   packages/client/runtime/src/client/contract/sessions.ts:97:  fork(opts: ...): Promise<SessionId>
+#   packages/client/runtime/src/client/sessions/service.ts:507:  async fork(opts: {...})
+#   packages/client/runtime/src/client/sessions/manager.ts:580:  async fork(...) → this.api.sessions.fork(...)
+#   （其余命中为 session-persistence-sqlite / telemetry / title 的 README 文档与注释）
+# 3) 线协议方法名
+grep -rn "session.fork\|sessions.fork" packages/client packages/sdk 2>/dev/null | grep -v -i "test\|spec"
+#   packages/client/connection/src/client/fixture.ts:3087: case 'session.fork': return this.api.sessions.fork(request)
+#   packages/client/runtime/src/client/sessions/manager.ts:585: const { result } = await this.api.sessions.fork({...})
+# 4) Python SDK 源码 fork 关键词
+grep -rn -i "fork\|resume\|restore\|checkpoint\|branch" python/sdk/src 2>/dev/null
+#   （零命中；python/sdk 仅 5 个文件：api.py / client.py / errors.py / models.py / __init__.py）
+```
+
+### T2 探针输出（`python p0_1_t2_fork.py`）
+
+```text
+SDK 包目录: .../deepseek-harness/python/sdk/src/deepseek_harness
+--- grep fork / resume / restore / checkpoint / branch ---
+  （无命中）
+--- DeepSeekHarness 公开方法 ---
+   DeepSeekHarness.close / run / start / start_session
+--- Session 公开方法 ---
+   Session.run
+--- HarnessClient 公开方法 ---
+   HarnessClient.close / initialize / next_notification / next_request / notify / request
+   / respond / respond_error / session_prompt / start / subscribe_notifications
+   / subscribe_session_notifications
+--- fork 调用探针（hasattr）---
+  未命中: DeepSeekHarness(实例) 无 fork/fork_session/forkSession/branch 方法
+  未命中: Session(实例) 无 fork/fork_session/forkSession/branch 方法
+  未命中: HarnessClient(实例) 无 fork/fork_session/forkSession/branch 方法
+```
+
+### T2 副作用说明
+
+无。本探针只做 API 表面侦察（`__new__` 空实例 + `inspect`），未拉起 runtime、未调用 DeepSeek API、未产生任何文件。
