@@ -15,7 +15,7 @@
 
 > anchor 特例（正文明文）：`swing_zone_analysis` / `distance_pct` / `signal_label` **不在 anchor 的 LLM 输出内**，由确定性节点自动合并写入（见第四条）。
 
-> ⏳ #1 正文输出键 → schema 映射：见 Task 3（invest-schema）。
+> ✅ #1 正文输出键 → schema 映射：见 Task 3（invest-schema）。已落为 `stage-contract.ts`（本文档第一节映射表为权威，stage-contract 对齐）。
 
 ## 二、redlines.json 量纲
 
@@ -25,7 +25,7 @@
 - `safetyMargin.ts` 百分比域：`distance_pct ≤ 0` → green、`0 < distance_pct ≤ 50` → yellow、`distance_pct > 50` → red
 - 转换约定：比率 `0.5` ↔ 百分比 `50`（即 `distance_pct`（%）`/ 100` 得到比率；阈值比较统一到同一域后再判灯）。
 
-> ⏳ #2 redlines 量纲 ×100 转换：见 Task 3（invest-schema 单元测试）。
+> ✅ #2 redlines 量纲 ×100 转换：见 Task 3（invest-schema 单元测试）。已实现 `ratioToPercent`（0.5 ↔ 50）+ 单测覆盖。
 
 ## 三、script.ts return 键粒度
 
@@ -45,7 +45,7 @@ script.ts ④ 步 `const merged = { ...anchor, ...args.calc }` 生成 `swing_zon
 
 ## 附：钉死动作清单
 
-- [ ] P2 invest-schema：正文输出键 → state 字段映射落为 JSON Schema + 落库代码。
-- [ ] P2 redlines 量纲：×100 转换统一实现 + 单元测试。
+- [x] P2 invest-schema：正文输出键 → state 字段映射落为 `stage-contract.ts`（本文档第一节映射表为权威，stage-contract 对齐）。
+- [x] P2 redlines 量纲：×100 转换（`ratioToPercent`，0.5 ↔ 50）统一实现 + 单元测试。
 - [x] P2 script.ts return 键：统一标签 / 字段名（已定稿为 stage 键，见第三节）。
 - [x] P2 anchor 合并 shape：`swing_zone_analysis` 最终字段契约（已定稿 `merged = { ...anchor, ...args.calc }`，见第四节）。
