@@ -8,7 +8,7 @@
 - [x] T3 D6 Session Resume 语义
 - [x] T4 Q3 Ralph 循环触发
 - [x] T5 prefix-cache API 层观测（可选）
-- [ ] T6 报告汇总与 spec 章节十四回填
+- [x] T6 报告汇总与 spec 章节十四回填
 
 ## 详细记录
 （每个 Task 追加：源码侦察命令与结论、探针命令与输出、结论、对 spec 章节十三对应项的决策）
@@ -258,7 +258,7 @@ Ralph 循环已完成：roundsStarted=2，verdict=一致（最终评级 🟡 与
 ## T5 prefix-cache API 层观测
 
 - 实测: 第1次（冷缓存）`hit=0 miss=162 total=162 hit_rate=0.0%`；第2次（暖缓存）`hit=128 miss=34 total=162 hit_rate=79.0%`。两次运行稳定（暖缓存后第1/2次均为 79.0%）。API **返回** `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` 字段 → cache **可观测**。
-- 结论: ⚠️ **可观测，但「99% 命中」假设不成立**（实测稳定 79%，非 99%）。根因：DeepSeek 以 64-token 块为缓存粒度，尾块 34 tokens 恒 miss（162 = 2×64 + 34）。→ I7 生产监控**直接以 `prompt_cache_hit_tokens` 为指标**（字段可观测），但成本模型须把「99% 命中」下修到块对齐上限 `⌊prompt_tokens/64⌋×64 / prompt_tokens`（本测 79%）。
+- 结论: ⚠️ **可观测，但「99% 命中」假设不成立**（实测稳定 79%，非 99%）。与 64-token 块粒度一致（162 = 2×64 + 34，尾块 34 tokens miss）。→ I7 生产监控**直接以 `prompt_cache_hit_tokens` 为指标**（字段可观测），但成本模型须把「99% 命中」下修到块对齐上限 `⌊prompt_tokens/64⌋×64 / prompt_tokens`（本测 79%）。
 
 ### T5 探针输出（verbatim）
 

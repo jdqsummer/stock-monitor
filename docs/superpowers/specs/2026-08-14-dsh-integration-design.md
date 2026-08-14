@@ -189,7 +189,7 @@ version: 1.0.0
 
 | 步 | skill | 输入（depends_on） | 确定性逻辑 | 输出 |
 |:--|:--|:--|:--|:--|
-| ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报（D1 P0-1 已验证 → PTC 批量拉数+本地计算，见第十三节 D1） | 基础数据 |
+| ① read_context | investment-framework | stock_code/name | 数据桥读取行情/近8期财报（D1 P0-1 已验证 PTC 存在；PTC 批量拉数+本地计算为 Code Mode，同会话组合待 P2 验证，见第十三节 D1） | 基础数据 |
 | ② analyze_qualitative | analyze-qualitative | financials/current_price/… | 经营质量：增长指标 + 利润质量确定性检查；**blocks/ 目录扫描驱动子块** | qualitative_analysis + business_model/moat_assessment/operating_quality + 各子块 output_field |
 | ③ run_reverse_checklist | run-reverse-checklist | qualitative_analysis/financials/… | 无（纯 LLM） | reverse_analysis + risk_factors/checklist_veto |
 | ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis（含 `sensitivity_analysis`：PE ±10% 敏感性，D2 P0-1 验证失败 → Orchestrator 串行重跑退路，P3）+ pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
@@ -642,10 +642,10 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 
 **深化方案**：
 - ① read_context 改为 **PTC 模式执行**：模型写一段 TS 代码，一次性调用 `invest-data-tool` 的多个数据接口（行情、近 8 期财报、行业对比），在代码内完成数据清洗与衍生指标计算（同比、加速度），**只把结构化摘要返回上下文**。
-- 后续 ②-⑤ 步仍是标准 workflow pipeline（LLM 判断型），不受 PTC 影响。
+- 后续 ②-⑤ 步仍是标准 workflow pipeline（LLM 判断型），不受 PTC 影响（组合可行性见落地载体 ⚠️）。
 - 预期效果：read_context 阶段的上下文占用从"全量原始数据"降为"结论摘要"，结合 prefix-cache，长上下文成本进一步压缩。
 
-**落地载体**：PTC 路径——显式启用 `DSH_TOOLS_MODE=code`，① read_context 以 Code Mode 执行批量调用数据接口（模型仅拿 `run_code` 工具，程序体内批量调用数据/文件/命令工具，只回结论摘要）。**P0-1 T1 已验证**：PTC 存在（`core/tools` 的 `mode='code'`，`ToolPresentationMode`），headless 默认 `native`，须 `DSH_TOOLS_MODE=code` 显式启用才暴露 `run_code`；无需走 invest-data-tool 批量封装退路。
+**落地载体**：PTC 路径——显式启用 `DSH_TOOLS_MODE=code`，① read_context 以 Code Mode 执行批量调用数据接口（模型仅拿 `run_code` 工具，程序体内批量调用数据/文件/命令工具，只回结论摘要）。**P0-1 T1 已验证**：PTC 存在（`core/tools` 的 `mode='code'`，`ToolPresentationMode`），headless 默认 `native`，须 `DSH_TOOLS_MODE=code` 显式启用才暴露 `run_code`。**⚠️ PTC 与五段 pipeline 的同一会话组合（① Code Mode + ②-⑤ native）尚未验证**——`DSH_TOOLS_MODE` 为会话全局开关，非按步声明；若 P2 实施时组合不可行，① read_context 退化为独立 Code Mode 前置阶段，或走 invest-data-tool 内批量封装（单次调用返回聚合摘要）。
 
 #### D2. Session Fork —— 估值敏感性分析【高价值】
 
