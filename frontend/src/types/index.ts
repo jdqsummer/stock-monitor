@@ -75,6 +75,9 @@ export interface WatchlistBoardRow {
   profit_quality_warnings?: string[];
   unassessable_risk?: boolean;
   conclusion?: string | null;
+  stage_results?: Record<string, StageResult>;
+  financials_8p?: FinancialRow[];
+  reverse_analysis?: ReverseAnalysis;
 }
 
 // ── 自选股自动分析任务 ──
@@ -199,4 +202,59 @@ export interface DiaryDecision {
   stock?: string;
   price?: number;
   reason?: string;
+}
+
+// ── 五段式分析详情（后端 snapshot_to_dict 契约）──
+
+// 近 8 期财报明细
+export interface FinancialRow {
+  period: string;
+  revenue: number | null;
+  net_profit_parent: number | null;
+  net_profit_deducted: number | null;
+}
+
+// 五段结构化结果（各段字段 optional，前端宽容读取）
+export interface StageResult {
+  title: string;
+  // 定性段 analyze_qualitative
+  business_model?: { title: string; text: string };
+  moat_assessment?: { title: string; text: string };
+  operating_quality?: {
+    title: string;
+    text: string;
+    profit_quality_ok?: boolean;
+    profit_quality_warnings?: string[];
+  };
+  // 逆向段 run_reverse_checklist
+  conclusions?: { about_company: string; about_valuation: string; about_market: string; about_self: string };
+  major_risks?: string[];
+  checklist_veto?: boolean;
+  overall_assessment?: string;
+  // 安全边际段 anchor_industry_pe
+  pe_low?: number;
+  pe_high?: number;
+  pe_rationale?: string;
+  annual_profit_low?: number;
+  annual_profit_high?: number;
+  swing_market_cap_low?: number;
+  swing_market_cap_high?: number;
+  swing_price_low?: number;
+  swing_price_high?: number;
+  // 结论段 output_conclusion
+  conclusion?: string;
+  recommendation?: string;
+  unassessable_risk?: boolean;
+  action_items?: string[];
+  final_rating?: string;
+  loss_exception_rationale?: string;
+  forward_valuation_basis?: string;
+}
+
+// 逆向四类结论 + 重大风险（= stage_results.run_reverse_checklist）
+export interface ReverseAnalysis {
+  conclusions: { about_company: string; about_valuation: string; about_market: string; about_self: string };
+  major_risks: string[];
+  checklist_veto: boolean;
+  overall_assessment: string;
 }
