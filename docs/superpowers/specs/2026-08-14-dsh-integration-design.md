@@ -106,6 +106,8 @@
 
 裁剪原则：投资分析是只读 + 计算型工作负载，收敛攻击面；数据访问只经 `invest-data-tool`。
 
+> **P0 已验证（4.1 概念示意）**：上图为概念示意，实际按 T4/T5 实测落地——① preset **无 CLI 子命令**，作者路径是 `ctx.agentPresets.copy()` 或自定义 `cordis.yml`；② headless/SDK 路径默认 **rosterless 不自动挂载 preset**（T4），value-investor 组合以自定义 `cordis.yml` 承载（`DeepSeekHarness(cordis=...)` / `DSH_CORDIS_CONFIG`）；③ `workflow-tool` 一行改为「invest-five-stage 自定义工具插件」（T5 实测原生 workflow 工具无预置脚本模式，预置 pipeline 须由自定义插件承载）。
+
 ### 4.2 Skill 层（方法论资产迁移）
 
 正文（方法论）零改，迁入 `.dsh/skills/`，挂 volume 可热更新：
@@ -140,7 +142,7 @@ version: 1.0.0
 ---
 ```
 
-**blocks 子块目录扫描驱动**：`analyze-qualitative/blocks/` 由 workflow ② 步**运行时扫描**（非写死列表），新增定性子块 = 放一个 SKILL.md（frontmatter 声明 `output_field/title/order`，正文含方法论 + 输出格式），脚本/代码零改动、自动纳入定性分析。复用现有 `_load_stages` 同构机制。
+**blocks 子块目录扫描驱动（P0 已验证调整）**：`analyze-qualitative/blocks/` 的目录扫描与子块 frontmatter（`output_field/title/order`）解析，**在自定义工具插件的 `execute()`（host Node）侧完成**（raw parse，复用现有 `_load_stages` 同构机制），**不依赖 DSH skill 机制**——T3 实测自研字段被 DSH `parseSkillFile` 静默丢弃、`skill` 工具不透传，若走 skill 机制读子块编排元数据即假阳性。子块 SKILL.md 作为 DSH skill **只承载方法论正文（惰性加载）**；新增定性子块 = 放一个 SKILL.md（正文含方法论 + 输出格式），由插件 `execute()` 扫描自动纳入；仅需确定性计算的子块才在 invest-calc 加 TS 纯函数 + 声明 handler 引用。
 
 ### 4.3 Workflow 五段 pipeline（预置脚本，纪律硬约束）
 
@@ -320,8 +322,8 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 |:--|:--|:--|
 | DSH v0.1 API 破坏性变更 | 高 | 精确版本锁定 + DSH_UPSTREAM 六步升级 + 降级链兜底 |
 | 全 TS 重写引入计算偏差 | 高 | **黄金数据集**：TS 函数逐一对照现有 Python 节点输出 |
-| workflow 工具能力未完全验证 | 中 | 预置脚本 + 模型仅填参数；P0 先用茅台跑通 |
-| SDK 进程外连接能力未知 | 中 | P0 验证；若仅支持进程内，退化为容器内 SDK 宿主 + HTTP 触发 |
+| workflow 工具能力 | 中 → 已验证 | P0 已验证（T5）：原生 workflow 无预置脚本模式，载体调整为自定义工具插件（tool-ralph 范式）；纪律硬约束成立 |
+| SDK 进程外连接能力 | 中 → 已坐实 | P0 已坐实（T6）：仅支持进程内 stdio JSON-RPC，无进程外 transport；已采纳降级「容器内 SDK 宿主 + HTTP 触发」 |
 | 记忆插件生态未成熟 | 低 | 记忆走 Python 蒸馏管道（保留），DSH log 只做审计 |
 | OpenHarness 资产删除后不可回退 | 中 | 方法论 Skill 资产两边通用（anthropics/skills 格式），可随时重建 |
 
@@ -510,11 +512,16 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 
 | 修订项 | 级别 | 负责阶段 | 状态 |
 |:--|:--|:--|:--|
-| B1 workflow API 标注假设 + 退路 | 阻断 | 文档修订（立即） | 待修改 |
-| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 文档修订 + P0 验证 | 待修改 |
-| B3 会话容错小节 5.1 | 阻断 | 文档修订（立即） | 待修改 |
-| I1-I7 重要项 | 重要 | P2-P3 补齐 | 待修改 |
-| S1-S10 建议项 | 建议 | 实施过程中逐步补齐 | 待修改 |
+| B1 workflow API 标注假设 + 退路 | 阻断 | 文档修订（立即） | 已完成（P0 T5：pipeline/parallel 为脚本挂钩、无 restrict()，预置脚本须自定义插件承载；退路已写入 4.3） |
+| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 文档修订 + P0 验证 | 部分完成（P0 T4 固化 composition vs patch、defineTool 真实签名；附录 A 可运行样例待 P1 产出） |
+| B3 会话容错小节 5.1 | 阻断 | 文档修订（立即） | 待修改（P3 补齐） |
+| I1 Windows 开发环境约束 | 重要 | P2-P3 | 已坐实（P0 T6：win32 无 SDK runtime exe，本地联调需 WSL2/Docker） |
+| I2-I6 并发/防篡改/漂移/映射/多模型 | 重要 | P2-P3 | 待修改 |
+| I7 成本监控/限流/预算 | 重要 | P2-P3 | 部分坐实（P0 T2：prefix-cache 不可 CLI 观测，「99% 命中」待生产监控验证） |
+| S1 MCP 跨容器传输 | 建议 | 实施过程 | 已坐实（P0 T6：stdio 同容器实测跑通，跨容器须 streamable-http） |
+| S2-S8 建议项 | 建议 | 实施过程 | 待修改 |
+| S9 standard preset 存在性 | 建议 | 实施过程 | 已确认（P0 T4：shipped preset 为 standard/minimal/code/cordis） |
+| S10 DSH 版本号时效 | 建议 | 实施过程 | 已确认（P0 T1：npm latest=rc.6，已统一锁定并回填 DSH_UPSTREAM） |
 
 ---
 

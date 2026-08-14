@@ -8,7 +8,7 @@
 
 ## 〇、一句话结论
 
-DSH v0.1.0-rc.6 的 **Skill 惰性加载 / 工具插件 / 单调守卫 / workflow 脚本引擎 / Python SDK（进程内）/ MCP 数据桥** 六大能力全部真实跑通；spec 的核心假设中 **3 项成立**、**1 项不成立（SDK 进程外）**、**1 项需调整载体（workflow 预置脚本）**。**唯一阻断级结论：SDK 无进程外 transport，spec 第三节「两容器 + SDK 跨容器连接」拓扑必须降级为「容器内 SDK 宿主 + HTTP 触发」。**
+DSH v0.1.0-rc.6 的 **Skill 惰性加载 / 工具插件 / 单调守卫 / workflow 脚本引擎 / Python SDK（进程内）/ MCP 数据桥** 六大能力全部真实跑通。spec 假设矩阵 5 条中：**3 条成立**（frontmatter 精简、守卫否决/约束、workflow 纪律——其中 workflow「成立但载体需调整」为自定义工具插件）、**1 条部分成立**（SDK 进程外不成立 / MCP 数据桥成立）、**1 条需调整**（子块目录扫描移插件 host 侧）。**唯一阻断级结论：SDK 无进程外 transport，spec 第三节「两容器 + SDK 跨容器连接」拓扑必须降级为「容器内 SDK 宿主 + HTTP 触发」。**
 
 ---
 
