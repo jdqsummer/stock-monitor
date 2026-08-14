@@ -1,0 +1,26 @@
+# invest-data-tool：MCP client 辅助通道挂载配置（P0 T6 实测语法）。
+#
+# 两种 transport（spec S1）：
+#   - stdio：同容器/同主机（开发期/生产同容器），spawn Python DataBridge 子进程
+#   - streamable-http：跨容器（backend ↔ dsh-engine 分开时），连 DataBridge HTTP 端点
+#
+# ⚠️ 按包名引用（不可 file://）；serverName 决定工具名前缀 mcp__<serverName>__<rawName>。
+# 默认注释 stdio 形态；跨容器时切换到 streamable-http 并指向 DataBridge 端点（P3 落地）。
+
+- insert:
+    - id: invest-data-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: investdata
+        transport: stdio
+        command: python
+        args:
+          - 'D:/project/github/stock-monitor/backend/data/dsh_bridge.py'   # P3 落地 DataBridge
+        cwd: 'D:/project/github/stock-monitor'
+        failOnStartupError: true
+      # --- streamable-http 形态（跨容器，P3 启用，取消下面注释并注释上方 stdio）---
+      # config:
+      #   serverName: investdata
+      #   transport: streamable-http
+      #   url: http://backend:8000/mcp/investdata
+      #   failOnStartupError: true

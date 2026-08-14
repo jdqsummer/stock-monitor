@@ -1,7 +1,7 @@
 # S1 MCP 传输方式设计（streamable-http / stdio）
 
-> 状态：P1 方案定稿 · 日期：2026-08-14 · 计划：`2026-08-14-dsh-p1-assets-migration.md` 章节十四组③ S1
-> 阶段定位：**P1 只定 MCP transport 决策与 DataBridge server 实现方向**；DataBridge MCP server 的完整实现归 P3（Orchestrator 桥接集成）。
+> 状态：P1 方案定稿 · P2 回填 streamable-http 配置键 · 日期：2026-08-14 · 计划：`2026-08-14-dsh-p1-assets-migration.md` 章节十四组③ S1
+> 阶段定位：**P1 只定 MCP transport 决策与 DataBridge server 实现方向**；DataBridge MCP server 的完整实现归 P3（Orchestrator 桥接集成）。P2（Task 4）源码坐实 streamable-http 配置键（`url` 必填 + `headers` 可选），见三/六节。
 
 ## 一、结论先行（transport 决策）
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     # mcp.run(transport="stdio")           # 开发期/同容器：P0 已实测跑通
 ```
 
-- **client 侧配置（DSH 侧 `invest-data-tool` 插件）**：跨容器时 `dsh-mcp-client` 的 `transport: streamable-http` + URL（指向 backend 容器暴露的 DataBridge 端口）。P0 仅实测了 stdio 形态的 `command`/`args`/`cwd` 配置；**`streamable-http` 形态的 URL 字段具体命名待 P3 验证点**（P0 T6 只确认「streamable-http(URL)」这一形态存在，未实测其配置键），P3 落地时以 `dsh-mcp-client` 实际 config 为准。
+- **client 侧配置（DSH 侧 `invest-data-tool` 插件）**：跨容器时 `dsh-mcp-client` 的 `transport: streamable-http` + URL（指向 backend 容器暴露的 DataBridge 端口）。P0 仅实测了 stdio 形态的 `command`/`args`/`cwd` 配置；**P2 已源码坐实 streamable-http 配置键**（`dsh-mcp-client/lib/index.js` `createTransport()`）：`{ transport: 'streamable-http', url: <URL>, headers?: <object> }`——`url` 必填（`new URL(config.url)`），`headers` 可选（透传 `requestInit.headers`）。端到端跨容器运行仍归 P3（需 DataBridge 以 `streamable-http` 启动 + 真实 URL 联调），但配置键形状已定稿，不再标「待 P3」。
 
 ## 五、P1 / P3 边界（明确交付归属）
 
@@ -76,5 +76,5 @@ if __name__ == "__main__":
 
 1. **`dsh-mcp-client` 必须按包名引用，不可 `file://`**——`file://` 指向本地会因 `@modelcontextprotocol/sdk` 传递依赖解析失败（P0 七节坑位 4）。挂载走 cordis patch 覆盖层 `insert:`（composition 裸行当 patch 是静默 no-op，P0 七节坑位 3）。
 2. **工具名规则固定**：`mcp__<serverName>__<rawName>`，P3 前端/Orchestrator 引用工具时须按此命名（如 `mcp__investdata__get_stock_snapshot`），serverName 一经定稿不轻易改（改名即改工具名）。
-3. **streamable-http 形态的 URL 配置键未实测**（P0 仅实测 stdio 的 `command`/`args`/`cwd`）——P3 落地时以 `dsh-mcp-client` 实际 config 为准，标注「待 P3 验证点」，不编造签名。
+3. **streamable-http 形态的配置键已源码坐实**（P2 验证：`dsh-mcp-client/lib/index.js` `createTransport()` 读 `config.url`/`config.headers`，`url` 必填、`headers` 可选）——跨容器端到端运行仍归 P3（DataBridge `streamable-http` 启动 + URL 联调），但配置键形状不再待验。
 4. **transport 切换不影响 server 定义**——`FastMCP` 的 `@mcp.tool()` 定义与 transport 解耦，P0 的 stdio 实测 server 可直接复用于生产 `streamable-http`（改 `mcp.run(transport=...)` 一行）。

@@ -12,10 +12,14 @@
 
 // 部署方常量，模型不可改（P0 T5 纪律硬约束）
 export const FIXED_SCRIPT = String.raw`
-// ① read_context：从注入只读上下文取数
-// ⚠️ D1 PTC 占位（P2 Task 6 验证 DSH_TOOLS_MODE=code 组合可行性后再启用）：
-//    若 DSH_TOOLS_MODE=code：读上下文由 run_code 程序批量拉数 + 本地计算；
-//    否则走 args.context 注入（headless 默认 native）。
+// ① read_context：从注入只读上下文取数（P2 定稿：不依赖 PTC 全局开关）。
+// ⚠️ D1 PTC 结论（P2 Task 4 实测）：DSH_TOOLS_MODE=code 是进程级全局开关——
+//    tools.defaultMode = config.mode（headless patch `mode: !!js process.env.DSH_TOOLS_MODE`），
+//    per-scope 覆盖仅经 tools.presentAs()，而 workflow 的 agent() 子代理无 per-scope
+//    覆盖 → 同样落入 code 模式，工具集全局替换为单一 run_code。故 D1 采用退路：
+//    ① read_context 不依赖 PTC 开关，改为「invest-data-tool 单次调用返回聚合摘要」或
+//    「P3 Orchestrator 在 Python 侧预聚合注入」。实测：run_code 可被调用（程序 40+2=42）；
+//    模型自报工具清单不可靠（会幻觉 native 工具表），勿以自报为准。
 const context = args.context;
 // ② qualitative：blocks 子块 LLM 定性（host 已扫描子块注入 args.blocks，按 order 升序）
 const qualitative = await agent(

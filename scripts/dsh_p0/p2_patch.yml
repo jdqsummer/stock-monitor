@@ -1,0 +1,20 @@
+# P2 headless 冒烟 patch：insert 全部 invest-* 插件 + invest-five-stage + MCP client。
+#
+# 形态：patch 覆盖层新增插件必须包在 - insert: 里，本地插件用 file:// 绝对 URL
+# （P1 附录 A 3.2 实测路径）。composition（agent.cordis.yml 裸行）不能当 --patch。
+#
+# ⚠️ 待 P2 验证点（Task 4 实测结论，Task 6 据此产 .mjs 变体）：
+#   本 patch 引用的 index.mjs 尚不存在（插件源码是 .ts）。headless Loader 直接
+#   file:// 加载 .ts 会失败——Node 22 类型剥离能 import .ts 入口，但相对导入
+#   `./logic`/`./script`（无扩展名）抛 ERR_MODULE_NOT_FOUND（`__rewriteRelativeImportExtension`
+#   只作用于 typert-loader 的 package 产物，不作用于裸 file:// 条目）。
+#   另 invest-five-stage 还 import `@deepseek-ai/dsh-tools`（bare import，pnpm 严格隔离
+#   下解析失败）→ 需改写为零外部 import 的原始 ToolDefinition 形态（P0 t4/t5 同款）。
+#   综上 .mjs 变体要求：显式 `.mjs` 扩展名相对导入 + 零外部 import。端到端五段冒烟归 Task 6。
+- insert:
+    - id: invest-five-stage
+      name: file:///D:/project/github/stock-monitor/.dsh/plugins/invest-five-stage/index.mjs
+    - id: invest-guard
+      name: file:///D:/project/github/stock-monitor/.dsh/plugins/invest-guard/index.mjs
+    - id: invest-schema
+      name: file:///D:/project/github/stock-monitor/.dsh/plugins/invest-schema/index.mjs
