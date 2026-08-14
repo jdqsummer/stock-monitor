@@ -404,7 +404,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | 双实现漂移（I4，已知取舍） | 中 | 短期黄金数据集 CI 把关；P4 后评估长期收敛：降级链调 DSH TS 端点（HTTP），消除 Python 侧确定性逻辑副本 |
 
 
-## 十一、实施路线（v1.3，融入章节十二/十三/十四）
+## 十一、实施路线（v1.4，融入章节十二/十三/十四）
 
 > 执行策略按章节十四「四组处置」：**组①** 已融入正文；**组②** 已验证项已回填、4 项深化 API **P0-1 已验证**（D1 PTC 存在 / D2 无 fork 走退路 / D6 部分成立 / Q3 `ralph` 可触发）；**组③** 全部融入 **P1** 设计；**组④** 按第十三节映射表逐项迭代。修订追踪表（章节十二）状态列随进展更新。
 
@@ -412,7 +412,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 - **P0-1 扩展验证（✅ 已完成）**：D1 PTC / D2 Fork / D6 Resume / Q3 Ralph 四项 API 验证 + prefix-cache API 层观测 → `docs/superpowers/plans/2026-08-14-dsh-p0-1-report.md`；结果已回填章节十四组②决策表（D1 PTC 存在 → P2；D2 Python SDK 无 fork → 串行重跑退路；D6 部分成立 → Orchestrator 幂等；Q3 `ralph` 可触发 → P4）。
 - **P1 资产迁移（含组③全部融入）**：SKILL 迁入 `.dsh/skills/`（kebab-case + frontmatter 精简 + **E1 `provides/consumes`** + **E2 `output.schema.json`**）；workflow 五段预置脚本（自定义工具插件承载，tool-ralph 范式）；确定性 TS + 黄金数据集（**S4** 6 类边界）；**I5 源头统一 snake_case 决策**（首选；兜底附录 B 字段映射表，输出契约定稿时裁决）；I6 模型选择预留接口；I3 脚本防篡改挂载（read-only volume）；I2 并发模型设计（max_sessions + 队列 + 同股票锁）；I1 开发环境（WSL2/Docker）；S1 MCP streamable-http；S2 PE 非法判定入 schema；**附录 A cordis.yml 可运行样例**（B2，插件开发首日产出）。
 - **P2 插件开发（含组④ P2 项）**：invest-data-tool / invest-calc / invest-guard / invest-schema + **D1 PTC**（组②通过后）/ **D3 内置守卫**（循环卫生 + 工具超时，零依赖两行配置）/ **D5 上下文压缩**（窗口 80% 触发）/ **Q1 证据引用强制** / **Q2 置信度标注**。
-- **P3 桥接集成（含组④ P3 项）**：Orchestrator + DataBridge(MCP streamable-http) + 元数据契约（analysis_model/analysis_degraded）+ 前端展示（含 I6 模型选择完整落地）+ **5.1 容错策略落地为代码** / **D2 Fork**（组②通过后）/ **D4 invest-telemetry**（I7 成本监控载体）/ **D6 Resume**（组②通过后）/ I7 成本监控与预算 / S7 经验进化（人工审阅 + 热更新）。
+- **P3 桥接集成（含组④ P3 项）**：Orchestrator + DataBridge(MCP streamable-http) + 元数据契约（analysis_model/analysis_degraded）+ 前端展示（含 I6 模型选择完整落地）+ **5.1 容错策略落地为代码** / **D2 敏感性退路（Orchestrator 串行重跑）** / **D4 invest-telemetry**（I7 成本监控载体）/ **D6 重跑范围（Orchestrator 步骤级幂等）** / I7 成本监控与预算 / S7 经验进化（人工审阅 + 热更新）。
 - **P4 清理与加固（含组④ P4 项）**：OpenHarness 退役、测试迁移、Docker 双容器、版本锁定 rc.6、DSH_UPSTREAM 六步升级流水线 + **Q3 Ralph**（组②通过后，深度模式）/ **I4 双实现收敛**（降级链调 DSH TS 端点）/ **S3 日志留存**（90 天热存储）/ **S6 回滚 runbook**。
 
 ---
@@ -883,7 +883,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | D6 Session Resume | **P0-1 T3 已验证**：`session_id` 复用上下文延续成立（同 session 两轮 turn=1→2），无显式断点恢复原语（checkpoint 为崩溃恢复） | 部分成立 → P3（重跑范围改 Orchestrator 步骤级幂等 + 数据新鲜度驱动） |
 | Q3 Ralph 自审 | **P0-1 T4 已验证**：工具名 `ralph`，headless base 已注册，`roundsStarted=2` 可触发 | 通过 → P4 实施（深度模式，工具名 `ralph`） |
 
-> **进入条件**：P2 开工前完成 D1/D2/D6/Q3 四项验证（**P0-1 扩展验证**，见 `docs/superpowers/plans/2026-08-14-dsh-p0-1-api-extension.md`），结果回填本表。
+> **进入条件**：已满足（P0-1 扩展验证已完成，见 `docs/superpowers/plans/2026-08-14-dsh-p0-1-report.md`），结果已回填本表。
 
 #### 组③ P1 设计时融入（错过窗口就返工，P1 开工前必须含）
 
