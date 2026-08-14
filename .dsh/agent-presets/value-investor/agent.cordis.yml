@@ -22,6 +22,19 @@
 #   - 真正 preset-plane 的最小集 = `tool-skill` + 自定义工具（+ 可选 `persona` identity）。
 #   - 本文件按简报 Step 2 原文保留四行；`agent-default-model`/`skill` 的 host-plane 归属
 #     与 mount 行为标注「待 P2 验证点」，P2 在 web/tui 挂载验证前不视为定稿。
+#
+# ⚠️ 生产挂载语义（P4 查漏补缺，待部署端真实验证）：
+#   生产 `dsh-engine/Dockerfile:56` ENV `DSH_CORDIS_CONFIG=/app/.dsh/agent-presets/
+#   value-investor/agent.cordis.yml` 指向本 composition（headless 常驻，SDK 侧
+#   `DeepSeekHarnessConfig(cordis=...)` 仅透传该 env，见 SDK api.py:66-67）。
+#   headless 对 composition 的挂载语义（preset mount vs patch 覆盖）**待部署端真实验证**：
+#   P0 T4 实测 headless 默认 rosterless 不自动挂 preset，若 headless 同样不挂本 composition，
+#   退路是 sdk_host 改 `--patch insert + file://` 形态（P2/P3 实测可行，见本目录 README §三）。
+#   本文件核心插件一律 `file://` 绝对 URL（生产容器内路径固定
+#   `/app/.dsh/plugins/<plugin>/index.mjs`），即为该退路预设（两种形态下 Loader 均 ESM import）。
+#
+# ⚠️ invest-calc 是纯函数库，**不挂载**——被 invest-five-stage/prepare.ts 经相对 import 依赖
+#   （挂载 = 暴露给模型直接调用，非纯函数库用途）。
 
 # 默认模型选择（HOST-plane 服务，简报 Step 2 原文；待 P2 验证点）
 - id: agent-default-model
@@ -41,7 +54,34 @@
 - id: hello-tool
   name: './hello-tool.mjs'
 
+# 五段核心工具（自定义工具插件承载预置 pipeline，tool-ralph 范式；spec 4.3）。
+# 生产模型须调五段工具，否则 /trigger 返回「未找到 invest-five-stage 工具输出」。
+# file:// 绝对 URL（P2/P3 实测可靠；生产容器内路径固定 /app/.dsh/plugins/<plugin>/index.mjs）
+- id: invest-five-stage
+  name: 'file:///app/.dsh/plugins/invest-five-stage/index.mjs'
+
+# 否决/约束守卫（单调安全守卫：unassessable_risk / checklist_veto → 强制 🔴 + 坚决放弃；
+# 评级一致性 / 纪律红线 / PE 极端下调，spec 4.5）
+- id: invest-guard
+  name: 'file:///app/.dsh/plugins/invest-guard/index.mjs'
+
+# 输出形状校验（final_rating ∈ {🟢🟡🔴} / 亏损特例必填 / Q1 evidence / Q2 confidence，spec 4.5）
+- id: invest-schema
+  name: 'file:///app/.dsh/plugins/invest-schema/index.mjs'
+
+# MCP client 辅助通道（invest-data-tool）：跨容器 streamable-http → DataBridge。
+# ⚠️ 按包名引用（不可 file://，见本目录 README §四.3）；serverName 决定工具名前缀
+# mcp__investdata__<rawName>。failOnStartupError: false —— 辅助通道失败不阻断主分析（非主路径）。
+- id: invest-data-mcp
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: investdata
+    transport: streamable-http
+    url: http://backend:8000/mcp/investdata
+    failOnStartupError: false
+
 # 生命周期钩子指标采集（D4，spec 章节十三）：结构化日志 `dsh-telemetry <json>`，
 # 供 I7 成本归因 + 生产监控消费（Prometheus 接入方向见 .dsh/docs/d4-telemetry.md，P4）
+# file:// 绝对 URL（原相对路径 ./invest-telemetry/index.mjs 改绝对，生产容器内路径固定）
 - id: invest-telemetry
-  name: './invest-telemetry/index.mjs'   # 生命周期钩子指标采集（D4）
+  name: 'file:///app/.dsh/plugins/invest-telemetry/index.mjs'

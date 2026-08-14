@@ -1,11 +1,21 @@
 # invest-data-tool：MCP client 辅助通道挂载配置（P0 T6 实测语法）。
 #
+# ⚠️ 生产跨容器用 streamable-http（本插件的 stdio 形态不再用于生产）：
+#   生产组合 `.dsh/agent-presets/value-investor/agent.cordis.yml` 已直接以组合裸行挂
+#   invest-data-mcp（streamable-http → http://backend:8000/mcp/investdata，
+#   failOnStartupError: false）。本文件的 stdio 形态仅用于同容器/本地联调
+#   （spawn Python DataBridge 子进程）。
+#
 # 两种 transport（spec S1）：
 #   - stdio：同容器/同主机（开发期/生产同容器），spawn Python DataBridge 子进程
 #   - streamable-http：跨容器（backend ↔ dsh-engine 分开时），连 DataBridge HTTP 端点
 #
 # ⚠️ 按包名引用（不可 file://）；serverName 决定工具名前缀 mcp__<serverName>__<rawName>。
-# 默认注释 stdio 形态；跨容器时切换到 streamable-http 并指向 DataBridge 端点（P3 落地）。
+# cwd 用 `!!js process.env.DSH_CWD || "/app"`（DSH 支持 cordis config 的 JS 表达式，
+# 先例：shipped `@deepseek-ai/dsh-tools` 的 `mode: !!js process.env.DSH_TOOLS_MODE`，
+# 见 scripts/dsh_p0/p0_1_verify_report.md）。SDK 侧恒注入 DSH_CWD（api.py:68），
+# 容器内默认 /app，本地联调指向项目根；不再硬编码 Windows 绝对路径（生产必败）。
+# 默认注释 stdio 形态；跨容器时切换到 streamable-http（生产已由 value-investor 组合直接挂）。
 
 - insert:
     - id: invest-data-mcp
@@ -18,11 +28,11 @@
           # -m 模块形态：cwd 进 sys.path，`import backend` 才可解析（script 路径形态不行）
           - '-m'
           - 'backend.data.dsh_bridge'   # P3 落地 DataBridge（backend/data/dsh_bridge.py）
-        cwd: 'D:/project/github/stock-monitor'
+        cwd: !!js process.env.DSH_CWD || "/app"
         failOnStartupError: true
-      # --- streamable-http 形态（跨容器，P3 启用，取消下面注释并注释上方 stdio）---
+      # --- streamable-http 形态（跨容器；生产已由 value-investor 组合直接挂，此处保留参考）---
       # config:
       #   serverName: investdata
       #   transport: streamable-http
       #   url: http://backend:8000/mcp/investdata
-      #   failOnStartupError: true
+      #   failOnStartupError: false   # 辅助通道失败不阻断主分析（非主路径）

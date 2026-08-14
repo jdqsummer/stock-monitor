@@ -410,7 +410,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 
 - **P0 试跑（✅ 已完成）**：T1-T7 验证 DSH v0.1 真实能力 → `docs/superpowers/plans/2026-08-14-dsh-p0-report.md`（真实 API 签名 + spec 假设矩阵 + 版本裁决 rc.6 + 部署拓扑降级「容器内 SDK 宿主 + HTTP 触发」）。
 - **P0-1 扩展验证（✅ 已完成）**：D1 PTC / D2 Fork / D6 Resume / Q3 Ralph 四项 API 验证 + prefix-cache API 层观测 → `docs/superpowers/plans/2026-08-14-dsh-p0-1-report.md`；结果已回填章节十四组②决策表（D1 PTC 存在 → P2；D2 Python SDK 无 fork → 串行重跑退路；D6 部分成立 → Orchestrator 幂等；Q3 `ralph` 可触发 → P4）。
-- **P1 资产迁移（含组③全部融入）**：SKILL 迁入 `.dsh/skills/`（kebab-case + frontmatter 精简 + **E1 `provides/consumes`** + **E2 `output.schema.json`**）；workflow 五段预置脚本（自定义工具插件承载，tool-ralph 范式）；确定性 TS + 黄金数据集（**S4** 6 类边界）；**I5 源头统一 snake_case 决策**（首选；兜底附录 B 字段映射表，输出契约定稿时裁决）；I6 模型选择预留接口；I3 脚本防篡改挂载（read-only volume）；I2 并发模型设计（max_sessions + 队列 + 同股票锁）；I1 开发环境（WSL2/Docker）；S1 MCP streamable-http；S2 PE 非法判定入 schema；**附录 A cordis.yml 可运行样例**（B2，插件开发首日产出）。
+- **P1 资产迁移（含组③全部融入）**：SKILL 迁入 `.dsh/skills/`（kebab-case + frontmatter 精简 + **E1 `provides/consumes`** + **E2 `output.schema.json`**）；workflow 五段预置脚本（自定义工具插件承载，tool-ralph 范式）；确定性 TS + 黄金数据集（**S4** 6 类边界）；**I5 源头统一 snake_case 决策**（首选已采纳；附录 B 兜底映射表已回填文末附录）；I6 模型选择预留接口；I3 脚本防篡改挂载（read-only volume）；I2 并发模型设计（max_sessions + 队列 + 同股票锁）；I1 开发环境（WSL2/Docker）；S1 MCP streamable-http；S2 PE 非法判定入 schema；**附录 A cordis.yml 可运行样例**（B2，已产出并回填文末附录 A）。
 - **P2 插件开发（含组④ P2 项）**：invest-data-tool / invest-calc / invest-guard / invest-schema + **D1 PTC**（组②通过后）/ **D3 内置守卫**（循环卫生 + 工具超时，零依赖两行配置）/ **D5 上下文压缩**（窗口 80% 触发）/ **Q1 证据引用强制** / **Q2 置信度标注**。
 - **P3 桥接集成（含组④ P3 项）（✅ 已完成）**：Orchestrator + DataBridge(MCP streamable-http) + 元数据契约（analysis_model/analysis_degraded）+ 前端展示（含 I6 模型选择完整落地）+ **5.1 容错策略落地为代码** / **D2 敏感性退路（Orchestrator 串行重跑）** / **D4 invest-telemetry**（I7 成本监控载体）/ **D6 重跑范围（Orchestrator 步骤级幂等）** / I7 成本监控与预算 / S7 经验进化（人工审阅 + 热更新）。
 - **P4 清理与加固（✅ 已完成）**：OpenHarness 退役、测试迁移、Docker 双容器、版本锁定 rc.6、DSH_UPSTREAM 六步升级流水线 + **Q3 Ralph**（深度模式）/ **I4 双实现收敛**（降级链调 DSH TS 端点）/ **S3 日志留存**（90 天热存储）/ **S6 回滚 runbook**。
@@ -592,13 +592,13 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | 修订项 | 级别 | 执行组别 | 负责阶段 | 状态 |
 |:--|:--|:--|:--|:--|
 | B1 workflow API 标注假设 + 退路 | 阻断 | 组②（P0 已验证） | 文档修订（立即） | 已完成（P0 T5：pipeline/parallel 为脚本挂钩、无 restrict()，预置脚本须自定义插件承载；退路已写入 4.3） |
-| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 组②（T4 已固化）+ 组③（附录 A，P1 产出） | 文档修订 + P0 验证 | 部分完成（P0 T4 固化 composition vs patch、defineTool 真实签名；**附录 A 占位已建**（文末附录节），可运行样例待 P1 产出） |
+| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 组②（T4 已固化）+ 组③（附录 A，P1 产出） | 文档修订 + P0 验证 | 已完成（P0 T4 固化 composition vs patch、defineTool 真实签名；**附录 A 已回填**（文末附录节，可运行样例见 .dsh/agent-presets/value-investor/README.md，hello_echo 跑通）） |
 | B3 会话容错小节 5.1 | 阻断 | 组①（立即融入） | 文档修订（立即） | 已完成（本版已新增 5.1「会话生命周期与容错」） |
 | I1 Windows 开发环境约束 | 重要 | 组③（P1 设计时写入正文） | P1 | 已完成（v1.2 已写入正文「三、开发环境」） |
 | I2 并发模型 | 重要 | 组③（P1 任务调度设计时） | P1 | 已写入正文（v1.2「三、并发控制」），落地归 P1 |
 | I3 脚本防篡改 | 重要 | 组③（P1 挂载结构设计时） | P1 | 已写入正文（v1.2「4.1 脚本防篡改」），落地归 P1 |
 | I4 双实现漂移 | 重要 | 组④（P4 收敛） | P4 | 已写入风险表（v1.2），收敛方案归 P4 |
-| I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.3「I5 源头 snake_case + 附录 B 兜底」，**附录 B 占位已建**），P1 定稿 |
+| I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.3「I5 源头 snake_case + 附录 B 兜底」，**附录 B 已回填**（首选 snake_case 已采纳，兜底映射表保留为参考）），P1 定稿 |
 | I6 多模型选择 | 重要 | 组③（P1 接口）+ 组④（P3 完整落地） | P1-P3 | 已写入正文（v1.2「六、模型选择机制」），P1 预留接口、P3 完整落地 |
 | I7 成本监控/限流/预算 | 重要 | 组④（P3，载体 D4 telemetry） | P2-P3 | 已写入风险表（v1.2，载体 D4 invest-telemetry 归 P3）；prefix-cache 观测 **P0-1 T5 已完成**（实测 79%，64-token 块对齐；成本模型下修块对齐上限，真实 persona 前缀重测后定稿） |
 | S1 MCP 跨容器传输 | 建议 | 组③（P1 容器网络设计时） | 实施过程 | 已完成（v1.2 已写入正文「三、MCP 传输方式」） |
@@ -876,7 +876,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | 项 | P0 验证结果 | 结论 |
 |:--|:--|:--|
 | B1 workflow API（pipeline/restrict） | T5 已验证：pipeline/parallel 为脚本挂钩、无 restrict() | 已采纳修正：预置脚本由自定义工具插件承载（tool-ralph 范式），退路写入 4.3 |
-| B2 cordis.yml 语法 | T4 已验证：composition vs patch、defineTool 真实签名 | 部分固化；**附录 A 占位已建**（文末附录节），可运行样例待 P1 产出（组③） |
+| B2 cordis.yml 语法 | T4 已验证：composition vs patch、defineTool 真实签名 | 部分固化；**附录 A 已回填**（文末附录节，可运行样例见 .dsh/agent-presets/value-investor/README.md） |
 | S9 standard preset | T4 已确认：shipped preset = standard/minimal/code/cordis | ✅ 已确认 |
 | S10 版本号 | T1 已确认：npm latest = rc.6 | ✅ 已锁定并回填 DSH_UPSTREAM |
 | D1 PTC | **P0-1 T1 已验证**：PTC 存在（`core/tools` 的 `mode='code'`，`ToolPresentationMode`），需 `DSH_TOOLS_MODE=code` 显式启用 | 通过 → P2 实施（显式启用 `DSH_TOOLS_MODE=code`） |
@@ -918,9 +918,41 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 
 ---
 
-## 附录（P1 产出）
+## 附录（已回填，P4 查漏补缺）
 
-> 以下附录为组③ P1 阶段产出物占位，产出后回填本节。
+> 原「组③ P1 阶段产出物占位」已在 P4 查漏补缺回填：附录 A 对应 B2 可运行样例（已产出），
+> 附录 B 对应 I5 字段映射（首选方案已采纳，无需兜底映射表）。
 
-- **附录 A：cordis.yml 可运行样例**（B2，P1 插件开发首日产出）——最小 `cordis.yml` 跑通"注册一个自定义工具"，固化 Cordis composition/patch 真实语法（`inject`/`apply`/`config` 字段结构、bundle 与 patch 组合格式）。
-- **附录 B：字段映射表**（I5 兜底方案，P1 输出契约定稿时裁决）——若 I5 首选"DSH 侧源头统一 snake_case"不采纳，则列 `stage_results` 各阶段键的「DSH 输出字段名 → Python snake_case → DB JSON key」三列对照。
+### 附录 A：cordis.yml 可运行样例（B2）
+
+产物：`.dsh/agent-presets/value-investor/README.md`（B2 里程碑，headless 真实验证 `hello_echo` 跑通）。
+
+关键结论（摘自该 README）：
+
+1. **composition 不能直接 `--patch`**（实测确认）：`dsh --profile headless --patch agent.cordis.yml ...`
+   报 `patch: entry "hello-tool" not found`——composition 的裸插件行被当成「对既有 id 的 config
+   覆盖/disable」，因不存在该 id 而静默 no-op（`hello_echo` 未注册），模型会「编造」成功答复，属假阳性陷阱。
+2. **实测可行路径**：`--patch` 的 `insert` 形态 + `file://` 绝对 URL：
+   `- insert: [{ id: hello-tool, name: file:///.../hello-tool.mjs }]`；headless 真实调用输出
+   `echo: hello dsh`（换随机 marker 复验，证明非编造）。
+3. **preset 目录 mount**（web/tui `ctx.agentPresets.mount(agentCtx, id)`）用相对路径 `./hello-tool.mjs`，
+   mount 时重定向到 preset 目录自身；headless 默认 rosterless 不自动挂 preset。
+
+> ⚠️ 待部署端验证点（诚实标注，非已验证）：生产 `DSH_CORDIS_CONFIG` 指向
+> `.dsh/agent-presets/value-investor/agent.cordis.yml`（headless 常驻，SDK 仅透传 env），
+> headless 对 composition 的挂载语义（preset mount vs patch 覆盖）**待部署端真实验证**；
+> 若 headless 不挂 composition，退路是 sdk_host 改 `--patch insert + file://` 形态（P2/P3 实测可行）。
+
+### 附录 B：字段映射表（I5）
+
+I5 首选方案（源头统一 snake_case）**已采纳**（裁决记录 `.dsh/docs/i5-snake-case-decision.md`），
+DSH 侧 invest-* 插件输出字段在源头与 `backend/` state、前端 `stage_results`、DB JSON key 逐字一致，
+**无需兜底映射表**。附录 B 文档 `.dsh/docs/appendix-b-field-map.md` 保留为参考（逃生口，当前为空）。
+
+核心字段映射要点：
+
+- `stage_results` 各阶段键沿用 snake_case 技能名（`analyze_qualitative` / `run_reverse_checklist` /
+  `anchor_industry_pe` / `output_conclusion`），与 DB `AnalysisSnapshot.stage_results` JSON key 逐字一致。
+- 代表字段 `qualitative_analysis` / `swing_zone_analysis` / `distance_pct` / `final_rating` /
+  `annual_profit_low` / `annual_profit_high` 三方（DSH schema / `AnalysisState` / DB JSON key）逐字一致。
+- 技能标识符（目录/name）kebab-case 是 DSH 命名硬约束，与输出字段名（snake_case）是两个维度，不冲突。

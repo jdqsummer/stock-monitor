@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import api_router
+from backend.data.dsh_bridge import mcp as dsh_mcp
 from backend.data.scheduler import TaskScheduler
 from backend.services.refresh_svc import run_quote_refresh, run_recompute_analysis
 
@@ -36,7 +37,10 @@ async def lifespan(app: FastAPI):
     await scheduler.sync_auto_analysis_jobs(_collect_users, run_user_auto_analysis)
 
     scheduler.start()
-    yield
+    # DataBridge MCP session manager（streamable-http 辅助通道）生命周期随 app 启停。
+    # 必须先于 yield 进入，否则 /mcp/investdata 端点报「Task group is not initialized」。
+    async with dsh_mcp.session_manager.run():
+        yield
     scheduler.shutdown()
 
 
@@ -56,6 +60,13 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+# DataBridge MCP mount（跨容器 streamable-http 辅助通道；DSH invest-data-mcp 连
+# http://backend:8000/mcp/investdata，见 .dsh/agent-presets/value-investor/agent.cordis.yml）。
+# FastMCP 默认 streamable_http_path='/mcp'，置 '/' 使端点恰为 /mcp/investdata
+# （否则会变成 /mcp/investdata/mcp）。session manager 生命周期在 lifespan 内随 app 启停。
+dsh_mcp.settings.streamable_http_path = "/"
+app.mount("/mcp/investdata", dsh_mcp.streamable_http_app())
 
 
 @app.get("/api/health")
