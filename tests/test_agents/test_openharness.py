@@ -58,21 +58,24 @@ async def test_analyze_without_llm_runs_rule_based():
     assert result["recommendation"]
 
 
-# ── Task 8: LLM 模式走 harness 组件 ──
+# ── LLM 模式派发 DSH（P3 Task 4）──
 
 
 @pytest.mark.asyncio
-async def test_analyze_with_llm_delegates_to_component(monkeypatch):
-    """有真实 LLM → 委托 harness_component.run_analysis_agent"""
+async def test_analyze_with_real_llm_delegates_to_dsh(monkeypatch):
+    """有真实 LLM + DSH 可用 → 委托 DshOrchestrator.analyze"""
     from backend.agents import openharness as oh
+    from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.llm.provider import LLMConfig, ProviderType
 
-    sentinel = {"final_rating": "🔴"}
+    sentinel = {"final_rating": "🔴", "analysis_source": "dsh-llm",
+                "analysis_model": "deepseek-v4-flash", "analysis_degraded": False}
 
-    async def _fake(state, **kw):
+    async def _fake_analyze(self, state, model=""):
         return sentinel
 
-    monkeypatch.setattr("backend.agents.harness_component.run_analysis_agent", _fake)
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
+    monkeypatch.setattr(DshOrchestrator, "analyze", _fake_analyze)
 
     agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
     agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
@@ -81,22 +84,69 @@ async def test_analyze_with_llm_delegates_to_component(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_analyze_component_failure_falls_back(monkeypatch):
-    """组件抛错 → 降级规则子链，errors 记录"""
+async def test_analyze_dsh_unavailable_falls_back_to_rule_based(monkeypatch):
+    """DSH 未配置（is_available=False）→ 降级规则子链 + 降级标记"""
     from backend.agents import openharness as oh
+    from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.llm.provider import LLMConfig, ProviderType
 
-    async def _boom(state, **kw):
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr("backend.agents.harness_component.run_analysis_agent", _boom)
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: False)
 
     agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
     agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
-    result = await agent.analyze(make_state(annual_profit_low=32.0, annual_profit_high=35.0,
-                                            pe_low=20.0, pe_high=35.0, distance_pct=10.0))
+    result = await agent.analyze(make_state())
+    assert result["analysis_source"] == "rule-based"
+    assert result["analysis_model"] == "none"
+    assert result["analysis_degraded"] is True
     assert result["final_rating"] in ("🟢", "🟡", "🔴")
-    assert any("降级" in e for e in result["errors"])
+
+
+@pytest.mark.asyncio
+async def test_analyze_dsh_failure_falls_back_to_rule_based(monkeypatch):
+    """DSH 可用但抛错 → 降级规则子链 + 降级标记 + errors 记录"""
+    from backend.agents import openharness as oh
+    from backend.agents.dsh_orchestrator import DshOrchestrator
+    from backend.llm.provider import LLMConfig, ProviderType
+
+    async def _boom(self, state, model=""):
+        raise RuntimeError("dsh boom")
+
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
+    monkeypatch.setattr(DshOrchestrator, "analyze", _boom)
+
+    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+    result = await agent.analyze(make_state())
+    assert result["final_rating"] in ("🟢", "🟡", "🔴")
+    assert result["analysis_source"] == "rule-based"
+    assert result["analysis_model"] == "none"
+    assert result["analysis_degraded"] is True
+    assert any("DSH 分析降级" in e for e in result["errors"])
+
+
+@pytest.mark.asyncio
+async def test_rule_based_when_no_llm_marks_degraded():
+    """无 LLM → 纯规则降级 + 引擎标记（analysis_source 全路径）"""
+    agent = OpenHarnessAgent(llm_provider=None)
+    state = make_state()
+    updates = await agent.analyze(state)
+    assert updates.get("analysis_source") in {"rule-based", "mock"}
+    assert updates.get("analysis_degraded") is True
+    assert updates.get("analysis_model") == "none"
+
+
+@pytest.mark.asyncio
+async def test_analyze_mock_llm_marks_mock():
+    """Mock LLM → has_real_llm=False 且 _is_mock=True → analysis_source=mock"""
+    from backend.llm.provider import LLMConfig, MockLLMProvider, ProviderType
+
+    agent = OpenHarnessAgent(
+        llm_provider=MockLLMProvider(LLMConfig(provider=ProviderType.MOCK, model_id="mock"))
+    )
+    result = await agent.analyze(make_state())
+    assert result["analysis_source"] == "mock"
+    assert result["analysis_model"] == "none"
+    assert result["analysis_degraded"] is True
 
 
 def test_build_investment_tools_excludes_validate_constraints():

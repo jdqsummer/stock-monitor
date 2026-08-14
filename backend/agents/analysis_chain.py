@@ -540,6 +540,9 @@ class AnalysisChain:
             ],
             "analysis_completed": datetime.now().isoformat(),
             "rating_confidence": 0.90,
+            "analysis_source": "manual",
+            "analysis_model": "none",
+            "analysis_degraded": False,
         })
 
         return AnalysisReport.from_state(state)

@@ -73,19 +73,39 @@ class OpenHarnessAgent:
         """是否有真实 LLM（mock 视为不可用，与 is_llm_available 一致）"""
         return bool(self.llm) and self.llm.config.provider != ProviderType.MOCK
 
+    @property
+    def _is_mock(self) -> bool:
+        """LLM provider 是否为 Mock（S5：mock=测试环境假数据，生产不出现）"""
+        return bool(self.llm) and self.llm.config.provider == ProviderType.MOCK
+
     async def analyze(self, state: dict) -> dict:
         if not self.has_real_llm:
-            return await self._rule_based(state)
-        # LLM 模式 → 开源 OpenHarness 组件（无头嵌入）
-        from backend.agents.harness_component import run_analysis_agent
+            updates = await self._rule_based(state)
+            updates["analysis_source"] = "mock" if self._is_mock else "rule-based"
+            updates["analysis_model"] = "none"
+            updates["analysis_degraded"] = True
+            return updates
+        from backend.agents.dsh_orchestrator import DshOrchestrator
 
+        if not DshOrchestrator.is_available():
+            logger.warning("DSH 未配置（DSH_ENABLED/DSH_ENGINE_URL），降级纯规则子链")
+            updates = await self._rule_based(state)
+            updates.update({"analysis_source": "rule-based", "analysis_model": "none",
+                            "analysis_degraded": True})
+            return updates
+        orch = DshOrchestrator()
         try:
-            return await run_analysis_agent(state, llm_provider=self.llm)
+            updates = await orch.analyze(state, model=state.get("llm_model", ""))
+            updates.setdefault("analysis_source", "dsh-llm")
+            return updates
         except Exception as exc:
-            logger.error(f"OpenHarness 组件分析失败，降级规则子链: {exc}", exc_info=True)
+            logger.error(f"DSH 分析失败，降级规则子链: {exc}", exc_info=True)
             errors = state.setdefault("errors", [])
-            errors.append(f"OpenHarness 组件降级: {exc}")
-            return await self._rule_based(state)
+            errors.append(f"DSH 分析降级: {exc}")
+            updates = await self._rule_based(state)
+            updates.update({"analysis_source": "rule-based", "analysis_model": "none",
+                            "analysis_degraded": True})
+            return updates
 
     async def _rule_based(self, state: dict) -> dict:
         """纯规则子链：按序执行现有节点逻辑 + 约束校验 + 输出"""
