@@ -17,7 +17,8 @@
   "model": "deepseek-v4-flash",
   "session_id": "600519-2026-08-14",
   "pe_low_override": null,
-  "pe_high_override": null
+  "pe_high_override": null,
+  "ralph_enabled": false
 }
 ```
 
@@ -41,5 +42,9 @@
 字段语义：`result` = 五段 stage 键（与前端 stage_results 契约逐字一致）；`model` = 真实路由模型
 （`request/context` 事件，非配置默认值，I6）；`usage` = `assistant/chunk` usage 累加（I7）；
 `degraded` = SDK 宿主内部降级（如 DSH 会话失败但宿主仍有兜底输出）；`error` = 宿主捕获的错误文本。
+
+`ralph_enabled`（P4 新增，缺省 `false`）：深度模式开关。Orchestrator 在 `model == "deepseek-v4-pro"` 时
+置 `true`；`sdk_host` 经提示词透传给模型填 `invest-five-stage` 工具参数。开启时 `result` 附加**顶层键**
+`ralph_review`（`{passed, issues, revision}`），不侵入 4 个 stage 键；关闭时 `result` 与上表完全一致。
 
 > ⚠️ 上表请求/响应字段为**契约定稿**，Task 6 `sdk_host.py` 与 Task 3 `DshOrchestrator.analyze` 必须与之一致。

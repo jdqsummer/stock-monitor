@@ -75,6 +75,7 @@ class HttpDshRunner:
             "session_id": session_id,
             "pe_low_override": pe_low_override,
             "pe_high_override": pe_high_override,
+            "ralph_enabled": model == "deepseek-v4-pro",   # Q3：深度模式自动开启
         }
         resp = await self._client.post(f"{self._base_url}/trigger", json=payload)
         resp.raise_for_status()

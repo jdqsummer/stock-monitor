@@ -44,6 +44,7 @@ def test_trigger_contract_shape(monkeypatch):
     resp = client.post("/trigger", json={
         "code": "600519", "name": "贵州茅台", "context": {}, "model": "deepseek-v4-pro",
         "session_id": "600519-2026-08-14", "pe_low_override": None, "pe_high_override": None,
+        "ralph_enabled": True,
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -52,6 +53,26 @@ def test_trigger_contract_shape(monkeypatch):
     assert body["usage"]["input_tokens"] == 2906
     assert body["usage"]["prompt_cache_hit_tokens"] == 7680
     assert body["degraded"] is False and body["error"] is None
+
+
+def test_trigger_ralph_enabled_field_accepted():
+    """Q3：TriggerRequest 接受 ralph_enabled 字段（默认 false，深度模式 true）。"""
+    assert sdk_host.TriggerRequest(code="600519").ralph_enabled is False
+    req = sdk_host.TriggerRequest(code="600519", ralph_enabled=True)
+    assert req.ralph_enabled is True
+
+
+def test_build_prompt_includes_ralph_hint_when_enabled():
+    """Q3：ralph_enabled=true 时提示词引导模型填 invest-five-stage 的 ralph_enabled=true。"""
+    req = sdk_host.TriggerRequest(code="600519", name="贵州茅台", ralph_enabled=True)
+    prompt = sdk_host._build_prompt(req)
+    assert "ralph_enabled" in prompt and "Ralph 自审" in prompt
+
+
+def test_build_prompt_no_ralph_hint_by_default():
+    req = sdk_host.TriggerRequest(code="600519")
+    prompt = sdk_host._build_prompt(req)
+    assert "Ralph 自审" not in prompt
 
 
 def test_trigger_missing_five_stage_returns_degraded(monkeypatch):

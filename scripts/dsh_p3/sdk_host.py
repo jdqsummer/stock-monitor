@@ -43,6 +43,7 @@ class TriggerRequest(BaseModel):
     session_id: str = ""
     pe_low_override: float | None = None
     pe_high_override: float | None = None
+    ralph_enabled: bool = False   # Q3 深度自审（V4-Pro 深度模式）
 
 
 class TriggerResponse(BaseModel):
@@ -58,12 +59,16 @@ def _build_prompt(req: TriggerRequest) -> str:
     if req.pe_low_override is not None and req.pe_high_override is not None:
         pe_hint = (f"\n敏感性场景：请使用 PE 区间 {req.pe_low_override}-{req.pe_high_override} "
                    f"（覆盖 LLM 自设区间，仅本次敏感性重跑）。")
+    ralph_hint = ""
+    if req.ralph_enabled:
+        ralph_hint = ("\n深度模式：请将 invest-five-stage 工具的 ralph_enabled 置为 true，"
+                      "在五段结论后执行 Ralph 自审。")
     return (
         f"对 {req.code}（{req.name or ''}）执行价值投资五段式安全边际分析。\n"
         f"请调用 invest-five-stage 工具（stock_code={req.code}, stock_name={req.name or ''}），"
         f"工具会注入只读上下文并跑固定五段 pipeline。\n"
         f"注入的只读上下文（由 Python collect_data 预聚合，勿自行读盘）：\n"
-        f"{req.context}\n{pe_hint}"
+        f"{req.context}\n{pe_hint}{ralph_hint}"
     )
 
 

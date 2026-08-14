@@ -36,6 +36,8 @@ export interface StageSchemas {
   reverse: Record<string, unknown>
   anchor: Record<string, unknown>
   conclusion: Record<string, unknown>
+  /** ⑤b Ralph 自审输出 schema（P4 新增，无独立 skill 目录时给宽松 object schema）。 */
+  ralph: Record<string, unknown>
 }
 
 export interface CalcInput {
@@ -56,6 +58,17 @@ export interface PreparedArgs {
   blocks: BlockMeta[]
   schemas: StageSchemas
   calc: Record<string, unknown>
+  /** Q3 深度自审开关（V4-Pro 深度模式开启，P4）。 */
+  ralph_enabled: boolean
+}
+
+export interface PrepareOptions {
+  dshRoot: string
+  context?: Record<string, unknown>
+  peLow?: number
+  peHigh?: number
+  /** Q3 Ralph 自审开关（P4 新增，缺省 false）。 */
+  ralphEnabled?: boolean
 }
 
 /** 解析 SKILL.md frontmatter（首个 --- 与第二个 --- 之间的 YAML 简化解析，值仅标量/数组）。 */
@@ -125,6 +138,18 @@ export function loadStageSchemas(dshRoot: string): StageSchemas {
     reverse: readSchema('run-reverse-checklist'),
     anchor: readSchema('anchor-industry-pe'),
     conclusion: readSchema('output-conclusion'),
+    // ⑤b ralph-review：无独立 skill 目录（.dsh/skills/ 下无 ralph 目录），给宽松 object schema。
+    // （brief 原文 `readSchema('output-conclusion')` 会把结论 schema 的 properties 展开覆盖
+    //  ralph 的 passed/issues/revision，故此处直接给宽松 schema，不再读结论目录。）
+    ralph: {
+      type: 'object',
+      properties: {
+        passed: { type: 'boolean' },
+        issues: { type: 'array', items: { type: 'string' } },
+        revision: { type: 'string' },
+      },
+      required: ['passed'],
+    },
   }
 }
 
@@ -167,7 +192,7 @@ export function computeCalc(input: CalcInput): Record<string, unknown> {
 export function prepareArgs(
   stockCode: string,
   stockName: string,
-  opts: { dshRoot: string; context?: Record<string, unknown>; peLow?: number; peHigh?: number },
+  opts: PrepareOptions,
 ): PreparedArgs {
   const context = opts.context ?? {}
   const financials = (context.financials ?? []) as FinancialReport[]
@@ -195,5 +220,6 @@ export function prepareArgs(
       pe_high: peHigh,
       industry_category,
     }),
+    ralph_enabled: opts.ralphEnabled === true,
   }
 }

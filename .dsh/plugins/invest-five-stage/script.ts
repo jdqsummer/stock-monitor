@@ -56,10 +56,24 @@ const conclusion = await agent(
   '否决规则：checklist_veto 或 unassessable_risk 为 true 时 final_rating 必须为 🔴 且建议坚决放弃。',
   { schema: args.schemas.conclusion, label: 'conclusion', phase: '⑤结论' }
 );
+// ⑤b ralph-review（Q3，可选：深度模式 ralph_enabled=true 开启）。
+// ⚠️ 脚本 realm 无直接工具调用语法——经 agent() 子代理触发：该子代理 scope 已注册 ralph
+//    工具（headless base preset，P0-1 T4 实测工具名 ralph，非 ralph-loop）。
+//    ralph(objective, maxRounds?)：每轮全新子 Agent 执行同一 objective 直到达成。
+const ralphReview = args.ralph_enabled
+  ? await agent(
+      '扮演独立审稿人：审查下方五段结论的一致性（结论与定性矛盾？评级与距离一致？' +
+      'veto 是否正确执行？证据引用是否充分？）。可调用 ralph 工具对 objective ' +
+      '"检查五段结论一致性并给出修正建议" 执行自审循环直到通过，然后输出审稿结论。' +
+      '五段结论：' + JSON.stringify({ qualitative, reverse, merged, conclusion }),
+      { schema: args.schemas.ralph, label: 'ralph-review', phase: '⑤b自审' }
+    )
+  : undefined;
 return {
   analyze_qualitative: qualitative,
   run_reverse_checklist: reverse,
   anchor_industry_pe: merged,
   output_conclusion: conclusion,
+  ...(args.ralph_enabled ? { ralph_review: ralphReview } : {}),
 };
 `

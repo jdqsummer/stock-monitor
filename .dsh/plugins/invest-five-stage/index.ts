@@ -34,15 +34,18 @@ interface PreparedArgs {
   context: Record<string, unknown>
   /** ② 步定性子块列表（host 扫描 analyze-qualitative/blocks/ 注入）。 */
   blocks: unknown[]
-  /** 每 stage 的 output.schema.json（qualitative/reverse/anchor/conclusion）。 */
+  /** 每 stage 的 output.schema.json（qualitative/reverse/anchor/conclusion/ralph）。 */
   schemas: {
     qualitative: unknown
     reverse: unknown
     anchor: unknown
     conclusion: unknown
+    ralph: unknown
   }
   /** ④ 步 invest-calc 确定性结果（年化/击球区/信号灯）。 */
   calc: Record<string, unknown>
+  /** ⑤b Q3 深度自审开关（P4）。 */
+  ralph_enabled: boolean
 }
 
 /** 注册 `invest-five-stage` 工具：模型只填股票参数，脚本不可改。 */
@@ -57,6 +60,7 @@ export function apply(ctx: any): void {
       context: { type: 'string', required: false, description: '只读注入上下文（JSON 字符串：financials/current_price/industry_category 等，P3 Orchestrator 预聚合）' },
       pe_low_override: { type: 'number', required: false, description: 'PE 下限覆盖（D2 敏感性重跑，覆盖 LLM 自设区间）' },
       pe_high_override: { type: 'number', required: false, description: 'PE 上限覆盖（D2 敏感性重跑）' },
+      ralph_enabled: { type: 'boolean', required: false, description: 'Q3 深度自审开关（V4-Pro 深度模式开启）' },
     },
     output: {
       schema: { type: 'object' },
@@ -77,6 +81,7 @@ export function apply(ctx: any): void {
         context,
         peLow: args.pe_low_override ?? undefined,
         peHigh: args.pe_high_override ?? undefined,
+        ralphEnabled: args.ralph_enabled === true,
       })
 
       // P0 T5 真实签名：start() 返回 run 对象（非最终值），须 await run.result 并判 stopReason。

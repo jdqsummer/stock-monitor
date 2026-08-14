@@ -56,7 +56,7 @@ describe('scanBlocks（② 步 blocks 目录扫描）', () => {
 describe('loadStageSchemas（E2 输出 schema 读取）', () => {
   it('读 4 个 stage output.schema.json 注入 schemas', () => {
     const schemas = loadStageSchemas(dshRoot)
-    expect(Object.keys(schemas)).toEqual(['qualitative', 'reverse', 'anchor', 'conclusion'])
+    expect(Object.keys(schemas)).toEqual(['qualitative', 'reverse', 'anchor', 'conclusion', 'ralph'])
     // qualitative schema 是 analyze-qualitative 的 output.schema.json（P3 激活：Q1/Q2 producer 字段 evidence/confidence 已入 required）
     expect(schemas.qualitative).toMatchObject({
       type: 'object',
@@ -137,5 +137,31 @@ describe('prepareArgs P3 参数（context / PE override）', () => {
       peLow: 16.2, peHigh: 19.8 })   // PE ×0.9
     expect(sens.calc.pe_low).not.toBe(base.calc.pe_low)
     expect(sens.calc.pe_low).toBeCloseTo(16.2, 1)
+  })
+})
+
+describe('prepareArgs ralph 开关（Q3 深度自审，P4）', () => {
+  it('ralph_enabled=true 时注入 ralph 布尔与审稿 schema', () => {
+    const args = prepareArgs('600519', '贵州茅台', {
+      dshRoot,
+      context: undefined,
+      ralphEnabled: true,
+    })
+    expect(args.ralph_enabled).toBe(true)
+    expect(args.schemas.ralph).toBeDefined()
+    expect(args.schemas.ralph).toMatchObject({
+      type: 'object',
+      required: ['passed'],
+    })
+  })
+
+  it('ralph_enabled 缺省时默认 false', () => {
+    const args = prepareArgs('600519', '贵州茅台', {
+      dshRoot,
+      context: undefined,
+    })
+    expect(args.ralph_enabled).toBe(false)
+    // 契约安全：ralph_enabled=false 时 schema 仍注入（供脚本可选分支引用），但布尔为 false
+    expect(args.schemas.ralph).toBeDefined()
   })
 })

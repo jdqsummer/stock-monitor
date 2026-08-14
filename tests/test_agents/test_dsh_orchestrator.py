@@ -73,8 +73,30 @@ async def test_http_runner_posts_trigger_contract():
     assert captured["body"]["code"] == "600519"
     assert captured["body"]["session_id"] == "600519-2026-08-14"
     assert captured["body"]["context"] == {"quote": {}}
+    assert captured["body"]["ralph_enabled"] is False     # flash 模式不开启深度自审
     assert resp["result"]["anchor_industry_pe"]["pe_low"] == 18.0
     assert resp["model"] == "deepseek-v4-flash"
+
+
+@pytest.mark.asyncio
+async def test_http_runner_posts_ralph_enabled_for_deep_mode():
+    """Q3：model == deepseek-v4-pro 时 payload 自动带 ralph_enabled=true。"""
+    captured = {}
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "result": RESULT, "model": "deepseek-v4-pro",
+            "usage": {"input_tokens": 10, "output_tokens": 5, "prompt_cache_hit_tokens": 0},
+            "degraded": False, "error": None,
+        })
+    runner = HttpDshRunner(base_url="http://dsh-engine:8000", timeout=60.0,
+                           client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    try:
+        await runner.run_five_stage(code="600519", name="贵州茅台", context={"quote": {}},
+                                    model="deepseek-v4-pro", session_id="600519-2026-08-14")
+    finally:
+        await runner._client.aclose()
+    assert captured["body"]["ralph_enabled"] is True
 
 
 class FakeRunner:
