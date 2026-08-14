@@ -46,13 +46,20 @@ export function apply(ctx: any): void {
     const now = Date.now()
     const prev = lastPostAt.get(name) ?? now
     lastPostAt.set(name, now)
-    console.log(toJsonLine({
-      event: 'tools/post-execute', name,
-      durationMs: now - prev,             // 相邻同名工具 post 间隔（近似耗时，非精确 pre→post）
-      resultSize: JSON.stringify(result ?? {}).length,
-      ts: now,
-    }))
-    return next()                          // 透传，不 block（telemetry 只读）
+    // 采集体整体 try/catch：真实工具 result 可能含循环引用 → JSON.stringify 抛错。
+    // 采集失败绝不能中断 post-execute 瀑布流——catch 只记「telemetry-collect-error」，
+    // 之后恒 `return next()`（telemetry 只读，不 block）。
+    try {
+      console.log(toJsonLine({
+        event: 'tools/post-execute', name,
+        durationMs: now - prev,             // 相邻同名工具 post 间隔（近似耗时，非精确 pre→post）
+        resultSize: JSON.stringify(result ?? {}).length,
+        ts: now,
+      }))
+    } catch (e: any) {
+      console.log(toJsonLine({ event: 'telemetry-collect-error', name, error: String(e?.message ?? e), ts: now }))
+    }
+    return next()                          // 恒放行，telemetry 只读（采集成败均不 block 瀑布流）
   })
 
   // ⚠️ headless 冒烟已核实（P3 Task 10）：`tools/pre-execute` 运行时**可用**，契约签名
