@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     VERIFY_CODE_RATE_LIMIT_SECONDS: int = 60  # 同一邮箱 60s 内不可重复发送
 
     # DSH 分析引擎（P3 桥接）
+    # 开启后（DSH_ENABLED=True 且 DSH_ENGINE_URL 非空）方产生 LLM 定性分析；
+    # 未开启时即便配置了 LLM provider 也走纯规则降级——LLM 分析强依赖 DSH，P4 部署注意。
     DSH_ENABLED: bool = False                # 总开关：False 时走纯规则降级链
     DSH_ENGINE_URL: str = ""                 # dsh-engine HTTP 触发端点，如 http://dsh-engine:8000
     DSH_TIMEOUT_SECONDS: float = 600.0       # 单次五段分析超时（P2 实测 5 个 agent() 串行 >8min，120s 会误降级）

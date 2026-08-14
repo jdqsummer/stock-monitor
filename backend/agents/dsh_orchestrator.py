@@ -12,6 +12,7 @@ from datetime import date
 from typing import Protocol, TypedDict
 
 import httpx
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -153,17 +154,29 @@ def _block_text(block: object) -> str:
     return ""
 
 
+def _json_safe(value: object) -> object:
+    """pydantic 对象 → 普通 dict（JSON-safe，mode="json" 把 datetime 等转 ISO 串）。
+
+    已是 dict/原始值 原样透传（兼容既有 dict 形状 fixture）。data_to_state 落库的是
+    pydantic 对象，HttpDshRunner 用 `json=payload` 序列化——不做展开必抛 TypeError。
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    return value
+
+
 def build_context(state: dict) -> dict:
     """从 AnalysisState 构建只读注入上下文（① read_context 直接读注入上下文，不绕回 Python）。
 
     只挑确定性字段注入（financials/current_price/…），原始 JSON 不进上下文（D1 上下文节约精神）。
+    quote/financials/news 为 pydantic 对象，先 _json_safe 展开为普通 dict 保证全 JSON-safe。
     """
     return {
         "code": state.get("stock_code", ""),
         "name": state.get("stock_name", ""),
-        "quote": state.get("quote"),
-        "financials": (state.get("financials") or [])[:8],
-        "news": state.get("news", [])[:10],
+        "quote": _json_safe(state.get("quote")),
+        "financials": [_json_safe(f) for f in (state.get("financials") or [])[:8]],
+        "news": [_json_safe(n) for n in (state.get("news") or [])[:10]],
         "industry_category": state.get("industry_category", ""),
         "current_price": state.get("current_price", 0.0),
         "total_market_cap": state.get("total_market_cap", 0.0),
@@ -217,9 +230,20 @@ class DshOrchestrator:
         runner: DshRunner | None = None,
         base_url: str = "",
         timeout: float = 600.0,
-        model_default: str = "deepseek-v4-flash",
+        model_default: str = "",
         budget: DshBudgetTracker | None = None,
     ):
+        # C1：参数缺省时读 settings 兜底——生产 `DshOrchestrator()` 即拿到正确 URL/budget/model。
+        # 否则 base_url 空 → POST /trigger 抛 UnsupportedProtocol → 重试 → 静默降级 rule-based；
+        # budget 不传 → I7 预算守卫生产死代码。
+        from backend.config import settings
+
+        base_url = base_url or settings.DSH_ENGINE_URL
+        model_default = model_default or settings.DSH_MODEL_DEFAULT
+        budget = budget or (
+            DshBudgetTracker(settings.DSH_BUDGET_PER_ANALYSIS, settings.DSH_DAILY_BUDGET)
+            if settings.DSH_ENABLED else None
+        )
         self._runner = runner or HttpDshRunner(base_url=base_url or "", timeout=timeout)
         self._model_default = model_default
         self._budget = budget

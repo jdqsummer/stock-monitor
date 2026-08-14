@@ -109,6 +109,12 @@ async with lock:
 
 > 与 DSH 容器 `max_sessions`（4-8）的**两层闸**关系见 `.dsh/docs/i2-concurrency.md` 2.1：backend 提交并发 ≤ DSH `max_sessions` 的对齐公式留待 P4 压测定值。
 
+## 部署注意（P4 Docker 化前必读）
+
+1. **LLM 定性分析强依赖 DSH**：旧 LLM 直连路径已移除（`backend/agents/harness_component.py` 现为死代码，物理删除归 P4）。`DSH_ENABLED=True` 且 `DSH_ENGINE_URL` 非空时，`OpenHarnessAgent` 才走 `DshOrchestrator` 五段 LLM 分析；否则即便配置了 LLM provider 也走 `_rule_based` 纯规则降级（`analysis_source="rule-based"`）。
+2. **`DshOrchestrator()` 生产构造自动读 settings**：`base_url`/`budget`/`model_default` 参数缺省时从 `backend.config.settings` 兜底（`DSH_ENGINE_URL`/`DSH_BUDGET_PER_ANALYSIS`/`DSH_DAILY_BUDGET`/`DSH_MODEL_DEFAULT`）。因此**部署只需配 .env 的 `DSH_ENABLED`/`DSH_ENGINE_URL`**，无需改代码传参；`DSH_ENABLED=True` 时 I7 预算守卫自动生效。
+3. **检查清单**：上线前确认 `DSH_ENGINE_URL` 指向 sdk_host 可达地址、`DSH_RETRY_COUNT` ≥1；`curl -X POST {url}/trigger` 冒烟通过后再放开 `DSH_ENABLED`。未配置 DSH 环境时保持 `DSH_ENABLED=False` 走规则降级，平台不阻断。
+
 ## 附：本轮改动清单（Task 7）
 
 - `backend/services/analysis_job_svc.py`：`_code_locks`/`_locks_guard`/`_lock_for`/`_timeout_for` + `submit(..., model="")` + `_process_one` 读 `job.get("model")`

@@ -47,16 +47,31 @@ export interface ClaimLike {
   evidence?: EvidenceItem[]
 }
 
-// P3 激活：knownPaths 指向 Orchestrator 注入的真实只读上下文键（Task 3 build_context 产物）。
-// evidence.source 形如 `context.financials[0].net_profit_parent`；顶层键含 quote/news（全量注入结构）。
+// P3 激活：knownPaths 指向 Orchestrator 注入的真实只读上下文键（Task 3 build_context 产物，C2 后全 JSON-safe）。
+// evidence.source 形如 `context.quote.current_price` / `context.financials[0].net_profit_parent`
+// / `context.news[0].title`。quote/financials/news 均按 build_context 真实注入字段展开，
+// news 0..9 与 build_context `news[:10]` 对齐。
 export const KNOWN_PATHS: string[] = [
   'context.code', 'context.name', 'context.current_price', 'context.total_market_cap',
   'context.total_shares', 'context.net_profit_parent', 'context.net_profit_deducted',
   'context.industry_category',
+  // context.quote.*（StockQuote 注入字段）
+  'context.quote.code', 'context.quote.name', 'context.quote.current_price',
+  'context.quote.change_pct', 'context.quote.change_amount', 'context.quote.total_market_cap',
+  'context.quote.turnover_rate', 'context.quote.pe_dynamic', 'context.quote.total_shares',
+  'context.quote.update_time',
+  // context.financials[i].*（FinancialReport 注入字段）
   ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].report_period`),
   ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_parent`),
   ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_deducted`),
   ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].revenue`),
+  ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].roe`),
+  // context.news[i].*（CompanyNews 注入字段）
+  ...Array.from({ length: 10 }, (_, i) => `context.news[${i}].title`),
+  ...Array.from({ length: 10 }, (_, i) => `context.news[${i}].summary`),
+  ...Array.from({ length: 10 }, (_, i) => `context.news[${i}].sentiment`),
+  ...Array.from({ length: 10 }, (_, i) => `context.news[${i}].publish_time`),
+  ...Array.from({ length: 10 }, (_, i) => `context.news[${i}].url`),
 ]
 
 export function validateEvidence(claim: ClaimLike, knownPaths: string[] = KNOWN_PATHS): ValidationResult {

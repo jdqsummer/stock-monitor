@@ -49,13 +49,13 @@ export function StockDetail() {
       <Space style={{ marginBottom: 16 }}>
         <SignalBadge signal={snap.signal} distancePct={snap.distance_pct} />
         <Tag>{SOURCE_LABEL[snap.analysis_source || 'manual'] || snap.analysis_source}</Tag>
-        {snap.analysis_degraded ? (
+        {snap.analysis_source === 'dsh-llm' ? (
+          <Tag color="blue">DSH · {snap.analysis_model || 'deepseek-v4-flash'}</Tag>
+        ) : snap.analysis_degraded ? (
           <div style={{ background: '#fff7e6', border: '1px solid #ffd591', padding: '8px 12px', borderRadius: 6, marginBottom: 12 }}>
             ⚠️ 本次为纯规则降级分析（无 LLM 参与），只做了确定性计算与规则校验，不含定性/逆向/估值 LLM 判断。结论仅供参考，建议人工复核后再决策。
           </div>
-        ) : (
-          <Tag color="blue">DSH · {snap.analysis_model || 'deepseek-v4-flash'}</Tag>
-        )}
+        ) : null}
         {snap.analysis_completed_at && (
           <span style={{ color: '#999', fontSize: 12 }}>
             {new Date(snap.analysis_completed_at).toLocaleString()}

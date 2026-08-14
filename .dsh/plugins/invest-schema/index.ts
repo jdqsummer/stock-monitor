@@ -104,7 +104,7 @@ export function apply(ctx: any): void {
     }
     if (q1MissingEvidence) {
       notices.push(buildNotice(
-        `[invest-schema] Q1 证据缺失提示：结论尚未携带 evidence 字段（producer schema 待 P3 补 evidence），当前降级为警告不 block`,
+        `[invest-schema] 结论缺少 evidence（Q1）：每个 claim 必须 ≥1 条证据支撑，当前降级为警告不 block，请补数据支撑后人工复核`,
         'invest-five-stage Q1 evidence 缺失',
       ))
     }

@@ -74,15 +74,25 @@ function validateStageOutput(stageKey, output) {
 		errors
 	};
 }
-// P3 激活：knownPaths 指向 Orchestrator 注入的真实只读上下文键（Task 3 build_context 产物）。
+// P3 激活：knownPaths 指向 Orchestrator 注入的真实只读上下文键（Task 3 build_context 产物，C2 后全 JSON-safe）。
 const KNOWN_PATHS = [
 	"context.code", "context.name", "context.current_price", "context.total_market_cap",
 	"context.total_shares", "context.net_profit_parent", "context.net_profit_deducted",
 	"context.industry_category",
+	"context.quote.code", "context.quote.name", "context.quote.current_price",
+	"context.quote.change_pct", "context.quote.change_amount", "context.quote.total_market_cap",
+	"context.quote.turnover_rate", "context.quote.pe_dynamic", "context.quote.total_shares",
+	"context.quote.update_time",
 	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].report_period`),
 	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_parent`),
 	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_deducted`),
-	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].revenue`)
+	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].revenue`),
+	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].roe`),
+	...Array.from({ length: 10 }, (_, i) => `context.news[${i}].title`),
+	...Array.from({ length: 10 }, (_, i) => `context.news[${i}].summary`),
+	...Array.from({ length: 10 }, (_, i) => `context.news[${i}].sentiment`),
+	...Array.from({ length: 10 }, (_, i) => `context.news[${i}].publish_time`),
+	...Array.from({ length: 10 }, (_, i) => `context.news[${i}].url`)
 ];
 function validateEvidence(claim, knownPaths = KNOWN_PATHS) {
 	const errors = [];
@@ -215,7 +225,7 @@ function apply(ctx) {
 		};
 		const notices = [];
 		if (conf.overall === "low") notices.push(buildNotice(`[invest-schema] 置信度不足警告：≥2 个关键步骤为 low，结论建议人工验证（Q2）`, "invest-five-stage 置信度不足"));
-		if (q1MissingEvidence) notices.push(buildNotice(`[invest-schema] Q1 证据缺失提示：结论尚未携带 evidence 字段（producer schema 待 P3 补 evidence），当前降级为警告不 block`, "invest-five-stage Q1 evidence 缺失"));
+		if (q1MissingEvidence) notices.push(buildNotice(`[invest-schema] 结论缺少 evidence（Q1）：每个 claim 必须 ≥1 条证据支撑，当前降级为警告不 block，请补数据支撑后人工复核`, "invest-five-stage Q1 evidence 缺失"));
 		if (contextWarnings(value).length > 0) notices.push(buildNotice(`[invest-schema] 信号灯量纲提示（redlines 比率 0.5 ↔ 百分比 50）：${ratioToPercent(.5)}`, "invest-five-stage 信号灯量纲提示"));
 		if (notices.length > 0) {
 			const downstream = await next();
