@@ -186,31 +186,35 @@ class AnalysisAgent:
                             "analysis_degraded": True})
             return updates
         orch = DshOrchestrator()
-        # 5.1 阶段级部分失败 → 整体重试 ≤ DSH_RETRY_COUNT 次（默认 1 = 首次失败后再试 1 次，
-        # 共 2 次尝试）；重试仍失败才走降级。attempt < retries 时 continue，最后一次失败落入
-        # 降级分支（_rule_based + 三标记 + errors 记录）。
-        from backend.config import settings
-        retries = max(0, settings.DSH_RETRY_COUNT)
-        for attempt in range(retries + 1):
-            try:
-                updates = await orch.analyze(state, model=state.get("llm_model", ""))
-                _circuit_state["consecutive_failures"] = 0   # S6：成功清零熔断计数
-                updates.setdefault("analysis_source", "dsh-llm")
-                return updates
-            except Exception as exc:
-                _circuit_state["consecutive_failures"] += 1   # S6：失败递增熔断计数
-                if attempt < retries:
-                    logger.warning(
-                        f"DSH 分析失败（第 {attempt + 1} 次），重试第 {attempt + 2}/{retries + 1} 次: {exc}"
-                    )
-                    continue
-                logger.error(f"DSH 分析失败，降级规则子链: {exc}", exc_info=True)
-                errors = state.setdefault("errors", [])
-                errors.append(f"DSH 分析降级: {exc}")
-                updates = await self._rule_based(state)
-                updates.update({"analysis_source": "rule-based", "analysis_model": "none",
-                                "analysis_degraded": True})
-                return updates
+        try:
+            # 5.1 阶段级部分失败 → 整体重试 ≤ DSH_RETRY_COUNT 次（默认 1 = 首次失败后再试 1 次，
+            # 共 2 次尝试）；重试仍失败才走降级。attempt < retries 时 continue，最后一次失败落入
+            # 降级分支（_rule_based + 三标记 + errors 记录）。
+            from backend.config import settings
+            retries = max(0, settings.DSH_RETRY_COUNT)
+            for attempt in range(retries + 1):
+                try:
+                    updates = await orch.analyze(state, model=state.get("llm_model", ""))
+                    _circuit_state["consecutive_failures"] = 0   # S6：成功清零熔断计数
+                    updates.setdefault("analysis_source", "dsh-llm")
+                    return updates
+                except Exception as exc:
+                    _circuit_state["consecutive_failures"] += 1   # S6：失败递增熔断计数
+                    if attempt < retries:
+                        logger.warning(
+                            f"DSH 分析失败（第 {attempt + 1} 次），重试第 {attempt + 2}/{retries + 1} 次: {exc}"
+                        )
+                        continue
+                    logger.error(f"DSH 分析失败，降级规则子链: {exc}", exc_info=True)
+                    errors = state.setdefault("errors", [])
+                    errors.append(f"DSH 分析降级: {exc}")
+                    updates = await self._rule_based(state)
+                    updates.update({"analysis_source": "rule-based", "analysis_model": "none",
+                                    "analysis_degraded": True})
+                    return updates
+        finally:
+            # 释放 HttpDshRunner 自建连接池（DshOrchestrator 每 analyze 构造一次，避免泄漏）
+            await orch.aclose()
 
     async def _rule_based(self, state: dict) -> dict:
         """纯规则子链（I4 收敛）：DSH TS /calc 端点算 4 个确定性节点（profit_quality/annualize/
@@ -223,22 +227,27 @@ class AnalysisAgent:
             calc = HttpCalcClient(base_url=settings.DSH_CALC_URL,
                                   timeout=min(settings.DSH_TIMEOUT_SECONDS, 30.0))
 
-        if calc is not None:
-            # TS 主路径：4 个确定性 op 逐个调 /calc；op 失败时该 op 回退 Python 节点。
-            # 3 个无 TS 对应节点（PE 区间/机械评级/人工下调）在 _calc_deterministic 内按序 Python 执行。
-            await self._calc_deterministic(state, calc)
-        else:
-            # 未配置 DSH_CALC_URL：纯 Python 全量规则子链（与 Task 1 行为完全一致）
-            for node_fn in RULE_BASED_STEPS:
-                state.update(await node_fn(state))
+        try:
+            if calc is not None:
+                # TS 主路径：4 个确定性 op 逐个调 /calc；op 失败时该 op 回退 Python 节点。
+                # 3 个无 TS 对应节点（PE 区间/机械评级/人工下调）在 _calc_deterministic 内按序 Python 执行。
+                await self._calc_deterministic(state, calc)
+            else:
+                # 未配置 DSH_CALC_URL：纯 Python 全量规则子链（与 Task 1 行为完全一致）
+                for node_fn in RULE_BASED_STEPS:
+                    state.update(await node_fn(state))
 
-        results = await self.constraint_engine.evaluate(state)
-        self._apply_hard_constraints(state, results)
+            results = await self.constraint_engine.evaluate(state)
+            self._apply_hard_constraints(state, results)
 
-        updates = await cross_check_and_output_node(state)
-        state.update(updates)
-        state.update(apply_veto(state))   # 否决兜底（无 LLM 时通常不触发，保持行为一致）
-        return state
+            updates = await cross_check_and_output_node(state)
+            state.update(updates)
+            state.update(apply_veto(state))   # 否决兜底（无 LLM 时通常不触发，保持行为一致）
+            return state
+        finally:
+            # 释放 HttpCalcClient 自建连接池（每次 _rule_based 构造一次，避免 httpx 连接池泄漏）
+            if calc is not None and hasattr(calc, "aclose"):
+                await calc.aclose()
 
     async def _calc_deterministic(self, state: dict, calc) -> None:
         """串行执行确定性链：4 个 op 经 /calc（该 op 失败回退 Python 节点），

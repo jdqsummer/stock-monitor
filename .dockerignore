@@ -1,15 +1,16 @@
 # Git
-.git
+.git/
 .gitignore
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+# Python 缓存
+**/__pycache__/
+**/*.py[cod]
 .pytest_cache/
 venv/
 .venv/
+
+# Node（本地 dev node_modules 不进镜像；生产依赖经 pnpm/pip 安装）
+**/node_modules/
 
 # 数据库与配置（运行时注入，不进镜像）
 *.db
@@ -17,29 +18,21 @@ venv/
 .env
 .env.local
 
-# Node / 前端
-node_modules/
-frontend/node_modules/
-frontend/dist/
+# DSH 运行时产物（headless 会话日志 / home 目录）
+.dsh-home/
+_session_*.jsonl
 
-# 文档与测试（生产镜像不需要）
-docs/
-tests/
-*.md
+# P0 验证资产（SDK clone 889M + 便携 node + 会话日志，dsh-engine 只需 dsh_p3）
+scripts/dsh_p0/deepseek-harness/
+
+# 构建产物 / 日志
+dist/
+build/
+logs/
 
 # 编辑器/系统
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-
-# DSH P4：backend 镜像不携带 DSH 资产（dsh-engine 独立构建 + 显式 COPY，见 dsh-engine/Dockerfile.dockerignore）
-.dsh/
-dsh-engine/
-skills/
-sessions/
-scripts/dsh_p0/deepseek-harness/
-scripts/dsh_p0/.dsh-home/
-scripts/dsh_p0/_session_*.jsonl
-scripts/dsh_p3/.dsh-home/
-scripts/dsh_p3/_session_*.jsonl
+.superpowers/

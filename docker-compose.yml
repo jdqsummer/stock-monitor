@@ -13,6 +13,7 @@ services:
       # DSH 接线（值可被 .env 覆盖：${VAR:-default} 优先读 .env）
       - DSH_ENABLED=${DSH_ENABLED:-true}
       - DSH_ENGINE_URL=${DSH_ENGINE_URL:-http://dsh-engine:8001}
+      - DSH_CALC_URL=${DSH_CALC_URL:-http://dsh-engine:8002}
     # 启动前先跑 alembic 迁移建表（新库无表则 API 报错），再启动 uvicorn
     command: sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
     # SQLite 数据持久化：容器重建不丢库
@@ -69,6 +70,8 @@ services:
         NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
     environment:
       - DSH_ENGINE_PORT=8001
+      # I4 确定性计算端点端口（calc_host.py 读此 env；sdk_host 8001 与其无冲突）
+      - DSH_CALC_PORT=8002
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       - DSH_TOOLS_MODE=${DSH_TOOLS_MODE:-native}

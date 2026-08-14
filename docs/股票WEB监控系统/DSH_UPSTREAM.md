@@ -63,7 +63,7 @@ bundles（内置，如 dsh-base）
 ⑥ 灰度/回滚→ 通过则灰度切流；失败则 lockfile 回退重装（见 §5）
 ```
 
-> **P4 已脚本化**：一键执行 `bash scripts/dsh_upgrade/upgrade.sh <new-version>`（六步含人工阻断点）；回归集 `python scripts/dsh_upgrade/regression.py`；回滚 `bash scripts/dsh_upgrade/rollback.sh <old-version>`。
+> **P4 已脚本化**：一键执行 `bash scripts/dsh_upgrade/upgrade.sh <new-version>`（六步含人工阻断点）；回归集 `python scripts/dsh_upgrade/regression.py [--baseline-file logs/dsh_regression.json]`（跑完可与基线比对方向一致 + 算术容差）；A/B 双轨比对核心 `python scripts/dsh_upgrade/dual_track.py --new <file|version> --old <file|version>`（比对核心已实现，真实双轨跑归部署首升）；回滚 `bash scripts/dsh_upgrade/rollback.sh <old-version>`。
 
 ---
 

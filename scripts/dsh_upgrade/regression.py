@@ -46,15 +46,35 @@ async def _run_one(code: str, name: str) -> dict:
     return {k: getattr(report, k) for k in FIELDS}
 
 
+def _compare_baseline(results: list[dict], baseline_file: str) -> int:
+    """载入基线 JSON 并与当前结果比对（复用 dual_track.compare_all 比对核心）。
+
+    判定：结论方向一致（final_rating 相同）+ 算术容差（|Δdistance_pct| < 5.0）。
+    返回退出码：0=全部 PASS，1=存在 FAIL（供 CI/部署首升判定）。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dual_track import _load_json, compare_all, render
+
+    baseline = _load_json(baseline_file)
+    comparison = compare_all(results, baseline)
+    print(f"[regression] 基线比对（{baseline_file}）:")
+    print(render(comparison))
+    return 0 if comparison["failed"] == 0 else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", default="0.1.0-rc.6")
+    ap.add_argument("--baseline-file", default="",
+                    help="载入基线 JSON（logs/dsh_regression.json）比对方向一致 + 算术容差")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     if args.dry_run:
         print(f"[dry-run] 将跑 {len(CASES)} 只股票回归，基线={args.baseline}")
         for c in CASES:
             print(f"  - {c['code']} {c['name']}（{c['scenario']}）")
+        if args.baseline_file:
+            print(f"[dry-run] 跑完后将与基线文件 {args.baseline_file} 比对（方向一致 + 算术容差）")
         return 0
 
     async def _all() -> list[dict]:
@@ -70,6 +90,9 @@ def main() -> int:
     print(f"[regression] 基线={args.baseline}\n{summary}")
     (REPO / "logs").mkdir(exist_ok=True)
     Path(REPO / "logs" / "dsh_regression.json").write_text(summary, encoding="utf-8")
+
+    if args.baseline_file:
+        return _compare_baseline(results, args.baseline_file)
     return 0
 
 

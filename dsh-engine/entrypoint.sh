@@ -4,6 +4,13 @@ set -euo pipefail
 cd /app
 export DSH_ENGINE_PORT="${DSH_ENGINE_PORT:-8001}"
 
+# I4 确定性计算端点：后台独立进程（calc_host.py 读 DSH_CALC_PORT，缺省 8002）。
+# 降级链主调 /calc 算 4 个确定性节点（profit_quality/annualize/swing_zone/safety_margin）；
+# 不阻塞 sdk_host.py 的 /trigger 服务（独立端口 + 独立日志，同 session_cleanup 的 nohup 模式）。
+export DSH_CALC_PORT="${DSH_CALC_PORT:-8002}"
+nohup python3 /app/scripts/dsh_p3/calc_host.py \
+  > /app/calc_host.log 2>&1 &
+
 # S3 会话日志留存清理：后台循环（缺省每 24h 一次），不阻塞 /trigger 服务。
 # 用 --apply 实际删除；间隔经 DSH_CLEANUP_INTERVAL_SECONDS 可配（0 或负 = 仅单次）。
 # 不在 compose 用 command: 覆盖（会跳过 entrypoint → 破坏 /trigger 服务），此处并入 entrypoint 启动。

@@ -86,3 +86,26 @@ async def test_http_calc_client_rejects_op_mismatch():
             await client.calc("annualize", {"net_profit_deducted": 34.0, "financials": []})
     finally:
         await client._client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_http_calc_client_aclose_closes_owned_client(monkeypatch):
+    """自建 client（client=None）→ aclose 关闭连接池；注入 client 不关。"""
+    closed = []
+
+    class _FakeClient:
+        async def aclose(self):
+            closed.append(True)
+        async def post(self, *a, **k):
+            raise AssertionError("aclose 测试不应发请求")
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda timeout=None: _FakeClient())
+    owned = HttpCalcClient(base_url="http://dsh-engine:8002", timeout=10.0)
+    assert owned._owns_client is True
+    await owned.aclose()
+    assert closed == [True]
+
+    injected = HttpCalcClient(base_url="http://dsh-engine:8002", client=_FakeClient())
+    assert injected._owns_client is False
+    await injected.aclose()
+    assert closed == [True]   # 注入的 client 不额外关闭

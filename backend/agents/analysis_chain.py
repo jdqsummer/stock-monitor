@@ -211,7 +211,7 @@ class AnalysisReport:
             f"# 安全边际分析报告：{self.name}（{self.code}）",
             "",
             f"**分析日期**：{self.data_date}",
-            f"**分析引擎**：9 步分析链 + OpenHarness 约束",
+            f"**分析引擎**：9 步分析链 + DSH 约束引擎",
             "",
             "---",
             "",

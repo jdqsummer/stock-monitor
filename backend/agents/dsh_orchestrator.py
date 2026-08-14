@@ -54,7 +54,13 @@ class HttpDshRunner:
     ):
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._owns_client = client is None
         self._client = client or httpx.AsyncClient(timeout=timeout)
+
+    async def aclose(self) -> None:
+        """释放自建的 httpx 连接池（注入的 client 由调用方管理，不关闭）。"""
+        if self._owns_client:
+            await self._client.aclose()
 
     async def run_five_stage(
         self,
@@ -248,6 +254,12 @@ class DshOrchestrator:
         self._runner = runner or HttpDshRunner(base_url=base_url or "", timeout=timeout)
         self._model_default = model_default
         self._budget = budget
+
+    async def aclose(self) -> None:
+        """释放底层 runner 自建的连接池（FakeRunner 无 aclose 时安全跳过）。"""
+        closer = getattr(self._runner, "aclose", None)
+        if closer is not None:
+            await closer()
 
     @staticmethod
     def is_available() -> bool:

@@ -306,3 +306,62 @@ async def test_sensitivity_merges_two_runs():
     assert {s["label"] for s in sens} == {"pe-10%", "pe+10%"}
     assert sens[0]["distance_pct"] == 30.0   # 低 PE → 更保守
     assert sens[1]["distance_pct"] == -5.0   # 高 PE → 更乐观
+
+
+# --- I3 资源释放：HttpDshRunner / DshOrchestrator 连接池 aclose ---
+
+
+@pytest.mark.asyncio
+async def test_http_runner_aclose_closes_owned_client(monkeypatch):
+    """自建 client（client=None）→ aclose 关闭连接池，避免每次分析泄漏。"""
+    closed = []
+
+    class _FakeClient:
+        async def aclose(self):
+            closed.append(True)
+        async def post(self, *a, **k):
+            raise AssertionError("aclose 测试不应发请求")
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda timeout=None: _FakeClient())
+    runner = HttpDshRunner(base_url="http://dsh-engine:8000", timeout=60.0)
+    assert runner._owns_client is True
+    await runner.aclose()
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_http_runner_aclose_leaves_injected_client_open():
+    """注入的 client 归调用方管理 → aclose 不关闭。"""
+    closed = []
+
+    class _FakeClient:
+        async def aclose(self):
+            closed.append(True)
+        async def post(self, *a, **k):
+            raise AssertionError("aclose 测试不应发请求")
+
+    runner = HttpDshRunner(base_url="http://dsh-engine:8000", client=_FakeClient())
+    assert runner._owns_client is False
+    await runner.aclose()
+    assert closed == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_aclose_closes_runner():
+    """DshOrchestrator.aclose 转发到底层 runner（有 aclose 时）。"""
+    closed = []
+
+    class _RunnerWithAclose(FakeRunner):
+        async def aclose(self):
+            closed.append(True)
+
+    orch = DshOrchestrator(runner=_RunnerWithAclose())
+    await orch.aclose()
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_aclose_skips_runner_without_aclose():
+    """底层 runner 无 aclose（如 FakeRunner）→ 安全跳过，不抛。"""
+    orch = DshOrchestrator(runner=FakeRunner())
+    await orch.aclose()
