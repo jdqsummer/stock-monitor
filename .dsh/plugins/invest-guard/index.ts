@@ -3,16 +3,43 @@
 //
 // P0 T4 签名：ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined，
 // execution 字段名是 name / arguments；返回字符串=final 单调否决（不可逆），undefined=放行。
-// tools/post-execute: (ctx, exec, result, next) => Promise<PostToolDecision>，
-// 可 block（{decision:'block', reason}）或附加 additionalContexts。
 //
-// ⚠️ 运行时挂载：本插件用原始 ToolDefinition 形态（cordis 函数插件，export name/inject/apply），
-// 零外部 import（避免 pnpm 严格隔离 bare import 失败）。tools/post-execute 钩子类型化
-// PostToolDecision 结构以 P0 T4 / Explore 源码为准，此处按文档化契约实现。
+// tools/post-execute 契约（P2 终审修复，与 vendored DSH 源码对齐）：
+//   - 订阅在 cordis Context 上：`ctx.on('tools/post-execute', ...)`；`ctx.tools` 是
+//     ToolRuntime Service（无 .on 方法），同 canonical guard repeat-tool-reminder
+//     （packages/guard/repeat-tool-reminder/src/index.ts:213）。
+//   - 监听器恰好 3 参 `(exec, result, next)`；`next: () => Promise<PostToolDecision>` 零参。
+//   - PostToolDecision 判别字段是 `kind`（非 `decision`）：
+//       { kind: 'block', feedback: ContentBlock[] }   // block 无 reason 字段，须反馈块
+//       { kind: 'accept', additionalContexts?: UserMessage[] }
+//     决策须 `return`；`next()` 仅用于委托（原样透传），`return next({...})` 会忽略入参。
+//   - additionalContexts 是 `UserMessage[]`（非裸 ContentBlock）；本插件零 import，
+//     按 canonical guard repeat-tool-reminder 的 notice 形状手工合成 UserMessage。
+//
+// ⚠️ 运行时挂载：本插件用原始 cordis 函数插件形态（export name/inject/apply），
+// 零外部 import（避免 pnpm 严格隔离 bare import 失败）。UserMessage 的 id 用全局
+// `crypto.randomUUID()`（与 vendored dsh-llm message.ts 的 createMessage 同源，无 import）。
 import { evaluateVeto, evaluateConstraints, isWriteToDshPath } from './logic'
 
 export const name = 'invest-guard'
 export const inject = ['tools']
+
+/** notice 形式 MessageSource（等价 canonical guard repeat-tool-reminder 的 PLUGIN_SOURCE）。 */
+const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'invest-guard' } as const
+
+/**
+ * 零 import 合成 notice 形式 UserMessage，运行时形状与 dsh-llm 的
+ * `createUserMessage({ content: [{ type: 'text', text }], source: { ...PLUGIN_SOURCE, form: 'notice', summary } })`
+ * 一致：`{ id, role: 'user', content: ContentBlock[], source: MessageSource }`。
+ */
+function buildNotice(text: string, summary: string): any {
+  return {
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: [{ type: 'text', text }],
+    source: { ...PLUGIN_SOURCE, form: 'notice', summary },
+  }
+}
 
 export function apply(ctx: any): void {
   // I3 禁写守卫：拦截 Write/Edit 目标路径命中 .dsh/
@@ -24,36 +51,50 @@ export function apply(ctx: any): void {
   })
 
   // veto/constraints 输出强化：invest-five-stage 返回后检查结论段
-  ctx.tools.on('tools/post-execute', async (_ctx: any, exec: any, result: any, next: any) => {
-    if (exec?.name === 'invest-five-stage') {
-      const value = result?.value ?? result
-      // 结论段字段（script return 的 output_conclusion 键或顶层 final_rating）
-      const conclusionOutput = value?.output_conclusion ?? value
-      const veto = evaluateVeto({
-        checklist_veto: Boolean(conclusionOutput?.checklist_veto ?? value?.checklist_veto),
-        unassessable_risk: Boolean(conclusionOutput?.unassessable_risk ?? value?.unassessable_risk),
-      })
-      const constraints = evaluateConstraints({
-        distance_pct: conclusionOutput?.distance_pct ?? value?.distance_pct,
-        final_rating: conclusionOutput?.final_rating ?? value?.final_rating,
-        pe_low: conclusionOutput?.pe_low ?? value?.pe_low,
-        pe_high: conclusionOutput?.pe_high ?? value?.pe_high,
-      })
-      if (veto.forced) {
-        // 否决：block 结果，返回否决理由（模型可见）
-        return next({ decision: 'block', reason: veto.reason ?? '否决' })
-      }
-      if (constraints.warnings.length > 0) {
-        // 约束警告：附加上下文（不 block，供模型参考）
-        return next({
-          decision: 'accept',
-          additionalContexts: [{
-            type: 'text',
-            text: `[invest-guard] 约束警告：\n- ${constraints.warnings.join('\n- ')}`,
-          }],
-        })
+  ctx.on('tools/post-execute', async (exec: any, result: any, next: any) => {
+    if (exec?.name !== 'invest-five-stage') return next()
+
+    const value = result?.value ?? result
+    // 段字段位置（script.ts return 键）：
+    //   checklist_veto → run_reverse_checklist（逆向段）；unassessable_risk / final_rating
+    //   / conclusion → output_conclusion（结论段）；distance_pct / pe_low / pe_high →
+    //   anchor_industry_pe（anchor 合并段 = { ...anchor, ...args.calc }）。
+    const reverse = value?.run_reverse_checklist ?? {}
+    const conclusion = value?.output_conclusion ?? value
+    const anchor = value?.anchor_industry_pe ?? {}
+
+    // 否决（checklist_veto 或 unassessable_risk → 强制 🔴 + 坚决放弃）
+    const veto = evaluateVeto({
+      checklist_veto: Boolean(reverse?.checklist_veto ?? value?.checklist_veto),
+      unassessable_risk: Boolean(conclusion?.unassessable_risk ?? value?.unassessable_risk),
+    })
+    if (veto.forced) {
+      // block：feedback 为 ContentBlock[]（非 reason 字符串），否决理由透传给模型
+      return { kind: 'block', feedback: [{ type: 'text', text: veto.reason ?? '否决' }] }
+    }
+
+    // 约束警告（评级一致性 / 纪律红线 / PE 极端）
+    const constraints = evaluateConstraints({
+      distance_pct: anchor?.distance_pct ?? value?.distance_pct,
+      final_rating: conclusion?.final_rating ?? value?.final_rating,
+      pe_low: anchor?.pe_low ?? value?.pe_low,
+      pe_high: anchor?.pe_high ?? value?.pe_high,
+    })
+    if (constraints.warnings.length > 0) {
+      const conclusionText = conclusion?.conclusion ?? value?.conclusion
+      const text = [
+        '[invest-guard] 约束警告：',
+        ...constraints.warnings.map((warning) => `- ${warning}`),
+        ...(conclusionText ? ['', `结论原文：${conclusionText}`] : []),
+      ].join('\n')
+      // 软警告：附加上下文（不 block，供模型参考），形状对齐 canonical guard 的 notice
+      return {
+        kind: 'accept',
+        additionalContexts: [buildNotice(text, `invest-five-stage 约束警告（${constraints.warnings.length} 项）`)],
       }
     }
-    return next({ decision: 'accept' })
+
+    // 无否决 / 无警告 → 委托原样透传
+    return next()
   })
 }
