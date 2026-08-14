@@ -94,18 +94,29 @@ class OpenHarnessAgent:
                             "analysis_degraded": True})
             return updates
         orch = DshOrchestrator()
-        try:
-            updates = await orch.analyze(state, model=state.get("llm_model", ""))
-            updates.setdefault("analysis_source", "dsh-llm")
-            return updates
-        except Exception as exc:
-            logger.error(f"DSH 分析失败，降级规则子链: {exc}", exc_info=True)
-            errors = state.setdefault("errors", [])
-            errors.append(f"DSH 分析降级: {exc}")
-            updates = await self._rule_based(state)
-            updates.update({"analysis_source": "rule-based", "analysis_model": "none",
-                            "analysis_degraded": True})
-            return updates
+        # 5.1 阶段级部分失败 → 整体重试 ≤ DSH_RETRY_COUNT 次（默认 1 = 首次失败后再试 1 次，
+        # 共 2 次尝试）；重试仍失败才走降级。attempt < retries 时 continue，最后一次失败落入
+        # 降级分支（_rule_based + 三标记 + errors 记录）。
+        from backend.config import settings
+        retries = max(0, settings.DSH_RETRY_COUNT)
+        for attempt in range(retries + 1):
+            try:
+                updates = await orch.analyze(state, model=state.get("llm_model", ""))
+                updates.setdefault("analysis_source", "dsh-llm")
+                return updates
+            except Exception as exc:
+                if attempt < retries:
+                    logger.warning(
+                        f"DSH 分析失败（第 {attempt + 1} 次），重试第 {attempt + 2}/{retries + 1} 次: {exc}"
+                    )
+                    continue
+                logger.error(f"DSH 分析失败，降级规则子链: {exc}", exc_info=True)
+                errors = state.setdefault("errors", [])
+                errors.append(f"DSH 分析降级: {exc}")
+                updates = await self._rule_based(state)
+                updates.update({"analysis_source": "rule-based", "analysis_model": "none",
+                                "analysis_degraded": True})
+                return updates
 
     async def _rule_based(self, state: dict) -> dict:
         """纯规则子链：按序执行现有节点逻辑 + 约束校验 + 输出"""

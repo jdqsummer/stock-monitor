@@ -106,9 +106,12 @@ class AnalysisJobService:
 
     async def _process_one(self, job_id: str, code: str, user_id: str, item):
         job = self._jobs[job_id]
-        async with self._semaphore:
-            lock = await self._lock_for(code)            # 同股票串行（I2 第二道防线）
-            async with lock:
+        # 先取同股票锁、后取信号量（Important #2）：多个同 code job 撞车时，锁等待者不再占
+        # semaphore 槽位（避免饿死其他股票）；同 code 永不并发（I2 第二道防线仍生效）。
+        # 每任务只持一把 code 锁，锁获取次序恒为 code lock → semaphore，无嵌套循环等待 → 无死锁。
+        lock = await self._lock_for(code)
+        async with lock:
+            async with self._semaphore:
                 job["codes"][code] = STATUS_RUNNING
                 try:
                     if not self._llm_available():

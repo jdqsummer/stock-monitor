@@ -215,6 +215,37 @@ async def test_job_service_concurrent_same_code_serialized(db_session, test_sess
 
 
 @pytest.mark.asyncio
+async def test_different_codes_run_concurrently(db_session, test_session_factory):
+    """不同 code 并发：锁按 code 隔离不误伤，两只不同股票可同时进入分析。
+
+    同股票锁只串行化同一 code；不同 code 之间不应被锁挡住（信号量槽位仍可容纳两者）。
+    回归防线：防止「先取锁后取信号量」改动误伤不同股票并发。
+    """
+    from backend.services.analysis_job_svc import AnalysisJobService
+
+    class StubChain:
+        def __init__(self):
+            self.active = 0
+            self.max_active = 0
+
+        async def analyze(self, code, stock_name="", industry="", model=""):
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            await asyncio.sleep(0.05)
+            self.active -= 1
+            return _report(code)
+
+    stub = StubChain()
+    svc = AnalysisJobService(chain=stub, llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519", "000858"], "manual")
+    await svc._run(job_id)
+
+    assert stub.max_active == 2     # 不同 code 同时进入分析（锁不串行化不同股票）
+    assert svc.get_status(job_id)["done"] == 2
+
+
+@pytest.mark.asyncio
 async def test_process_one_reads_model_from_job(db_session, test_session_factory):
     """I6：submit 的 model 存 job["model"]，_process_one 读并透传给 chain.analyze"""
     from backend.services.analysis_job_svc import AnalysisJobService

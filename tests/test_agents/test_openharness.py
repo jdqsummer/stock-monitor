@@ -125,6 +125,64 @@ async def test_analyze_dsh_failure_falls_back_to_rule_based(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_analyze_dsh_retries_once_then_succeeds(monkeypatch):
+    """DSH_RETRY_COUNT=1：首次失败 → 重试第 2 次成功，不降级，orch.analyze 恰好调用 2 次"""
+    from backend.agents import openharness as oh
+    from backend.agents.dsh_orchestrator import DshOrchestrator
+    from backend.config import settings
+    from backend.llm.provider import LLMConfig, ProviderType
+
+    monkeypatch.setattr(settings, "DSH_RETRY_COUNT", 1)
+    calls = {"n": 0}
+    sentinel = {"final_rating": "🟢", "analysis_source": "dsh-llm",
+                "analysis_model": "deepseek-v4-flash", "analysis_degraded": False}
+
+    async def _flaky(self, state, model=""):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("first attempt boom")
+        return sentinel
+
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
+    monkeypatch.setattr(DshOrchestrator, "analyze", _flaky)
+
+    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+    result = await agent.analyze(make_state())
+    assert result is sentinel
+    assert calls["n"] == 2          # 首试 + 1 次重试（DSH_RETRY_COUNT=1 生效）
+
+
+@pytest.mark.asyncio
+async def test_analyze_dsh_retry_exhausted_falls_back_to_rule_based(monkeypatch):
+    """DSH_RETRY_COUNT=1 且始终失败：重试耗尽（2 次）→ 降级规则子链 + 三标记 + errors"""
+    from backend.agents import openharness as oh
+    from backend.agents.dsh_orchestrator import DshOrchestrator
+    from backend.config import settings
+    from backend.llm.provider import LLMConfig, ProviderType
+
+    monkeypatch.setattr(settings, "DSH_RETRY_COUNT", 1)
+    calls = {"n": 0}
+
+    async def _always_boom(self, state, model=""):
+        calls["n"] += 1
+        raise RuntimeError("dsh always boom")
+
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
+    monkeypatch.setattr(DshOrchestrator, "analyze", _always_boom)
+
+    agent = oh.OpenHarnessAgent(llm_provider=SimpleNamespace())
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+    result = await agent.analyze(make_state())
+    assert calls["n"] == 2          # 首试 + 1 次重试均失败
+    assert result["final_rating"] in ("🟢", "🟡", "🔴")
+    assert result["analysis_source"] == "rule-based"
+    assert result["analysis_model"] == "none"
+    assert result["analysis_degraded"] is True
+    assert any("DSH 分析降级" in e for e in result["errors"])
+
+
+@pytest.mark.asyncio
 async def test_rule_based_when_no_llm_marks_degraded():
     """无 LLM → 纯规则降级 + 引擎标记（analysis_source 全路径）"""
     agent = OpenHarnessAgent(llm_provider=None)
