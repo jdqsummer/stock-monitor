@@ -33,6 +33,64 @@ RULE_BASED_STEPS = [
 ]
 
 
+def _financial_to_dict(f) -> dict:
+    """FinancialReport（Pydantic 或 dict）→ TS FinancialReport interface 形状（.dsh/plugins/invest-calc/util.ts）。"""
+    if isinstance(f, dict):
+        return {
+            "report_period": f.get("report_period", ""),
+            "revenue": f.get("revenue"),
+            "net_profit_parent": f.get("net_profit_parent"),
+            "net_profit_deducted": f.get("net_profit_deducted"),
+            "roe": f.get("roe"),
+            "is_official": bool(f.get("is_official", False)),
+        }
+    return {
+        "report_period": getattr(f, "report_period", "") or "",
+        "revenue": getattr(f, "revenue", None),
+        "net_profit_parent": getattr(f, "net_profit_parent", None),
+        "net_profit_deducted": getattr(f, "net_profit_deducted", None),
+        "roe": getattr(f, "roe", None),
+        "is_official": bool(getattr(f, "is_official", False)),
+    }
+
+
+def _calc_input(state: dict, op: str) -> dict:
+    """op → TS interface 输入（字段名逐字对齐 .dsh/plugins/invest-calc/*.ts）。
+
+    - profit_quality → ProfitQualityInput {financials, net_profit_parent, net_profit_deducted}
+    - annualize     → AnnualizeInput {financials, net_profit_deducted}
+    - swing_zone    → SwingZoneInput {annual_profit_low, annual_profit_high, pe_low?, pe_high?, total_shares?}
+    - safety_margin → SafetyMarginInput {current_price, swing_price_high, annual_profit_low}
+    """
+    financials = [_financial_to_dict(f) for f in (state.get("financials") or [])]
+    if op == "profit_quality":
+        return {
+            "financials": financials,
+            "net_profit_parent": state.get("net_profit_parent", 0),
+            "net_profit_deducted": state.get("net_profit_deducted", 0),
+        }
+    if op == "annualize":
+        return {
+            "financials": financials,
+            "net_profit_deducted": state.get("net_profit_deducted", 0),
+        }
+    if op == "swing_zone":
+        return {
+            "annual_profit_low": state.get("annual_profit_low", 0),
+            "annual_profit_high": state.get("annual_profit_high", 0),
+            "pe_low": state.get("pe_low", 15),
+            "pe_high": state.get("pe_high", 25),
+            "total_shares": state.get("total_shares", 0),
+        }
+    if op == "safety_margin":
+        return {
+            "current_price": state.get("current_price", 0),
+            "swing_price_high": state.get("swing_price_high", 0),
+            "annual_profit_low": state.get("annual_profit_low", 0),
+        }
+    raise ValueError(f"unknown calc op: {op}")
+
+
 def apply_veto(state: dict) -> dict:
     """否决链：安全边际无法评估 / 清单否决 → 强制 🔴 坚决放弃。
 
@@ -120,10 +178,24 @@ class AnalysisAgent:
                 return updates
 
     async def _rule_based(self, state: dict) -> dict:
-        """纯规则子链：按序执行现有节点逻辑 + 约束校验 + 输出"""
-        for node_fn in RULE_BASED_STEPS:
-            updates = await node_fn(state)
-            state.update(updates)
+        """纯规则子链（I4 收敛）：DSH TS /calc 端点算 4 个确定性节点（profit_quality/annualize/
+        swing_zone/safety_margin）为主路径；端点不可用或未配置回退 Python 本地节点（硬约束 5 兜底）。
+        determine_pe_range/mechanical_rating/manual_adjust 无 TS 对应，恒为 Python。"""
+        from backend.config import settings
+        calc = None
+        if settings.DSH_CALC_URL:
+            from backend.agents.dsh_calc_client import HttpCalcClient
+            calc = HttpCalcClient(base_url=settings.DSH_CALC_URL,
+                                  timeout=min(settings.DSH_TIMEOUT_SECONDS, 30.0))
+
+        if calc is not None:
+            # TS 主路径：4 个确定性 op 逐个调 /calc；op 失败时该 op 回退 Python 节点。
+            # 3 个无 TS 对应节点（PE 区间/机械评级/人工下调）在 _calc_deterministic 内按序 Python 执行。
+            await self._calc_deterministic(state, calc)
+        else:
+            # 未配置 DSH_CALC_URL：纯 Python 全量规则子链（与 Task 1 行为完全一致）
+            for node_fn in RULE_BASED_STEPS:
+                state.update(await node_fn(state))
 
         results = await self.constraint_engine.evaluate(state)
         self._apply_hard_constraints(state, results)
@@ -132,6 +204,28 @@ class AnalysisAgent:
         state.update(updates)
         state.update(apply_veto(state))   # 否决兜底（无 LLM 时通常不触发，保持行为一致）
         return state
+
+    async def _calc_deterministic(self, state: dict, calc) -> None:
+        """串行执行确定性链：4 个 op 经 /calc（该 op 失败回退 Python 节点），
+        determine_pe_range/mechanical_rating/manual_adjust 恒为 Python。
+        顺序对齐 RULE_BASED_STEPS：PE 区间先于击球区（否则击球区用默认 PE 漂移）。"""
+        for op, fallback in (
+            ("profit_quality", check_profit_quality_node),
+            ("annualize", estimate_annual_profit_node),
+        ):
+            out = await calc.calc(op, _calc_input(state, op), fallback=fallback, state=state)
+            state.update(out)
+        # PE 区间（无 TS 对应，且击球区依赖）→ Python
+        state.update(await determine_pe_range_node(state))
+        for op, fallback in (
+            ("swing_zone", calculate_swing_zone_node),
+            ("safety_margin", quantify_safety_margin_node),
+        ):
+            out = await calc.calc(op, _calc_input(state, op), fallback=fallback, state=state)
+            state.update(out)
+        # 评级（无 TS 对应）→ Python
+        state.update(await mechanical_rating_node(state))
+        state.update(await manual_adjust_node(state))
 
     def _apply_hard_constraints(self, state: dict, results: list) -> list[str]:
         messages = []

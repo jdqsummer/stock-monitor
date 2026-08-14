@@ -5,7 +5,8 @@
   "description": "DSH invest-calc 确定性 TS 纯函数（保守年化/击球区/安全边际/利润质量/增长指标/PE锚定）",
   "type": "module",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:cli": "rolldown calc_cli.ts --format esm --platform node --file calc_cli.mjs"
   },
   "devDependencies": {
     "vitest": "^4.1.10"

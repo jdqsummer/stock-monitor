@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # 未开启时即便配置了 LLM provider 也走纯规则降级——LLM 分析强依赖 DSH，P4 部署注意。
     DSH_ENABLED: bool = False                # 总开关：False 时走纯规则降级链
     DSH_ENGINE_URL: str = ""                 # dsh-engine HTTP 触发端点，如 http://dsh-engine:8000
+    DSH_CALC_URL: str = ""                   # dsh-engine 确定性计算端点（I4 收敛），空则降级链纯本地
     DSH_TIMEOUT_SECONDS: float = 600.0       # 单次五段分析超时（P2 实测 5 个 agent() 串行 >8min，120s 会误降级）
     DSH_RETRY_COUNT: int = 1                 # 整体重试 ≤1 次
     DSH_MODEL_DEFAULT: str = "deepseek-v4-flash"

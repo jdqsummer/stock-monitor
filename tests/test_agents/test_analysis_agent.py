@@ -287,3 +287,88 @@ async def test_rule_based_path_still_enforces_constraints():
     watery_result = await agent._rule_based(watery)
     assert watery_result["final_rating"] == "🔴"
     assert any("利润质量" in e for e in watery_result["errors"])
+
+
+# ── I4 收敛：DSH TS /calc 主路径 + 本地兜底 ──
+
+
+class _FakeCalcClient:
+    """测试用 DshCalcClient：录制 op 调用序 + 返回固定 TS output。"""
+
+    def __init__(self, outputs, base_url="", timeout=30.0, **kw):
+        self.outputs = outputs
+        self.calls = []
+
+    async def calc(self, op, input_data, fallback=None, state=None):
+        self.calls.append((op, dict(input_data)))
+        return self.outputs[op]
+
+
+TS_OUTPUTS = {
+    "profit_quality": {"net_profit_parent": 35.0, "net_profit_deducted": 34.0,
+                       "profit_quality_ok": True, "profit_quality_warnings": [],
+                       "non_recurring_ratio": 0.0285714},
+    "annualize": {"annual_profit_low": 122.4, "annual_profit_high": 149.6, "profit_method": "Q1×4"},
+    "swing_zone": {"swing_market_cap_low": 2448.0, "swing_market_cap_high": 5236.0,
+                   "swing_price_low": 163.2, "swing_price_high": 349.07},
+    "safety_margin": {"distance_pct": -85.7, "signal": "green", "signal_label": "击球区"},
+}
+
+
+@pytest.mark.asyncio
+async def test_rule_based_ts_calc_main_path(monkeypatch):
+    """DSH_CALC_URL 配置 → 4 个确定性 op 经 /calc；PE 区间先于击球区（击球区输入含锚定 pe_low=20）。"""
+    from backend.config import settings
+    from backend.agents import analysis_agent as aa
+
+    fake = _FakeCalcClient(TS_OUTPUTS)
+    monkeypatch.setattr(settings, "DSH_CALC_URL", "http://dsh-engine:8002")
+    monkeypatch.setattr("backend.agents.dsh_calc_client.HttpCalcClient",
+                        lambda base_url="", timeout=30.0: fake)
+
+    agent = aa.AnalysisAgent(llm_provider=None)
+    result = await agent._rule_based(make_state())
+
+    assert [op for op, _ in fake.calls] == ["profit_quality", "annualize",
+                                            "swing_zone", "safety_margin"]
+    # 击球区 op 在 determine_pe_range（Python）之后调用，输入含白酒锚定 pe_low=20
+    assert fake.calls[2][1]["pe_low"] == 20.0 and fake.calls[2][1]["pe_high"] == 35.0
+    # TS 输出写回 state：击球区股价 / 安全边际 / 信号
+    assert result["annual_profit_low"] == 122.4
+    assert result["swing_price_low"] == 163.2 and result["swing_price_high"] == 349.07
+    assert result["distance_pct"] == -85.7 and result["signal"] == "green"
+    assert result["pe_low"] == 20.0
+
+
+@pytest.mark.asyncio
+async def test_rule_based_ts_calc_down_falls_back_to_python(monkeypatch):
+    """DSH_CALC_URL 配置但端点失败 → 每个 op 回退 Python 节点，最终状态与纯 Python 收敛。"""
+    import httpx
+
+    from backend.config import settings
+    from backend.agents import analysis_agent as aa
+    from backend.agents.dsh_calc_client import HttpCalcClient
+
+    created = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("dsh-engine down")
+
+    def factory(base_url="", timeout=30.0):
+        client = HttpCalcClient(base_url=base_url, timeout=timeout,
+                                client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        created.append(client)
+        return client
+
+    monkeypatch.setattr(settings, "DSH_CALC_URL", "http://dsh-engine:8002")
+    monkeypatch.setattr("backend.agents.dsh_calc_client.HttpCalcClient", factory)
+
+    agent = aa.AnalysisAgent(llm_provider=None)
+    result = await agent._rule_based(make_state())
+    for c in created:
+        await c._client.aclose()
+
+    assert result["annual_profit_low"] > 0
+    assert result["pe_low"] == 20.0
+    assert result["signal"] in ("green", "yellow", "red")
+    assert result["final_rating"]
