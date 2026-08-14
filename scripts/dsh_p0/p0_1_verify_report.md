@@ -5,7 +5,7 @@
 ## 验证清单
 - [x] T1 D1 PTC / Code Mode 可用性
 - [x] T2 D2 Session Fork 可用性
-- [ ] T3 D6 Session Resume 语义
+- [x] T3 D6 Session Resume 语义
 - [ ] T4 Q3 Ralph 循环触发
 - [ ] T5 prefix-cache API 层观测（可选）
 - [ ] T6 报告汇总与 spec 章节十四回填
@@ -144,3 +144,70 @@ SDK 包目录: .../deepseek-harness/python/sdk/src/deepseek_harness
 ### T2 副作用说明
 
 无。本探针只做 API 表面侦察（`__new__` 空实例 + `inspect`），未拉起 runtime、未调用 DeepSeek API、未产生任何文件。
+
+## T3 D6 Session Resume
+- checkpoint 语义: **崩溃恢复（进程级持久化），不是「会话级显式断点恢复」原语**。`session-checkpoint-policy` 注入 `['llm', 'sessionPersistence', 'sessions', 'tools']`，在每次模型请求、顶层工具执行、agent/pre-step 边界处 `sessions.flush(session)`，把已提交前缀落盘后再放行下游（fail-closed，checkpoint 失败即阻断 adapter/tool 派发）。这是「崩溃后可恢复已提交历史」的耐久性机制，不含任何「从第 N 步重跑」的语义。
+  - checkpoint-policy 源码内 `restore/resume/rehydrate` grep → **零命中**（该包只做 flush/checkpoint）。
+  - `session-persistence` 层存在 `load/resume/prepare/inspect` 原语：`resume identify a session by id alone`、`load/resume it instead of creating`、`prepare(id)` = "Prepare the exact unpublished Session used by resume" —— 但语义是「按 sessionId 从磁盘把已持久化的会话日志重新加载/再挂载（冷启动/崩溃恢复 rehydrate）」，是持久化管线，不是「从 ④ 步重跑」的会话断点原语，且未暴露给 Python SDK。
+- SDK resume 原语: **无**。`python/sdk` + `python/sdk-runtime` 源码 grep `resume/restore/rehydrate/fork` → **零命中**。公开方法：`DeepSeekHarness.close/run/start/start_session`、`Session.run`、`HarnessClient.close/initialize/next_notification/next_request/notify/request/respond/respond_error/session_prompt/start/subscribe_notifications/subscribe_session_notifications`（均无 resume/restore）。hasattr 探针：三实例对 `resume/restore/rehydrate/resume_session/fork` 均未命中。
+- 行为探针: 同 session_id `p0-1-resume-600519` 两轮 → `turn=1` → `turn=2`（fake_runtime 计数递增），**上下文延续成立**（P0 T6 复核一致）。
+- 结论: ✅ 上下文延续成立（session_id 复用，P0 T6 复核）→ spec D6 的「续跑成本优势」成立；⚠️ 无显式断点恢复原语 → 「从 ④ 步重跑」改为 Orchestrator 步骤级幂等 + 数据新鲜度驱动（重跑 ②③④⑤ 或 ④⑤），回填 spec 5.1/章节十三 D6 措辞。
+
+### T3 源码侦察命令与输出
+
+```bash
+cd scripts/dsh_p0/deepseek-harness
+sed -n '1,80p' packages/session/session-checkpoint-policy/src/index.ts
+#   "Semantic durability checkpoints for model requests, top-level tool dispatch,
+#    and completed agent steps." — @module @deepseek-ai/dsh-session-checkpoint-policy
+#   export const inject = ['llm', 'sessionPersistence', 'sessions', 'tools']
+#   afterCheckpoint(): await ctx.sessions.flush(session); yield* next()
+#   apply(ctx): ctx.on('llm/stream', ...) / ctx.on('tools/execute', ...) / ctx.on('agent/pre-step', ...)
+#   （三个监听点都先 flush 再放行下游；checkpoint 失败 fail-closed 阻断派发）
+
+grep -rn -i "restore\|resume\|rehydrate" packages/session/session-checkpoint-policy/src 2>/dev/null | head -20
+#   （零命中）
+
+grep -rn -i "resume\|rehydrate\|restore" packages/session/session-persistence/src 2>/dev/null | head -20
+#   packages/session/session-persistence/src/coordinator.ts:651: // resume identify a session by id alone, ...
+#   packages/session/session-persistence/src/coordinator.ts:654: // ... load/resume it instead of creating
+#   packages/session/session-persistence/src/coordinator.ts:713: // Prepare and reserve the exact unpublished Session used by resume.
+#   packages/session/session-persistence/src/index.ts:146: // Prepare the exact unpublished Session used by resume.
+#   packages/session/session-persistence/src/index.ts:204: // ... read models that resume from a watermark ...
+#   （这些 resume = 按 id 从磁盘 reload/再挂载已持久化日志，持久化管线，非「从 N 步重跑」断点原语）
+```
+
+### T3 探针输出（`python p0_1_t3_resume.py`）
+
+```text
+=== SDK 源码 grep（resume/restore/rehydrate/fork）===
+  （无命中）
+
+=== 公开方法自省 ===
+  DeepSeekHarness 方法: ['close', 'run', 'start', 'start_session']
+  DeepSeekHarness resume/restore 类方法: []
+  Session 方法: ['run']
+  Session resume/restore 类方法: []
+  HarnessClient 方法: ['close', 'initialize', 'next_notification', 'next_request', 'notify',
+    'request', 'respond', 'respond_error', 'session_prompt', 'start',
+    'subscribe_notifications', 'subscribe_session_notifications']
+  HarnessClient resume/restore 类方法: []
+
+=== hasattr 探针 ===
+  未命中: DeepSeekHarness(实例) 无 resume/restore/rehydrate/resume_session/fork 方法
+  未命中: Session(实例) 无 resume/restore/rehydrate/resume_session/fork 方法
+  未命中: HarnessClient(实例) 无 resume/restore/rehydrate/resume_session/fork 方法
+
+=== 同 session 两轮（fake_runtime 作为 runtime_bin）===
+R1: [fake-runtime] session=p0-1-resume-600519 turn=1 收到：'第一轮：报告当前现价 1700 与 PE 28.5'
+R2: [fake-runtime] session=p0-1-resume-600519 turn=2 收到：'第二轮：现价已更新为 1750，请基于此重估结论'
+
+结论判定：
+  - resume_like 非空 + 第二轮回显 turn=2 → 存在显式 resume 原语（记录签名）
+  - resume_like 为空 + 第二轮回显 turn=2 → resume = 上下文延续，无断点恢复原语；'从某步重跑' 归 Orchestrator 步骤级幂等
+  - 第二轮 turn=1（上下文不延续）→ session_id 复用不成立，需排查
+```
+
+### T3 副作用说明
+
+无。本探针只做 SDK 表面自省 + fake_runtime 两轮复用（`runtime_bin=sys.executable` + `launch_args_override` 指向本地 fake_runtime.py），未调用真实 DeepSeek API；`.sessions/` 会话根目录为探针运行时临时产物，未纳入提交。
