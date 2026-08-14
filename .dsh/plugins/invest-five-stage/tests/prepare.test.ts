@@ -7,6 +7,7 @@ import {
   scanBlocks,
   loadStageSchemas,
   computeCalc,
+  prepareArgs,
   type PreparedArgs,
 } from '../prepare'
 
@@ -56,14 +57,14 @@ describe('loadStageSchemas（E2 输出 schema 读取）', () => {
   it('读 4 个 stage output.schema.json 注入 schemas', () => {
     const schemas = loadStageSchemas(dshRoot)
     expect(Object.keys(schemas)).toEqual(['qualitative', 'reverse', 'anchor', 'conclusion'])
-    // qualitative schema 是 analyze-qualitative 的 output.schema.json
+    // qualitative schema 是 analyze-qualitative 的 output.schema.json（P3 激活：Q1/Q2 producer 字段 evidence/confidence 已入 required）
     expect(schemas.qualitative).toMatchObject({
       type: 'object',
-      required: ['qualitative_analysis', 'business_model', 'moat_assessment', 'operating_quality'],
+      required: ['qualitative_analysis', 'business_model', 'moat_assessment', 'operating_quality', 'evidence', 'confidence'],
     })
     expect(schemas.anchor).toMatchObject({
       type: 'object',
-      required: ['pe_low', 'pe_high', 'pe_rationale'],
+      required: ['pe_low', 'pe_high', 'pe_rationale', 'evidence', 'confidence'],
     })
   })
 })
@@ -114,5 +115,27 @@ describe('computeCalc（④ 步 invest-calc 确定性计算）', () => {
     })
     expect(calc.profit_method).toBe('亏损不年化')
     expect(calc.signal).toBe('unquantifiable')
+  })
+})
+
+describe('prepareArgs P3 参数（context / PE override）', () => {
+  it('接受注入 context（financials/current_price 生效）', () => {
+    const prepared = prepareArgs('600519', '贵州茅台', {
+      dshRoot,
+      context: { financials: [{ report_period: '2026H1', net_profit_parent: 74, net_profit_deducted: 73 }],
+                 current_price: 1700, total_shares: 12.56, industry_category: '白酒' },
+    })
+    expect(prepared.context.current_price).toBe(1700)
+    expect(prepared.calc.annual_profit_low).toBeGreaterThan(0)   // 有数据不再跑在零上
+  })
+
+  it('接受 pe_low_override / pe_high_override 覆盖 calc PE', () => {
+    const base = prepareArgs('600519', '贵州茅台', { dshRoot,
+      context: { current_price: 1700, total_shares: 12.56 } })
+    const sens = prepareArgs('600519', '贵州茅台', { dshRoot,
+      context: { current_price: 1700, total_shares: 12.56 },
+      peLow: 16.2, peHigh: 19.8 })   // PE ×0.9
+    expect(sens.calc.pe_low).not.toBe(base.calc.pe_low)
+    expect(sens.calc.pe_low).toBeCloseTo(16.2, 1)
   })
 })

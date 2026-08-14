@@ -76,6 +76,8 @@ consumes: [qualitative_analysis, reverse_analysis, industry_category, annual_pro
 
 定量结果（年化利润 / 击球区市值 / 击球区股价 / 距击球区 % / 信号灯）由确定性节点自动合并写入 `swing_zone_analysis`，不在本输出内。
 
+置信度指引（Q2，spec 4.2）：有 3 期以上数据支撑 → `confidence: high`；单期或推断 → `low`。
+
 ## 全局约束
 
 - PE 区间必须为正数且 low ≤ high；非法时回退行业锚点。

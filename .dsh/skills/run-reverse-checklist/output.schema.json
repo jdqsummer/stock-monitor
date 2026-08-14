@@ -1,12 +1,35 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["checklist_results", "conclusions", "major_risks", "checklist_veto", "overall_assessment"],
+  "required": ["checklist_results", "conclusions", "major_risks", "checklist_veto", "overall_assessment", "evidence", "confidence"],
   "properties": {
     "checklist_results": { "type": "object" },
     "conclusions": { "type": "object" },
     "major_risks": { "type": "array", "items": { "type": "string" } },
     "checklist_veto": { "type": "boolean" },
-    "overall_assessment": { "type": "string" }
+    "overall_assessment": { "type": "string" },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": { "type": "string" },
+                "field": { "type": "string" },
+                "value": { "type": "number" }
+              },
+              "required": ["source", "field"]
+            }
+          }
+        },
+        "required": ["claim", "evidence"]
+      }
+    },
+    "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
   }
 }

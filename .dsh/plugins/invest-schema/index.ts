@@ -16,7 +16,7 @@
 //   source:{kind:'plugin', plugin:'invest-schema', form:'notice', summary}）。
 //
 // ⚠️ 运行时挂载：原始 ToolDefinition 形态（cordis 函数插件），零外部 import。
-import { validateStageOutput, validateEvidence, mergeConfidence, checkPeValidity, ratioToPercent } from './logic'
+import { validateStageOutput, validateEvidence, mergeConfidence, checkPeValidity, ratioToPercent, KNOWN_PATHS } from './logic'
 
 export const name = 'invest-schema'
 export const inject = ['tools']
@@ -62,9 +62,9 @@ export function apply(ctx: any): void {
       }
     }
 
-    // ③ Q1 证据引用：conclusion 段（knownPaths 来自注入 context 键集合——P2 用白名单近似）
-    // ⚠️ P2 范围：producer（output-conclusion schema + script.ts）尚未产出 evidence 字段（P3 补），
-    // 故 evidence 缺失降级为 warning notice（不 block）；evidence 存在但 source 不在白名单 → 仍 block。
+    // ③ Q1 证据引用：conclusion 段（knownPaths 指向 Orchestrator 注入的真实 context 键——P3 激活）
+    // ⚠️ P2→P3：producer（output-conclusion schema）P3 已带 evidence 字段，缺失降级 warning notice（不 block）；
+    // evidence 存在但 source 不在 KNOWN_PATHS → 仍 block（防幻觉引用）。
     const conclusion = value?.output_conclusion
     let q1MissingEvidence = false
     if (conclusion?.conclusion) {
@@ -74,7 +74,7 @@ export function apply(ctx: any): void {
       } else {
         const ev = validateEvidence(
           { claim: String(conclusion.conclusion), evidence },
-          ['context', 'financials', 'qualitative', 'reverse', 'calc'],
+          KNOWN_PATHS,
         )
         if (!ev.valid) errors.push(...ev.errors)
       }

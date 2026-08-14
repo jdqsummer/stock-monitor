@@ -153,6 +153,8 @@ export function computeCalc(input: CalcInput): Record<string, unknown> {
     growth_metrics: growth,
     ...swing,
     ...margin,
+    pe_low: input.pe_low,
+    pe_high: input.pe_high,
     pe_anchor: anchor,
   }
 }

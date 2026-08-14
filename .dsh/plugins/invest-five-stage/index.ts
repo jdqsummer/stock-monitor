@@ -54,6 +54,9 @@ export function apply(ctx: any): void {
     parameters: {
       stock_code: { type: 'string', required: true, description: '股票代码' },
       stock_name: { type: 'string', required: true, description: '股票名称' },
+      context: { type: 'string', required: false, description: '只读注入上下文（JSON 字符串：financials/current_price/industry_category 等，P3 Orchestrator 预聚合）' },
+      pe_low_override: { type: 'number', required: false, description: 'PE 下限覆盖（D2 敏感性重跑，覆盖 LLM 自设区间）' },
+      pe_high_override: { type: 'number', required: false, description: 'PE 上限覆盖（D2 敏感性重跑）' },
     },
     output: {
       schema: { type: 'object' },
@@ -61,7 +64,20 @@ export function apply(ctx: any): void {
     },
     async execute(args: any, exec: any) {
       // host 侧：blocks 目录扫描 + 读 schema + 跑 invest-calc 确定性计算 + 组装 args（P2 真实现，见 prepare.ts）
-      const prepared = prepareArgs(args.stock_code, args.stock_name, { dshRoot })
+      // P3：context（JSON 字符串）与 pe_low_override/pe_high_override（D2 敏感性）透传 prepareArgs。
+      // ⚠️ JSON.parse 失败容错：非法 context 字符串降级为 undefined，不 block 工具执行。
+      let context: Record<string, unknown> | undefined
+      try {
+        context = args.context ? JSON.parse(args.context) : undefined
+      } catch {
+        context = undefined
+      }
+      const prepared = prepareArgs(args.stock_code, args.stock_name, {
+        dshRoot,
+        context,
+        peLow: args.pe_low_override ?? undefined,
+        peHigh: args.pe_high_override ?? undefined,
+      })
 
       // P0 T5 真实签名：start() 返回 run 对象（非最终值），须 await run.result 并判 stopReason。
       // 简报简化的 `return ctx.workflowEngine.start(...)` 会错误返回 run 对象；以 t5_workflow/fixed-script-plugin.mjs 为准。

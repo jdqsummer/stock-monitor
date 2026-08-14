@@ -87,6 +87,8 @@ consumes: [qualitative_analysis, reverse_analysis, swing_zone_analysis, distance
 }
 ```
 
+置信度指引（Q2，spec 4.2）：有 3 期以上数据支撑 → `confidence: high`；单期或推断 → `low`。
+
 ## 全局约束
 
 - `final_rating` 取值仅限 🟢 / 🟡 / 🔴，非法值按 🟡 处理。

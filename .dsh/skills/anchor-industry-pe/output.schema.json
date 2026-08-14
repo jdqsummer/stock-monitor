@@ -1,10 +1,33 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["pe_low", "pe_high", "pe_rationale"],
+  "required": ["pe_low", "pe_high", "pe_rationale", "evidence", "confidence"],
   "properties": {
     "pe_low": { "type": "number" },
     "pe_high": { "type": "number" },
-    "pe_rationale": { "type": "string" }
+    "pe_rationale": { "type": "string" },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": { "type": "string" },
+                "field": { "type": "string" },
+                "value": { "type": "number" }
+              },
+              "required": ["source", "field"]
+            }
+          }
+        },
+        "required": ["claim", "evidence"]
+      }
+    },
+    "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
   }
 }

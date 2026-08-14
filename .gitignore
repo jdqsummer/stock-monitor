@@ -23,3 +23,5 @@ scripts/dsh_p0/deepseek-harness/
 # DSH 运行时产物（headless 会话日志 / home 目录，不入库）
 scripts/dsh_p0/_session_*.jsonl
 scripts/dsh_p0/.dsh-home/
+scripts/dsh_p3/_session_*.jsonl
+scripts/dsh_p3/.dsh-home/

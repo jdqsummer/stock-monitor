@@ -486,6 +486,8 @@ function computeCalc(input) {
 		growth_metrics: growth,
 		...swing,
 		...margin,
+		pe_low: input.pe_low,
+		pe_high: input.pe_high,
 		pe_anchor: anchor
 	};
 }
@@ -546,6 +548,18 @@ function apply(ctx) {
 				stock_name: {
 					type: "string",
 					description: "股票名称"
+				},
+				context: {
+					type: "string",
+					description: "只读注入上下文（JSON 字符串：financials/current_price/industry_category 等，P3 Orchestrator 预聚合）"
+				},
+				pe_low_override: {
+					type: "number",
+					description: "PE 下限覆盖（D2 敏感性重跑，覆盖 LLM 自设区间）"
+				},
+				pe_high_override: {
+					type: "number",
+					description: "PE 上限覆盖（D2 敏感性重跑）"
 				}
 			},
 			required: ["stock_code", "stock_name"]
@@ -558,7 +572,16 @@ function apply(ctx) {
 			}]
 		},
 		async execute(args, exec) {
-			const prepared = prepareArgs(args.stock_code, args.stock_name, { dshRoot });
+			// P3：context（JSON 字符串）与 pe_low_override/pe_high_override（D2 敏感性）透传 prepareArgs。
+			// ⚠️ JSON.parse 失败容错：非法 context 字符串降级为 undefined，不 block 工具执行。
+			let context;
+			try { context = args.context ? JSON.parse(args.context) : void 0; } catch { context = void 0; }
+			const prepared = prepareArgs(args.stock_code, args.stock_name, {
+				dshRoot,
+				context,
+				peLow: args.pe_low_override ?? void 0,
+				peHigh: args.pe_high_override ?? void 0
+			});
 			const run = ctx.workflowEngine.start({
 				script: FIXED_SCRIPT,
 				meta: { name: "invest-five-stage", description: "价值投资五段式安全边际分析预置脚本" },

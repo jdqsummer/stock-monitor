@@ -74,7 +74,17 @@ function validateStageOutput(stageKey, output) {
 		errors
 	};
 }
-function validateEvidence(claim, knownPaths) {
+// P3 激活：knownPaths 指向 Orchestrator 注入的真实只读上下文键（Task 3 build_context 产物）。
+const KNOWN_PATHS = [
+	"context.code", "context.name", "context.current_price", "context.total_market_cap",
+	"context.total_shares", "context.net_profit_parent", "context.net_profit_deducted",
+	"context.industry_category",
+	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].report_period`),
+	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_parent`),
+	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_deducted`),
+	...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].revenue`)
+];
+function validateEvidence(claim, knownPaths = KNOWN_PATHS) {
 	const errors = [];
 	const evidence = claim.evidence;
 	if (!evidence || evidence.length === 0) {
@@ -186,13 +196,7 @@ function apply(ctx) {
 				const ev = validateEvidence({
 					claim: String(conclusion.conclusion),
 					evidence
-				}, [
-					"context",
-					"financials",
-					"qualitative",
-					"reverse",
-					"calc"
-				]);
+				}, KNOWN_PATHS);
 				if (!ev.valid) errors.push(...ev.errors);
 			}
 		}

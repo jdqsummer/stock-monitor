@@ -115,6 +115,7 @@ consumes: [qualitative_analysis, financials, current_price, pe_dynamic, net_prof
 - `major_risks`：2-5 条重大风险。
 - `checklist_veto`：是否触发否决。
 - `overall_assessment`：综合证伪判断，说明反面证据是否足以推翻买入逻辑。
+- `confidence`：置信度（Q2，spec 4.2）——有 3 期以上数据支撑 → `high`；单期或推断 → `low`。
 
 ## 全局约束
 

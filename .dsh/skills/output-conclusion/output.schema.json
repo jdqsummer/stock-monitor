@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["conclusion", "recommendation", "unassessable_risk", "final_rating", "action_items"],
+  "required": ["conclusion", "recommendation", "unassessable_risk", "final_rating", "action_items", "evidence", "confidence"],
   "properties": {
     "conclusion": { "type": "string" },
     "recommendation": { "type": "string" },
@@ -9,6 +9,29 @@
     "final_rating": { "type": "string" },
     "action_items": { "type": "array", "items": { "type": "string" } },
     "loss_exception_rationale": { "type": "string" },
-    "forward_valuation_basis": { "type": "string" }
+    "forward_valuation_basis": { "type": "string" },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": { "type": "string" },
+                "field": { "type": "string" },
+                "value": { "type": "number" }
+              },
+              "required": ["source", "field"]
+            }
+          }
+        },
+        "required": ["claim", "evidence"]
+      }
+    },
+    "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
   }
 }

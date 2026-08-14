@@ -47,7 +47,19 @@ export interface ClaimLike {
   evidence?: EvidenceItem[]
 }
 
-export function validateEvidence(claim: ClaimLike, knownPaths: string[]): ValidationResult {
+// P3 激活：knownPaths 指向 Orchestrator 注入的真实只读上下文键（Task 3 build_context 产物）。
+// evidence.source 形如 `context.financials[0].net_profit_parent`；顶层键含 quote/news（全量注入结构）。
+export const KNOWN_PATHS: string[] = [
+  'context.code', 'context.name', 'context.current_price', 'context.total_market_cap',
+  'context.total_shares', 'context.net_profit_parent', 'context.net_profit_deducted',
+  'context.industry_category',
+  ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].report_period`),
+  ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_parent`),
+  ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].net_profit_deducted`),
+  ...Array.from({ length: 8 }, (_, i) => `context.financials[${i}].revenue`),
+]
+
+export function validateEvidence(claim: ClaimLike, knownPaths: string[] = KNOWN_PATHS): ValidationResult {
   const errors: string[] = []
   const evidence = claim.evidence
   if (!evidence || evidence.length === 0) {

@@ -72,6 +72,8 @@ consumes: [financials, current_price, total_market_cap, total_shares, pe_dynamic
 
 普通子块以 `{"text": "..."}` 返回一段结构化结论（标题 + 依据 + 判断）；经营质量子块返回 `{"growth_quality": "good|warning|deteriorating", "rationale": "..."}`。
 
+置信度指引（Q2，spec 4.2）：有 3 期以上数据支撑 → `confidence: high`；单期或推断 → `low`。
+
 ## 全局约束
 
 - 逐块独立：前一子块结论不预判后一子块，避免「先入为主」。
