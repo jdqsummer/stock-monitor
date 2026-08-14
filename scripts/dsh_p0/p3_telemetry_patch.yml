@@ -1,0 +1,19 @@
+# P3 Task 10 headless 冒烟 patch：invest-telemetry 生命周期钩子指标采集。
+#
+# 形态：patch 覆盖层新增插件必须包在 - insert: 里，本地插件用 file:// 绝对 URL
+# （P1 附录 A 3.2 实测路径；与 p2_patch.yml 同款）。invest-telemetry 与既有
+# invest-* 插件一并 insert，headless 跑一次工具调用观察 `dsh-telemetry` 日志。
+#
+# ✅ 已实测（P3 Task 10 冒烟）：`tools/post-execute` + `tools/pre-execute` 均触发
+#   （18 工具调用 → 18 pre + 18 post，0 hook-unavailable，EXIT=0）。
+#   pre-execute 契约 `(exec, next) => PreToolDecision`，监听器须 `return next()` 委托放行。
+# ⏳ 待 P3 验证点：`agent/request` / `agent/turn-stopping` 钩子未实测，不承诺注册。
+- insert:
+    - id: invest-five-stage
+      name: file:///D:/project/github/stock-monitor/.dsh/plugins/invest-five-stage/index.mjs
+    - id: invest-guard
+      name: file:///D:/project/github/stock-monitor/.dsh/plugins/invest-guard/index.mjs
+    - id: invest-schema
+      name: file:///D:/project/github/stock-monitor/.dsh/plugins/invest-schema/index.mjs
+    - id: invest-telemetry
+      name: file:///D:/project/github/stock-monitor/.dsh/plugins/invest-telemetry/index.mjs

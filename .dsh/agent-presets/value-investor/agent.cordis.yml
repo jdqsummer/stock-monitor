@@ -40,3 +40,8 @@
 # 见 README.md「挂载方式」）
 - id: hello-tool
   name: './hello-tool.mjs'
+
+# 生命周期钩子指标采集（D4，spec 章节十三）：结构化日志 `dsh-telemetry <json>`，
+# 供 I7 成本归因 + 生产监控消费（Prometheus 接入方向见 .dsh/docs/d4-telemetry.md，P4）
+- id: invest-telemetry
+  name: './invest-telemetry/index.mjs'   # 生命周期钩子指标采集（D4）
