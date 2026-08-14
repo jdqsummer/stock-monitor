@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["conclusion_analysis", "final_rating", "recommendation", "action_items"],
+  "properties": {
+    "conclusion_analysis": { "type": "object" },
+    "final_rating": { "type": "string" },
+    "recommendation": { "type": "string" },
+    "action_items": { "type": "array", "items": { "type": "string" } }
+  }
+}

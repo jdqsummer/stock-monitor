@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["pe_low", "pe_high", "swing_zone_analysis", "distance_pct", "signal_label"],
+  "properties": {
+    "pe_low": { "type": "number" },
+    "pe_high": { "type": "number" },
+    "swing_zone_analysis": { "type": "object" },
+    "distance_pct": { "type": "number" },
+    "signal_label": { "type": "string" }
+  }
+}
