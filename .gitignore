@@ -16,3 +16,6 @@ dist/
 build/
 node_modules/
 .playwright-mcp/
+
+# DSH P0 验证产物（嵌套 repo / 便携 node 不入库）
+scripts/dsh_p0/deepseek-harness/
