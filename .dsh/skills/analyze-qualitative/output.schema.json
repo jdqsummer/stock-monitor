@@ -4,8 +4,8 @@
   "required": ["qualitative_analysis", "business_model", "moat_assessment", "operating_quality"],
   "properties": {
     "qualitative_analysis": { "type": "object" },
-    "business_model": { "type": "string" },
-    "moat_assessment": { "type": "string" },
-    "operating_quality": { "type": "string" }
+    "business_model": { "type": "object" },
+    "moat_assessment": { "type": "object" },
+    "operating_quality": { "type": "object" }
   }
 }
