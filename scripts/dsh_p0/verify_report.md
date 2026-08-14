@@ -9,7 +9,7 @@
 - [x] T3 Skill 子系统 + 现有 SKILL.md 兼容性
 - [x] T4 Preset 定制 + 工具插件 + 守卫
 - [x] T5 workflow 工具 + 确定性步骤
-- [ ] T6 Python SDK 连接 + MCP 数据桥
+- [x] T6 Python SDK 连接 + MCP 数据桥
 - [ ] T7 验证报告汇总与 spec 假设对照
 
 ## 详细记录
@@ -340,3 +340,119 @@ The workflow `t5-demo` completed (0 agents). The exact returned JSON value, verb
 | 纪律硬约束（否决/PE 回退不可绕过） | ✅ 成立 | 固定脚本 + `ctx.tools.guard()`（T4 单调守卫）+ 插件 `execute()` 形状校验 |
 
 **结论：spec 4.3 的「预置脚本 + 纪律硬约束」成立，但落地需一个调整点——把「五段预置 pipeline」从「原生 workflow 工具」改为「自定义工具插件内嵌固定脚本 + `ctx.workflowEngine.start()`」，并把确定性计算/目录扫描/读 skill 从脚本 realm 移到插件 host 侧（`args` 注入），脚本只保留 LLM 子代理编排与顺序。这与 spec 4.4（invest-calc TS 模块）的边界也吻合：TS 纯函数本就该在 host 侧跑，不在脚本 vm 里。**
+
+## T6 Python SDK 连接 + MCP 数据桥
+
+### 结论（一句话）
+✅ **SDK 进程内连接 + session_id 复用均真实跑通；但 SDK 是「进程内」模型，无法连接「独立 dsh-engine 进程」（进程外），spec 第三节部署拓扑需降级为「容器内 SDK 宿主 + HTTP 触发」。MCP 数据桥端到端真实跑通**（DSH tool → `@deepseek-ai/dsh-mcp-client` → Python FastMCP server → mock 数据源 → 模型复述结果）。
+
+### 简报核对摘要（Step 3 格式）
+```
+## T6 Python SDK + MCP 数据桥
+- SDK 进程内: ✅，API 签名 = DeepSeekHarness(provider/model/max_tokens/cwd/runtime_cwd/session_root/cordis/env/runtime_bin/launch_args_override/request_timeout_seconds/shutdown_timeout_seconds/base_url/api_key)
+- SDK 进程外: ❌（不能连接独立 dsh-engine 进程；SDK 总是 subprocess.Popen 子进程，走 stdio NDJSON JSON-RPC，无 TCP/HTTP/socket transport）
+- MCP 数据桥: ✅，链路 = DSH tool(mcp__investdata__get_stock_snapshot) → dsh-mcp-client(stdio spawn python mcp_server.py) → FastMCP(Python) → 数据源 → 模型复述
+- 结论: spec 部署拓扑（headless 常驻容器 + FastAPI 经 SDK 跨容器桥接）不成立；降级方案 = 「容器内 SDK 宿主 + HTTP 触发」（spec 第十节风险表已预设）
+```
+
+### Step 1：SDK 真实用法与进程内外结论（源码 + 实测双向）
+
+**真实构造参数（verbatim，`deepseek_harness/api.py` `DeepSeekHarnessConfig` dataclass）**：
+
+| 字段 | 类型 | 默认 |
+|:--|:--|:--|
+| `provider` | str | `"deepseek-official"` |
+| `model` | str | `"deepseek-v4-flash"` |
+| `max_tokens` | int\|None | None |
+| `cwd` | str\|None | None |
+| `runtime_cwd` | str\|None | None |
+| `session_root` | str\|None | None |
+| `cordis` | str\|None | None |
+| `env` | dict[str,str] | {} |
+| `runtime_bin` | str\|None | None |
+| `launch_args_override` | tuple[str,...]\|None | None |
+| `request_timeout_seconds` | float\|None | None |
+| `shutdown_timeout_seconds` | float | 1.0 |
+| `base_url` | str\|None | None |
+| `api_key` | str\|None | None |
+
+- 简报猜的 `DeepSeekHarness(provider=, model=, cwd=, session_root=)` 是合法 kwargs，但真实签名还多了 `max_tokens`/`cordis`/`env`/`runtime_bin`/`launch_args_override`/`base_url`/`api_key` 等；`DeepSeekHarness(config=DeepSeekHarnessConfig|None, **kwargs)` 二选一。
+- 用法：`with DeepSeekHarness(...) as h: r = h.run("...", session_id=...)`；`r` 为 `RunResult(session_id, final_response, finish_reason, events, notifications, session_root)`。
+- **session_id 复用 ✅**：`run(session_id=...)` 传同一 sessionId 连续调用 = 同一会话上下文延续（实测 fake runtime 的 turn 计数 1→2）；不同 sessionId = 独立会话。源码 `Session.run()` 拥有 activity interval，从 inbox receipt 到 whole-agent idle。
+
+**进程内 vs 进程外（关键结论）**：
+
+- **SDK 仅进程内 ❌ 进程外**。`deepseek_harness/client.py` `HarnessClient.start()` 固定 `subprocess.Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE)`，唯一 transport = **stdio NDJSON JSON-RPC**（`@deepseek-ai/dsh-sdk-protocol` 的 `JsonRpcLineTransport`，`packages/sdk/protocol/src/transport.ts`，逐行 `JSON.parse`，无任何 TCP/HTTP/socket）。
+- `runtime_bin` / `bridge_bin` / `launch_args_override` 只是「SDK 自己 spawn 的子进程」的 argv 变体（`_default_launch_args()`），**不是**连接已运行进程的入口；SDK 仍拥有子进程生命周期（`close()` 发 `shutdown` → terminate/kill）。
+- 官方 `dsh-jsonrpc-agent` 运行时 exe 仅 **linux/macos x64/arm64**（`python/sdk-runtime/README.md` + `__init__.py` 的 `_current_platform_tag()`）。**Windows（win32）无 exe，`resolve_bundled_launch_args()` 直接 FileNotFoundError**（实测：`no bundled dsh-jsonrpc-agent executable exists for this platform (sys.platform='win32', machine='AMD64')`）。
+- 另一自动化 transport `@deepseek-ai/dsh-acp`（Agent Client Protocol）同样是「JSON-RPC stdio」（`packages/acp/acp/README.md`），也无网络 transport。
+
+**实测证据（`t6_sdk/bridge_test.py` + `fake_runtime.py`，零真实 exe 依赖）**：
+- 用 `runtime_bin=sys.executable, launch_args_override=(python, fake_runtime.py)` 让 SDK 拉起本地 fake runtime 子进程，走完整 `initialize → session/prompt → shutdown` 线协议；`run#1/2/3` 均返回非空 `final_response` + `finish_reason='completed'`，turn 计数验证 session_id 复用与独立会话。**证明 SDK「进程内 spawn + stdio JSON-RPC」模型成立**。
+- `DeepSeekHarness()` 默认 bundled runtime 在本机解析失败（win32 无 exe），即真实 SDK runtime 无法在 Windows 跑（I1 审核项坐实）。
+
+**对 spec 部署拓扑的影响**：spec 第三节「DSH 运行时（Node 22 容器，headless 常驻）」作为独立容器 + FastAPI 经 `deepseek-harness-sdk` 跨容器「连接」——**不成立**。SDK 没有「连接远程 headless 进程」的能力；SDK 的 `deepseek-harness-runtime-bin` wheel 本身就把整个 DSH 引擎打包成单文件 exe，由 SDK 自己 spawn。故「dsh-engine 独立容器」与「SDK 桥接」是同一个东西，不能拆两个容器。
+
+### Step 2：MCP 数据桥（端到端 ✅）
+
+**DSH 侧接入方式（真实 API，`packages/mcp/mcp-client/README.md` + `src/index.ts`）**：官方 `@deepseek-ai/dsh-mcp-client` 插件（`@deepseek-ai/dsh` 的直接依赖，已随 npm rc.6 发布）。每个 MCP server 一个插件实例，`cordis.yml` 里按 `insert` 挂载；`transport: stdio`（spawn 子进程）或 `streamable-http`（连 URL）。工具注册到 `ctx.tools`，模型名 `mcp__<serverName>__<rawName>`；execute 走 `client.callTool({name: rawName, arguments}, {signal, timeout})`；`isError:true` 经 ToolRuntime error path 拒绝；受 `ctx.tools.register` 全管线（含 T4 单调守卫）约束。
+
+**MCP server 实现方式**：官方 `mcp` Python SDK（本机 1.28.1）+ `FastMCP`，`@mcp.tool()` 暴露只读工具，`mcp.run(transport="stdio")`。产物 `t6_mcp/mcp_server.py`（mock 3 只股票快照，生产替换 westock/东财 provider）。
+
+**端到端实测**（`t6_mcp/mcp_client.patch.yml` + headless，portable node 22.23.2）：
+
+```bash
+D=$(find node_modules/.pnpm -maxdepth 1 -type d -name "@deepseek-ai+dsh@*" | head -1)
+set -a && source ./.env && set +a
+/c/Users/SXF-Admin/AppData/Local/Temp/dsh-node22/node_modules/node/bin/node.exe \
+  "$D/node_modules/@deepseek-ai/dsh/lib/bin.js" --profile headless \
+  --patch t6_mcp/mcp_client.patch.yml \
+  "请调用 mcp__investdata__get_stock_snapshot 工具查询股票代码 600519 的快照..."
+```
+
+MCP server stderr（`mcp` SDK 日志，证明 DSH 侧 client 连上并调用）：
+```
+INFO  Processing request of type ListToolsRequest
+INFO  Processing request of type CallToolRequest
+```
+模型最终输出（verbatim）：
+```
+贵州茅台（600519）现价 1700.00 元，动态市盈率（PE-TTM）约 28.5 倍，总市值约 2.14 万亿元。
+```
+
+→ **链路「DSH tool → MCP client → Python MCP server → 数据源」端到端成立**，exit 0。
+
+**关键坑（务必记录）**：`dsh-mcp-client` 必须**按包名 `name: '@deepseek-ai/dsh-mcp-client'`** 引用（它是 `dsh` 的直接依赖，DSH app 的 `node_modules` 里有符号链接，可解析），**不能**用 `file://` 指向本地文件——否则其 bare import `@modelcontextprotocol/sdk`（pnpm 严格隔离的传递依赖）会像 T4 的 `dsh-tools` 一样解析失败。实测 `@modelcontextprotocol/sdk@1.30.0` 已随 rc.6 装进 `.pnpm` 虚拟 store，按包名引用即可解析。
+
+### 部署拓扑判定（spec 第三节 + 风险表「SDK 进程外连接能力未知」）
+
+| 项 | 判定 |
+|:--|:--|
+| spec 拓扑「dsh-engine 独立容器 + FastAPI 经 SDK 跨容器连接」 | ❌ **不成立**（SDK 无进程外 transport） |
+| spec 风险表预设降级「容器内 SDK 宿主 + HTTP 触发」 | ✅ **成立，必须采用** |
+| MCP 数据桥（DataBridge MCP server ↔ invest-data-tool MCP client） | ✅ 链路成立；stdio（同容器）实测跑通；跨容器需 `streamable-http`（S1 审核项坐实） |
+| value-investor Preset 在 headless/SDK 路径的载体 | ⚠️ 需调整：web/tui 的 agent-presets roster 机制在 headless 默认不挂载（T4）；SDK/headless 路径等价物是 **自定义 `cordis.yml`**（`DeepSeekHarness(cordis=...)` 或 `DSH_CORDIS_CONFIG`，SDK README 明示「keep the `@deepseek-ai/dsh-sdk-jsonrpc-server` entry + pass the cordis path」） |
+
+**推荐调整后的部署拓扑**（替代 spec 第三节两容器方案）：
+
+```
+┌ backend 容器（FastAPI，保留）─────────────────────────┐
+│  Orchestrator → HTTP 触发 → SDK host（见下容器）        │
+│  DataBridge（MCP server，streamable-http，暴露 westock）│
+│  _rule_based 降级链                                     │
+└─────────────── HTTP ────────────────┘
+                 │
+┌ dsh-engine 容器（Node 22，SDK 宿主 + 运行时同容器）────┐
+│  Python SDK host：DeepSeekHarness（spawn 单文件 exe）   │
+│    · dsh-jsonrpc-agent（= headless 常驻，被 SDK 持有）  │
+│    · 自定义 cordis.yml（value-investor 组合 + mcp-client）│
+│    · session_id = code-date（跨分析可续）               │
+│  对 backend 暴露一个 HTTP 触发端点（无 SDK 跨容器连接）  │
+└───────────────────────────────────────────────────────┘
+```
+
+关键点：SDK 的 `deepseek-harness-runtime-bin` wheel 就是「headless 常驻 DSH 引擎」本身（单文件 exe，含 agent core + DeepSeek adapter + JSONL 持久化 + bash），SDK spawn 它作为长驻子进程（`DeepSeekHarness` 实例复用），所以「SDK 宿主」与「dsh-engine」天然同容器，不必也不可拆。
+
+### 环境备注（不入库）
+- SDK 未做 pip install（不污染 backend/环境）：`bridge_test.py` 直接把 `deepseek-harness/python/sdk/src` + `python/sdk-runtime/src` 加进 `sys.path`，仅用已装的 `pydantic 2.12.3`（`models.py` 依赖）。真实运行时 exe 需 linux/macos 或 `scripts/build-exe-for-python-sdk.ts` 构建 node closure（Windows 本机不可用）。
+- Python `mcp` SDK 1.28.1 + `FastMCP` 已装（系统环境），MCP server 与 DSH 侧均零额外安装。

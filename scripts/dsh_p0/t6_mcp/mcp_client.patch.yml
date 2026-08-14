@@ -1,0 +1,19 @@
+# --patch 覆盖层：插入官方 @deepseek-ai/dsh-mcp-client 插件（DSH 侧 MCP 数据桥）。
+#
+# 关键点：
+# - `name: '@deepseek-ai/dsh-mcp-client'` 按包名引用（它是 @deepseek-ai/dsh 的直接依赖，
+#   在 DSH app 的 node_modules 里有符号链接，可解析），**不能**用 file:// 指向本地文件
+#   （否则其 bare import `@modelcontextprotocol/sdk` 会像 T4 一样解析失败）。
+# - transport: stdio —— dsh-mcp-client spawn `python mcp_server.py` 子进程，经 stdio 连 MCP。
+# - 工具暴露为 mcp__investdata__get_stock_snapshot。
+- insert:
+    - id: mcp-investdata
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: investdata
+        transport: stdio
+        command: python
+        args:
+          - 'D:/project/github/stock-monitor/scripts/dsh_p0/t6_mcp/mcp_server.py'
+        cwd: 'D:/project/github/stock-monitor/scripts/dsh_p0'
+        failOnStartupError: true
