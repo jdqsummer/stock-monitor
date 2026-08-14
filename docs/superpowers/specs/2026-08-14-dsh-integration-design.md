@@ -1,6 +1,6 @@
 # 投资分析框架 DSH 深度集成设计
 
-> 版本：v1.0 ｜ 日期：2026-08-14 ｜ 状态：待审阅
+> 版本：v1.1 ｜ 日期：2026-08-14 ｜ 状态：P0 已验证（真实 API 签名核对完成，假设偏差已修正）
 > 目标：将投资分析框架深度融入 DeepSeek Harness (DSH)，充分利用 DSH 运行时/工具层/记忆层/Skill 层/Preset/多 Agent 能力，实现投资分析可扩展（skills 化）、可维护（方便更新升级），而非套壳。
 
 ---
@@ -51,37 +51,35 @@
 ### 部署拓扑
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Python 后端（FastAPI，保留不动）                            │
-│                                                              │
-│   API 层：analysis / dashboard / watchlist / auth / chat     │
-│   AnalysisChain 门面（接口不变，实现换成 DSH 编排器）          │
-│   Orchestrator：触发 DSH 会话 → 收集结果 → 回填 state → 落库   │
-│   DataBridge：MCP server，暴露 westock/东财数据源             │
-│   memory 蒸馏管道（L1-L3）+ 投资笔记（保留，跨会话经验）        │
-│   _rule_based 降级链（无 LLM 场景兜底，保留）                  │
-└───────────────┬─────────────────────────────────────────────┘
-                │ SDK（deepseek-harness-sdk）· ACP/JSON-RPC
-                ▼
-┌─────────────────────────────────────────────────────────────┐
-│  DSH 运行时（Node 22 容器，headless 常驻）                    │
-│                                                              │
-│  value-investor Preset（单 Agent）                            │
-│   ├─ system_prompt：八项原则 + 纪律红线 + 输出契约             │
-│   ├─ skills：investment-framework + stages（惰性加载）         │
-│   ├─ workflow：五段 pipeline 预置脚本（纪律硬约束）             │
-│   ├─ tools：invest-data-tool（MCP client）+ invest-calc       │
-│   ├─ guards：invest-guard（否决/约束）+ invest-schema          │
-│   └─ session log：append-only 审计/回放                        │
+┌ backend 容器（FastAPI，保留不动）───────────────────────────┐
+│  API 层：analysis / dashboard / watchlist / auth / chat    │
+│  AnalysisChain 门面（接口不变，实现换成 DSH 编排器）          │
+│  Orchestrator：HTTP 触发 SDK 宿主 → 收集结果 → 回填落库      │
+│  DataBridge：MCP server（streamable-http，暴露 westock/东财）│
+│  memory 蒸馏管道（L1-L3）+ 投资笔记（保留，跨会话经验）        │
+│  _rule_based 降级链（无 LLM 场景兜底，保留）                  │
+└───────────────── HTTP 触发（无 SDK 跨容器连接）─────────────┘
+                      │
+┌ dsh-engine 容器（Node 22，SDK 宿主 + 运行时同容器）─────────┐
+│  Python SDK host：DeepSeekHarness（spawn 单文件 exe）        │
+│   ├─ dsh-jsonrpc-agent（= headless 常驻，被 SDK 持有）       │
+│   ├─ 自定义 cordis.yml（value-investor 组合 + mcp-client）   │
+│   │    ├─ system_prompt：八项原则 + 纪律红线 + 输出契约       │
+│   │    ├─ skills：investment-framework + stages（惰性加载）   │
+│   │    ├─ workflow：五段预置 pipeline（自定义工具插件承载）    │
+│   │    ├─ tools：invest-data-tool（MCP client）+ invest-calc  │
+│   │    └─ guards：invest-guard（否决/约束）+ invest-schema    │
+│   ├─ session_id = code-date（跨分析可续）                     │
+│   └─ 对 backend 暴露一个 HTTP 触发端点                        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 容器化（腾讯云 docker-compose 基线）
+### 容器化（腾讯云 docker-compose 基线，P0 验证后修正）
 
-- `backend` 容器：FastAPI + Orchestrator + DataBridge(MCP server) + 降级链。
-- `dsh-engine` 容器：Node 22，headless profile 常驻；挂 `skills/`（`.dsh/skills`）与 `sessions/` volume；`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` 注入。
-- `@deepseek-ai/dsh@0.1.0-rc.5` 精确锁定 + `pnpm-lock.yaml` + `frozen-lockfile`。
-- 桥接：FastAPI 经 `deepseek-harness-sdk`（ACP/JSON-RPC）连接 `dsh-engine`。
+- `backend` 容器：FastAPI + Orchestrator + DataBridge(MCP server，streamable-http) + 降级链。
+- `dsh-engine` 容器：Node 22（**≥ 22.15**），Python SDK host + `dsh-jsonrpc-agent` 运行时同容器；挂 `skills/`（`.dsh/skills`）与 `sessions/` volume；`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` 注入。
+- `@deepseek-ai/dsh@0.1.0-rc.6` 精确锁定 + `pnpm-lock.yaml` + `frozen-lockfile`（P0 实测 npm latest=rc.6，rc.5 未发布）。
+- 桥接：**容器内 SDK 宿主 + HTTP 触发**（SDK 无进程外 transport，见 P0 报告第四节）；DataBridge 跨容器经 `streamable-http`。
 
 ---
 
@@ -130,6 +128,8 @@ frontmatter 精简（编排语义移出）：
 | `type` / `output_field` / `order` / `depends_on` / `blocks_dir` | 移入 workflow 脚本步骤定义 |
 | `handler: dedicated_operating_quality` | 移到 workflow 该步骤的"确定性钩子"声明 |
 
+> **P0 已验证（T3）**：`parseSkillFile` 只保留 `name`/`description`/`whenToUse`/`metadata`/`disable-model-invocation`/`user-invocable`，其余自研字段（`type`/`output_field`/`order`/`depends_on`/`blocks_dir`/`tags`）被**静默丢弃**；`skill` 工具返回体仅 `{name, provider, resourceBase, content}`，`metadata` 亦不经 skill 工具透传模型（须由 workflow 插件消费）。故「精简迁移」从可选项确认为**唯一可行路径**。4 个 stage 技能名（`analyze_qualitative`/`run_reverse_checklist`/`anchor_industry_pe`/`output_conclusion`）现为 snake_case，DSH 会「invalid skill name」整体丢弃，P1 须改 kebab-case（上文目录树已按 kebab-case 呈现目标态）。
+
 精简后 frontmatter 示例：
 
 ```yaml
@@ -144,6 +144,8 @@ version: 1.0.0
 
 ### 4.3 Workflow 五段 pipeline（预置脚本，纪律硬约束）
 
+> **P0 已验证（载体调整）**：预置 pipeline **不是**原生 `workflow` 工具的能力（原生 `script` 是模型现场写的字符串参数，无 preset 模式）；须由**自定义工具插件**承载（官方 `tool-ralph` 范式：`FIXED_SCRIPT` 常量内嵌插件 + `defineTool` 只暴露参数 + `execute()` 调 `ctx.workflowEngine.start({script, meta, args})`）。脚本 realm **无 fs/network/timers/Node API**，确定性计算、`blocks/` 目录扫描、读 skill body 都必须在插件 `execute()`（host Node）完成、经 `args` 注入；脚本只保留 `agent()` 子代理编排与顺序。
+
 每一步 = `{ skill 引用, 输入契约, 确定性逻辑, 输出契约 }`：
 
 | 步 | skill | 输入（depends_on） | 确定性逻辑 | 输出 |
@@ -154,7 +156,7 @@ version: 1.0.0
 | ④ anchor_industry_pe | anchor-industry-pe | qualitative + reverse + industry | **LLM 定 PE（锚点仅参考）** → 确定性算年化/击球区/安全边际/信号灯 | swing_zone_analysis + pe_low/high、annual_profit_*、swing_*、distance_pct、signal |
 | ⑤ output_conclusion | output-conclusion | 1-4 全部 | 否决守卫 + 形状校验 | conclusion_analysis + final_rating/recommendation/action_items |
 
-> **子块可扩展性**：② 步脚本运行时扫描 `analyze-qualitative/blocks/` 目录，动态遍历每个子块 skill（注入方法论 + depends_on 数据 → LLM 定性）。纯 LLM 子块（如新增市场情绪）零代码改动；仅需确定性计算的子块才在 invest-calc 加 TS 纯函数 + 声明 handler 引用。
+> **子块可扩展性**：② 步运行时扫描 `analyze-qualitative/blocks/` 目录（**在插件 `execute()` host 侧执行，非脚本 realm**——脚本无 fs），动态遍历每个子块 skill（注入方法论 + depends_on 数据 → LLM 定性）。纯 LLM 子块（如新增市场情绪）零代码改动；仅需确定性计算的子块才在 invest-calc 加 TS 纯函数 + 声明 handler 引用。
 
 **PE 锚定规则（硬约束）**：击球 PE 由 LLM 综合前序定性/逆向结论设定；行业 PE 表仅作参考锚点与非法输入的兜底回退，**不作为取值来源**。LLM 输出非法（≤0 或 high<low）才回退锚点。`pe_rationale` 必须说明相对锚点的偏离理由。
 
@@ -182,6 +184,11 @@ invest-data/            # 规则数据（JSON，非代码，独立热更新）
 | invest-guard/veto | 单调安全守卫 | unassessable_risk / checklist_veto → 强制 🔴 + 坚决放弃，不可被后续步骤绕过 |
 | invest-guard/constraints | 守卫（新增强化） | 评级一致性（距击球区↔评级）、纪律红线（>50% 不追高）、PE 极端>100 下调——LLM 路径强制执行 |
 | invest-schema | 工具 schema + post-execute 钩子 | final_rating ∈ {🟢🟡🔴}；亏损非🔴必填 loss_exception_rationale + forward_valuation_basis |
+
+> **P0 已验证（真实签名）**：
+> - 守卫 = `ctx.tools.guard(ToolGuard)`，`ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined`；返回字符串 = 拒绝（final 单调否决，**无 allow 方向、不可逆**），`undefined` = 放行。管线顺序 `tools/pre-execute`（allow/deny/ask）→ 守卫 → `tools/execute`（around）→ `tools/post-execute`（replace/block/附加 context）→ `finalizeContent` → `tools/result`。
+> - 工具插件 = `defineTool` 从 `@deepseek-ai/dsh-tools` 导出（**非** `@deepseek-ai/dsh`），字段 `parameters`（类型化 DSL，**非** `inputSchema`）+ 必填 `output {schema, render}` + `execute(args, exec)`；schema 校验内建（缺参/错型 → `ToolArgsError`/`INVALID_ARGS`）。
+> - 插件形态 = cordis 函数插件 `export { name, inject, apply }`，`apply(ctx)` 内 `ctx.tools.register(defineTool(...))`（非 `export default defineTool(...)`）。
 
 ### 4.6 记忆层分工
 
@@ -326,3 +333,420 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 - **P2 插件开发**：invest-data-tool / invest-calc / invest-guard / invest-schema。
 - **P3 桥接集成**：Orchestrator + DataBridge(MCP) + 元数据契约（analysis_model/analysis_degraded）+ 前端展示。
 - **P4 清理与加固**：OpenHarness 退役、测试迁移、Docker 双容器、版本锁定、DSH_UPSTREAM 升级流水线。
+
+---
+
+## 十二、审核修订记录
+
+> 审核日期：2026-08-14 ｜ 审核人：AI 架构审查 ｜ 审核结论：**骨架通过，3 项阻断需 P0 前标注假设并设退路**
+
+### 审核总览
+
+| 级别 | 数量 | 含义 |
+|:--|:--|:--|
+| 阻断（Blocker） | 3 | P0 前必须在文档中标注为假设并设好退路，否则实施会踩坑 |
+| 重要（Important） | 7 | 影响生产可用性，建议 P2-P3 补齐 |
+| 建议（Suggestion） | 10 | 提升健壮性，不阻塞实施 |
+
+---
+
+### B. 阻断级（3 项）
+
+#### B1. workflow `pipeline()` / `restrict()` API 能力是设计基石，但未标注为待验证假设
+
+- **位置**：第二节决策表第 4 行 + 第四节 4.3
+- **问题**：4.3 的"纪律硬约束"完全建立在两个 DSH v0.1 API 假设上——`pipeline()` 能串联确定性步骤并内嵌 LLM 调用，`restrict()` 能将工具限定到 workflow scope 使模型不可见。但 DSH 是 rc.5 开发者预览，官方明示"THERE WILL BE COMPATIBILITY-BREAKING CHANGES"。文档当前将这两个 API 的能力当作已确认事实使用。
+- **修订建议**：
+  1. 第二节决策表第 4 行增加一列「验证状态 = **待 P0 验证**」。
+  2. 第十节风险表中"workflow 工具能力未完全验证"等级从**中**上调为**高**。
+  3. 补充退路：若 `restrict()` 不可用，退化为"工具全部暴露 + invest-guard 拦截非法调用顺序"（比现状强、比目标弱，但纪律仍有守卫层兜底）。
+
+#### B2. `cordis.yml` 插件组装语法是概念性描述，实际 YAML 结构未验证
+
+- **位置**：第四节 4.1
+- **问题**：4.1 的 `cordis.yml` 用注释列出了插件清单，但 DSH Cordis 框架实际的插件注册语法（`inject` / `apply` / `config` 字段结构）、bundle 与 patch 的真实组合格式，文档中未出现一份可运行的样例。若语法假设错误，4.1 整节需重写。
+- **修订建议**：
+  1. 4.1 标注「语法为概念示意，以 P0 验证结果为准」。
+  2. P0 第一事项：clone 源码后写一个最小 `cordis.yml` 跑通"注册一个自定义工具"，将实际语法固化为**附录 A：cordis.yml 可运行样例**。
+  3. 在附录 A 产出前，不基于 4.1 的语法假设编写生产代码。
+
+#### B3. Orchestrator 的超时 / 部分失败 / 重试策略完全缺失
+
+- **位置**：第五节数据流
+- **问题**：数据流写了"失败 → _rule_based 降级链"，但只覆盖了"DSH 会话整体失败"这一种情况。实际场景更复杂：
+  - DSH 会话启动成功，但第 ③ 步 LLM 调用超时（V4 偶发慢响应），④⑤ 未执行——整体降级还是从 ③ 重试？
+  - 网络抖动导致 SDK JSON-RPC 连接断开，DSH 会话仍在跑——Orchestrator 如何感知？重连还是废弃？
+  - 单次分析耗时无上限——多用户并发时一个慢分析占满 DSH 容器资源。
+- **修订建议**：新增 **5.1「会话生命周期与容错」** 小节，明确：
+  - 单会话超时阈值（建议 120s，可配置）。
+  - 部分失败处置：阶段级幂等 + 整体重试 ≤1 次，超时即降级到 `_rule_based`。
+  - DSH 进程健康检查（心跳探针）+ 异常自动重启。
+  - SDK 连接断线重连策略（最多 2 次，间隔 5s，超限降级）。
+
+---
+
+### I. 重要级（7 项）
+
+#### I1. Windows 开发环境约束未提及
+
+- **位置**：第三节容器化
+- **问题**：DSH SDK 系统要求 Linux x64/arm64 或 macOS 14+ arm64，**不支持 Windows 原生**。当前开发机为 Windows。第三节只写了生产 docker-compose，开发期本地联调方式未提及。
+- **修订建议**：第三节补一段「开发环境」：本地用 Docker 跑 `dsh-engine` 容器 + 暴露 JSON-RPC 端口，FastAPI 在 Windows 上照常开发；或使用 WSL2 内运行 DSH。
+
+#### I2. 并发模型 / 会话池 / 队列未设计
+
+- **位置**：第三节部署拓扑
+- **问题**：多用户同时触发分析 = 每个用户一个 headless DSH 会话。文档未提及：最大并发会话数、DSH 容器资源上限、排队机制、同股票并发分析的会话锁。
+- **修订建议**：第三节补「并发控制」：
+  - DSH 容器配置 `max_sessions` 上限（建议 4-8，视容器规格）。
+  - FastAPI 侧任务队列（可复用现有调度框架），超限排队 + 前端轮询进度。
+  - 同股票并发锁：`session_id = code-date` 天然去重，但需防同一秒内重复提交（加 Redis 分布式锁或 DB 唯一约束）。
+
+#### I3. 脚本防篡改在 `danger-full-access` 下未设计
+
+- **位置**：第四节 4.1
+- **问题**：4.1 写了 `sandbox: danger-full-access`，此模式下模型理论上可写文件，包括修改 workflow 脚本本身。文档只写了"裁剪原则"但没有"脚本防篡改"措施。
+- **修订建议**：4.1 补一条：
+  - workflow 脚本目录挂载为 **read-only volume**。
+  - invest-guard 增加"禁止写入 `.dsh/` 路径"规则（pre-tool-use 拦截 Write/Edit 工具的目标路径）。
+
+#### I4. 双实现漂移风险（TS + Python 同一套确定性逻辑）
+
+- **位置**：第四节 4.4 + 第九节文件迁移清单
+- **问题**：invest-calc（TS）和保留的 workflow.py（Python `_rule_based`）是同一套年化/击球区/安全边际逻辑的两个实现。黄金数据集能发现漂移，但不能阻止漂移——每次改算法要改两处。
+- **修订建议**：
+  1. 第十节风险表补一条「已知取舍：双实现漂移」——短期靠黄金数据集 CI 把关，长期收敛路径见下。
+  2. P4 之后评估长期收敛方案：降级链也调 DSH 内 TS 函数（经 HTTP 端点），消除 Python 侧确定性逻辑副本；或降级链改用 DSH 容器内 TS 端点的轻量 HTTP 调用。
+
+#### I5. camelCase ↔ snake_case 字段映射表缺失
+
+- **位置**：第五节数据流 ④ 步
+- **问题**：数据流写"映射回 snake_case"，但 8 个工具 + 5 个阶段各自产出结构化 JSON，字段数量可能上百。没有显式映射表 = 字段名漂移高发区，且 `stage_results` 契约是硬约束（不能破）。
+- **修订建议**：
+  1. **首选方案**：声明"DSH 侧 invest-* 插件输出统一用 snake_case"，从源头消除映射需求。
+  2. **兜底方案**：新增**附录 B：字段映射表**，至少列出 `stage_results` 各阶段键的「DSH 输出字段名 → Python snake_case → DB JSON key」三列对照。
+
+#### I6. 多模型选择机制（原始用户需求）未体现
+
+- **位置**：第六节元数据契约
+- **问题**：用户原始需求明确包含"支持多个模型选择"。文档聚焦 DeepSeek V4，`analysis_model` 字段能记录用了什么模型，但没有"用户如何选择模型"的机制设计。
+- **修订建议**：第六节补一小段「模型选择」：
+  - Preset 的 `providers/` 配置 V4-Pro + V4-Flash 两个模型卡片（DSH 原生支持多 provider）。
+  - 前端分析触发时可选模型（默认 V4-Flash 省成本，深度分析选 V4-Pro）。
+  - `analysis_model` 记录用户实际选择的模型。
+
+#### I7. 成本监控 / 限流 / 预算缺失
+
+- **位置**：第十节风险表
+- **问题**：风险表没有"成本失控"风险。V4-Pro 8/16 起输出价格上调约 4.6x（$0.87 → $3.96 峰值），一次完整五段式分析若 prefix-cache 未命中，token 消耗可能很高。无单次分析 token 预算、无日累计上限、无告警。
+- **修订建议**：风险表加一条「成本失控」：
+  - DSH 会话级 token 追踪（框架已有）+ 单次分析预算阈值（超限降级）。
+  - 日累计 token 上限 + 告警（接入现有监控）。
+  - prefix-cache 命中率纳入生产监控指标（验证 99% 假设是否成立）。
+
+---
+
+### S. 建议完善级（10 项）
+
+#### S1. MCP 跨容器传输方式未指定
+
+- **位置**：4.1 / 5 数据桥定位
+- **建议**：补一句"MCP transport = HTTP/SSE（跨容器），开发期可退化为 stdio（同容器/同主机）"。backend 容器与 dsh-engine 容器分开时，stdio 不能跨容器边界。
+
+#### S2. PE"非法"定义边界不够精确
+
+- **位置**：4.3 PE 锚定规则
+- **建议**：精确化非法判定条件，写入 invest-schema 校验规则：
+  - `pe_low ≤ 0` → 非法，回退锚点
+  - `pe_high ≤ 0` → 非法，回退锚点
+  - `pe_high < pe_low` → 非法，回退锚点
+  - `pe_low > 200` → 极端值兜底，回退锚点并标记 `pe_extreme_fallback: true`
+
+#### S3. 会话日志留存策略缺失
+
+- **位置**：4.6 记忆层分工
+- **建议**：补留存策略：90 天热存储（本地 volume）+ 超期归档冷存储或清理；或按 session 数量上限滚动（如保留最近 10,000 个会话）。
+
+#### S4. 黄金数据集边界覆盖与浮点容差未定义
+
+- **位置**：第八节测试策略
+- **建议**：
+  - 边界用例至少覆盖 6 类：季节性 Q1×4 拒绝、扣非缺失回退、负利润信号灯、非经常占比临界（19%/21% 边界）、PE 锚点链最细粒度匹配、`high < low` 非法回退。
+  - 浮点容差：`abs(delta) < 0.01` 或 `relative_error < 1e-6`（TS vs Python 浮点差异）。
+
+#### S5. `analysis_source` 的 `mock` 值语义未定义
+
+- **位置**：第六节数据契约
+- **建议**：补一句"mock = 测试环境假数据（mock LLM 响应），生产环境不出现"；或若测试用 mock 走不同路径，直接删除此值，测试不走 `analysis_source` 列。
+
+#### S6. 生产回滚 runbook 缺失
+
+- **位置**：第十节风险 + 第十一节实施路线
+- **建议**：P4 补一页运维 runbook：DSH 引擎健康检查探针 → 自动降级开关（检测到 N 次连续失败自动切 `_rule_based`）→ 告警通知 → 恢复后手动/自动切回 DSH 路径。
+
+#### S7. 经验 → Skill 进化闭环未闭环
+
+- **位置**：4.6 记忆层分工
+- **建议**：补一段「经验进化路径」：投资笔记 → 定期人工审阅 → 更新对应 SKILL.md 正文（volume 热更新即时生效）。明确为"人工审阅 + 热更新"而非全自动蒸馏（避免噪声污染方法论资产）。
+
+#### S8. 聊天对话 / 记忆持久化（原始需求）未显式声明范围
+
+- **位置**：第一节目标
+- **建议**：补一句"本设计范围限于分析引擎集成；聊天对话功能与跨会话记忆持久化见独立设计文档"。显式声明范围边界，避免后续认为遗漏。
+
+#### S9. `standard` preset 存在性未验证
+
+- **位置**：4.1 第一行
+- **建议**：P0 验证 DSH v0.1 是否存在名为 `standard` 的内置 preset。若无，改为"以 headless profile 为基底从零组装"，避免依赖不存在的基线。
+
+#### S10. DSH 版本号需确认时效性
+
+- **位置**：第三节容器化
+- **建议**：标注"版本号以 P0 执行时 npm registry 实际最新 rc 为准，锁定后记入 `DSH_UPSTREAM.md` 版本追踪表"。rc.5 是本文档撰写时的快照，DSH 迭代速度快。
+
+---
+
+### 修订追踪
+
+| 修订项 | 级别 | 负责阶段 | 状态 |
+|:--|:--|:--|:--|
+| B1 workflow API 标注假设 + 退路 | 阻断 | 文档修订（立即） | 待修改 |
+| B2 cordis.yml 标注概念 + 附录 A | 阻断 | 文档修订 + P0 验证 | 待修改 |
+| B3 会话容错小节 5.1 | 阻断 | 文档修订（立即） | 待修改 |
+| I1-I7 重要项 | 重要 | P2-P3 补齐 | 待修改 |
+| S1-S10 建议项 | 建议 | 实施过程中逐步补齐 | 待修改 |
+
+---
+
+## 十三、DSH 原生能力深化利用方案
+
+> 深化日期：2026-08-14 ｜ 目标：不止于"集成可用"，而是榨干 DSH 框架已有机制，提升分析质量、稳定性与成本效率
+
+### 总览
+
+第一轮审核（第十二节）聚焦"缺陷与遗漏"；本节从"能力利用充分度"角度做第二轮深化。经与 DSH 官方能力清单逐项对照，识别出 **6 项已存在但未利用的原生能力**、**3 项分析质量增强点**、**2 项 Skill 工程深化点**。
+
+| 类别 | 项数 | 核心价值 |
+|:--|:--:|:--|
+| D. DSH 原生能力未利用 | 6 | 直接提升分析质量/深度（D1+D2）与生产稳定性（D3+D4+D5+D6） |
+| Q. 分析质量增强 | 3 | 输出可信度、可追溯性、自我纠错 |
+| E. Skill 工程深化 | 2 | 方法论资产的依赖管理与输出契约标准化 |
+
+---
+
+### D. DSH 原生能力未利用（6 项）
+
+#### D1. PTC / Code Mode —— 数据采集阶段的上下文节约【高价值】
+
+**DSH 原生能力**：PTC（Programmatic Tool Calling）模式下，模型只拿到一个 `run_code` 工具，DSH 把所有可用工具自动打包成 TypeScript SDK 塞给模型。模型一口气写一段程序批量调用多个工具，中间原始数据在本地汇总计算，**只把结论返回上下文**，中间数据不占用上下文窗口。
+
+**当前设计缺口**：4.3 的 ① read_context 步骤由数据桥逐个调用行情/财报工具，每次调用结果（原始 JSON）全部进入模型上下文。8 期财报 + 行情 + 新闻的原始数据量巨大，直接推高 token 消耗，稀释模型注意力。
+
+**深化方案**：
+- ① read_context 改为 **PTC 模式执行**：模型写一段 TS 代码，一次性调用 `invest-data-tool` 的多个数据接口（行情、近 8 期财报、行业对比），在代码内完成数据清洗与衍生指标计算（同比、加速度），**只把结构化摘要返回上下文**。
+- 后续 ②-⑤ 步仍是标准 workflow pipeline（LLM 判断型），不受 PTC 影响。
+- 预期效果：read_context 阶段的上下文占用从"全量原始数据"降为"结论摘要"，结合 prefix-cache，长上下文成本进一步压缩。
+
+**落地载体**：workflow 脚本 ① 步声明 `mode: ptc`，DSH 框架自动切换该步骤为 Code Mode 执行。**待 P0 验证**：PTC 与 workflow pipeline 的组合是否支持（若不支持，退化为在 invest-data-tool 内做批量封装，单次调用返回聚合结果）。
+
+#### D2. Session Fork —— 估值敏感性分析【高价值】
+
+**DSH 原生能力**：Session Fork 允许从会话的任意事件点分叉出一个继承全部已有上下文的新会话。分叉会话独立执行，互不干扰，全部写入 append-only 日志。
+
+**当前设计缺口**：五段式是单一线性流程，④ anchor_industry_pe 给出一组 PE 锚点后直接进 ⑤ 结论。缺少"如果 PE 假设偏差 ±10%，结论会变吗？"的敏感性维度——这是价值投资分析中评估结论稳健性的关键环节。
+
+**深化方案**：
+- ④ 步完成后、⑤ 步之前，**Fork 出 2 个平行会话**：
+  - Fork A：PE 区间上移 10%（乐观情景），重跑确定性计算（击球区/安全边际/信号灯）
+  - Fork B：PE 区间下移 10%（悲观情景），同上
+- 主会话继续走 ⑤ 结论；Fork 结果作为 `sensitivity_analysis` 附加到 `stage_results.swing_zone_analysis` 下。
+- 前端可选展示"敏感性：PE ±10% → 评级变化矩阵"。
+
+**落地载体**：Orchestrator 在 ④ 步完成后调用 DSH SDK 的 Fork API，传入不同 PE 参数触发平行计算。**待 P0 验证**：Fork API 在 headless 模式下的可用性与性能开销。若 Fork 不可用，退化为 Orchestrator 串行触发两次额外分析（仅重跑 ④⑤ 步）。
+
+#### D3. 内置守卫插件（循环卫生 + 工具超时）—— 生产稳定性兜底【中价值】
+
+**DSH 原生能力**：框架自带两个守卫插件——**循环卫生守卫**（检测 Agent 是否在做重复无效动作，如反复调用同一工具）和**工具超时守卫**（强制中断执行时间过长的工具调用）。
+
+**当前设计缺口**：4.5 的 invest-guard 只覆盖了否决（veto）、约束（constraints）、形状校验（schema）三类业务守卫，未提及运行时稳定性守卫。原文档"已知注意点"中 max_turns=8 较紧的问题，本质就是缺少循环卫生保护。
+
+**深化方案**：
+- 在 cordis.yml 中显式注册两个内置守卫：
+  - `guard-loop-hygiene`：同一工具连续调用 ≥3 次且参数无变化 → 强制终止当前 step
+  - `guard-tool-timeout`：单工具执行超 30s → 强制中断，返回超时错误（触发降级或重试）
+- 这两个守卫与 invest-guard 并列，走同一条单调安全守卫管线（被拒绝的操作不可被后续插件重新放行）。
+
+**落地载体**：cordis.yml 插件清单增加两行注册，零自研代码。
+
+#### D4. 生命周期钩子 —— 运行时指标采集与成本归因【中价值】
+
+**DSH 原生能力**：DSH 暴露 6 个生命周期扩展点：`agent/pre-step`、`agent/request`、`tools/pre-execute`、`tools/execute`、`tools/post-execute`、`agent/turn-stopping`。插件可在这些节点挂载自定义逻辑，无需修改 Agent Loop。
+
+**当前设计缺口**：4.6 只提到 append-only 日志用于事后审计，没有运行时指标采集机制。I7（成本监控）提了需求但没有落地载体。
+
+**深化方案**——新增 `invest-telemetry` 插件，挂载 4 个钩子：
+
+| 钩子 | 采集内容 | 用途 |
+|:--|:--|:--|
+| `tools/pre-execute` | 工具名 + 参数摘要 + 时间戳 | 调用链追踪 |
+| `tools/post-execute` | 工具名 + 耗时 + 结果大小 | 性能瓶颈定位 |
+| `agent/request` | 本次请求的 input/output token 数 | **分阶段成本归因**（每阶段花了多少 token） |
+| `agent/turn-stopping` | turn 汇总（总 token / 总耗时 / 工具调用数） | 单次分析成本核算 + 预算校验 |
+
+采集数据写入 Prometheus 指标端点或结构化日志，供 Grafana 看板展示。**这直接解决了 I7 成本监控的落地问题**。
+
+**落地载体**：`invest-telemetry` 插件（自研，TS），注册到 cordis.yml。
+
+#### D5. 上下文压缩 —— 长分析场景的溢出防护【中价值】
+
+**DSH 原生能力**：当上下文增长接近窗口上限时，DSH 自动执行压缩——**用替换事件改变模型此后看到的内容，但不删除原始历史**。压缩后仍可恢复、回放、检索。
+
+**当前设计缺口**：未提及上下文膨胀防护。8 期财报 + 新闻明细 + 行业对比数据注入后，上下文可能接近窗口上限（尤其 combined with Skill 全文注入）。
+
+**深化方案**：
+- 在 preset 配置中显式开启上下文压缩（`context-compaction` 插件），设置触发阈值（建议窗口的 80%）。
+- D1（PTC 模式）已从源头减少上下文膨胀；D5 是兜底防线，两者互补。
+- 监控指标：每次分析是否触发压缩、压缩比例——若频繁触发，说明 D1 的上下文节约不到位，需优化数据摘要策略。
+
+**落地载体**：preset 配置开启 + 监控指标接入 D4 的 telemetry。
+
+#### D6. Session Resume —— 重分析场景的续跑与缓存命中【中价值】
+
+**DSH 原生能力**：会话中断自动存档，下次可从断点续跑，不从头再来。配合 prefix-cache，续跑时历史前缀直接命中缓存。
+
+**当前设计缺口**：数据流提到 `session_id = code-date，跨分析可续`，但没有显式设计 resume 流程——什么情况下续跑、续跑从哪一步开始、新数据如何注入。
+
+**深化方案**——显式设计重分析流程：
+
+```
+用户再次触发同股票分析
+  → Orchestrator 检查是否存在同 code-date 的 DSH 会话
+  → 存在：Resume 会话，注入增量数据（最新行情/新财报期数），从 ④ 步重跑
+    （①②③ 的定性结论通常日内不变，无需重跑）
+  → 不存在：新建会话，从 ① 步完整跑
+  → 续跑时 prefix-cache 命中历史前缀 → 成本大幅降低
+```
+
+**关键设计**：哪些步骤可以跳过、哪些必须重跑，由数据新鲜度决定：
+- 行情变了 → 必须重跑 ④⑤（估值与结论）
+- 新财报发布 → 必须重跑 ②③④⑤（定性可能变化）
+- 仅查看历史结果 → 直接读 DB，不触发 DSH
+
+**落地载体**：Orchestrator 增加 resume 判断逻辑 + DSH SDK 的 Resume API 调用。**待 P0 验证**：Resume API 在 headless 模式下的行为（是否自动恢复到最后一个 step，还是需要显式指定恢复点）。
+
+---
+
+### Q. 分析质量增强（3 项）
+
+#### Q1. 证据引用强制——每个结论必须有数据支撑【高价值】
+
+**问题**：当前 LLM 定性分析的输出是自由文本，结论与数据之间的引用关系靠模型自觉。投资分析场景中，"毛利率连续 3 年 >40%"这类关键论断必须能追溯到具体数据点，否则用户无法验证。
+
+**深化方案**：
+- 在 invest-schema 中为每个 LLM 输出字段增加 `evidence` 数组约束：
+  ```json
+  {
+    "claim": "毛利率连续3年>40%，护城河深厚",
+    "evidence": [
+      {"source": "financials.2023", "field": "gross_margin", "value": 0.413},
+      {"source": "financials.2024", "field": "gross_margin", "value": 0.428},
+      {"source": "financials.2025", "field": "gross_margin", "value": 0.441}
+    ]
+  }
+  ```
+- invest-schema 的 post-execute 钩子校验：每个 `claim` 必须至少 1 条 `evidence`，且 `evidence.source` 必须指向已注入上下文中存在的数据路径（防幻觉引用）。
+- 前端展示时，点击结论可展开查看支撑数据。
+
+**落地载体**：invest-schema 插件的 schema 定义 + post-execute 校验逻辑。
+
+#### Q2. 置信度标注——低置信结论显式标记【中价值】
+
+**问题**：LLM 对所有结论都以同样的确定性语气输出，但实际上"该公司护城河深厚"和"该行业 PE 中枢约 25x"的可信度完全不同。用户无法区分哪些是模型有把握的，哪些是推测。
+
+**深化方案**：
+- 每个 LLM 输出字段增加 `confidence` 字段：`high` / `medium` / `low`。
+- Skill 正文中增加置信度判断指引（如：有 3 期以上数据支撑 → high；只有 1 期或推断 → low）。
+- `confidence: low` 的结论在前端用灰色标记 + 提示"该结论数据支撑不足，建议人工验证"。
+- ⑤ 结论阶段综合各步置信度：若 ≥2 个关键步骤为 low，整体结论加"置信度不足"警告。
+
+**落地载体**：Skill 正文增加置信度判断规则 + invest-schema 增加 `confidence` 枚举校验。
+
+#### Q3. 自审循环（Ralph Loop）—— 结论一致性自检【可选，高价值但增加延迟】
+
+**DSH 原生能力**：Ralph 循环模式——每一轮启动一个全新的子 Agent 执行同一个目标，直到目标达成。每轮不带上一轮上下文，适合"反复试直到通过"的任务。
+
+**深化方案**：
+- ⑤ 结论输出后，可选触发一轮 Ralph 自审：
+  - 新子 Agent 拿到完整的 1-⑤ 输出（不含之前的推理过程），扮演"审稿人"角色
+  - 检查清单：结论与定性分析是否矛盾？评级与距离是否一致？veto 是否被正确执行？证据引用是否充分？
+  - 若发现问题，输出修正建议 → 主会话根据修正建议调整结论
+- **默认关闭**（增加一次完整 LLM 调用的延迟和成本），在"深度分析"模式（用户选择 V4-Pro）时开启。
+
+**落地载体**：workflow 脚本在 ⑤ 步后增加可选的 `ralph-review` 步骤，由 preset 配置开关控制。**待 P0 验证**：Ralph 循环在 headless 模式下的触发方式。
+
+---
+
+### E. Skill 工程深化（2 项）
+
+#### E1. Skill 依赖声明与版本追踪
+
+**问题**：当前 Skill 之间无显式依赖声明。output-conclusion 依赖前四步的输出，但依赖关系只在 workflow 脚本的 `depends_on` 中体现，Skill 本身不知道自己被谁依赖。当某个方法论 Skill 更新时，无法自动识别哪些下游 Skill 需要同步审查。
+
+**深化方案**：
+- Skill frontmatter 增加 `provides` / `consumes` 字段：
+  ```yaml
+  ---
+  name: anchor-industry-pe
+  description: 安全边际 PE 锚定
+  version: 1.1.0
+  provides: [pe_low, pe_high, swing_zone_analysis]
+  consumes: [qualitative_analysis, reverse_analysis, industry]
+  ---
+  ```
+- 编写 Skill 依赖校验脚本（CI 执行）：
+  - 每个 Skill 的 `consumes` 必须有上游 Skill 的 `provides` 覆盖
+  - 版本变更时检查 `provides` 字段是否有字段删除/重命名 → 若有，标记所有 `consumes` 该字段的下游 Skill 需要审查
+- 该机制与 workflow 脚本的 `depends_on` 互补：脚本管运行时顺序，Skill 依赖管静态兼容性。
+
+**落地载体**：Skill frontmatter 扩展 + CI 校验脚本（Python/TS 均可）。
+
+#### E2. Skill 输出 Schema 标准化
+
+**问题**：当前每个 Skill 的输出格式由 Skill 正文自由描述（"输出 qualitative_analysis 字段，包含..."），不同 Skill 的输出结构不统一，invest-schema 只能做最终校验，无法在中间步骤拦截格式错误。
+
+**深化方案**：
+- 为每个 Skill 定义 JSON Schema 输出契约，存放在 Skill 目录旁：
+  ```
+  .dsh/skills/
+  ├── analyze-qualitative/
+  │   ├── SKILL.md
+  │   ├── output.schema.json      # 该步骤输出的 JSON Schema
+  │   └── blocks/
+  ├── run-reverse-checklist/
+  │   ├── SKILL.md
+  │   └── output.schema.json
+  ```
+- workflow 每步执行后，用对应 Skill 的 `output.schema.json` 做中间校验（非最终校验），格式错误立即在该步重试或降级，避免错误传播到后续步骤。
+- invest-schema 的最终校验保留，作为 ⑤ 步的整体把关。
+
+**落地载体**：每个 Skill 目录增加 `output.schema.json` + workflow 脚本每步增加 schema 校验钩子。
+
+---
+
+### 深化方案优先级与实施映射
+
+| 项 | 价值 | 实施阶段 | 依赖 |
+|:--|:--:|:--:|:--|
+| D1 PTC/Code Mode | 高 | P2 | P0 验证 PTC 可用性 |
+| D2 Session Fork 敏感性 | 高 | P3 | P0 验证 Fork API |
+| D3 内置守卫注册 | 中 | P2 | 零依赖，两行配置 |
+| D4 生命周期钩子 telemetry | 中 | P3 | invest-telemetry 插件开发 |
+| D5 上下文压缩 | 中 | P2 | preset 配置开启 |
+| D6 Session Resume | 中 | P3 | P0 验证 Resume API |
+| Q1 证据引用强制 | 高 | P2 | invest-schema 扩展 |
+| Q2 置信度标注 | 中 | P2 | Skill 正文更新 + schema 扩展 |
+| Q3 Ralph 自审循环 | 可选 | P4 | P0 验证 Ralph 可用性 |
+| E1 Skill 依赖声明 | 中 | P1 | frontmatter 扩展 + CI 脚本 |
+| E2 Skill 输出 Schema | 中 | P1-P2 | 每个 Skill 编写 output.schema.json |
+
+> **P0 验证清单更新**：在原有 P0（茅台全链路跑通）基础上，增加 4 项 API 验证：PTC 可用性（D1）、Fork API（D2）、Resume API（D6）、Ralph 触发方式（Q3）。验证结果决定对应深化项是否进入后续阶段。
