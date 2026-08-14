@@ -6,7 +6,7 @@
 - [x] T1 D1 PTC / Code Mode 可用性
 - [x] T2 D2 Session Fork 可用性
 - [x] T3 D6 Session Resume 语义
-- [ ] T4 Q3 Ralph 循环触发
+- [x] T4 Q3 Ralph 循环触发
 - [ ] T5 prefix-cache API 层观测（可选）
 - [ ] T6 报告汇总与 spec 章节十四回填
 
@@ -211,3 +211,46 @@ R2: [fake-runtime] session=p0-1-resume-600519 turn=2 收到：'第二轮：现�
 ### T3 副作用说明
 
 无。本探针只做 SDK 表面自省 + fake_runtime 两轮复用（`runtime_bin=sys.executable` + `launch_args_override` 指向本地 fake_runtime.py），未调用真实 DeepSeek API；`.sessions/` 会话根目录为探针运行时临时产物，未纳入提交。
+
+## T4 Q3 Ralph 循环触发
+
+- 工具注册: **`tool-ralph` 已在 headless base preset 注册**，无需挂载。`--dump-config`（headless）命中 `- id: tool-ralph / name: '@deepseek-ai/dsh-tool-ralph'`；源码 `packages/bundle/base/cordis.patch.yml:378` 与 `base/package.json:100`（`workspace:^`）双双确认其入 base 包。与 P0 T5 的 `workflow-worker-thread`/`tool-workflow`/`subagent-spawn-in-process` 同批内置。**未创建 `ralph.patch.yml`**（Step 2 按「已注册即跳过」执行）。
+- 触发契约: 工具名 **`ralph`**（非 `ralph-loop`——`ralph-loop` 是 `RALPH_META.name` 的 workflow meta 名，非注册工具名）。参数 `objective`（required string）+ `maxRounds`（optional number，受部署上限约束）。返回 `{runId, agentsStarted, result}`，其中 `result = {status: 'complete'|'blocked'|'budget-limited', roundsStarted, report: {status, summary, evidence[], nextSteps[], blocker}}`。固定脚本 `RALPH_SCRIPT` 内嵌插件，模型只填数据（源码注释：「The model supplies data only; it cannot alter the loop, provider route, schema, or handoff validation」）；每轮 `agent(prompt, {schema})` 起一个**全新子 Agent**（无父会话/无上一轮上下文，仅传 objective + 上一轮结构化 handoff）。
+- 行为探针: `p0_1_t4_ralph/prompt.mjs` 导出探针 prompt（headless 单次调用真实 DeepSeek API，授权）。模型调用 `ralph` 工具，返回 **roundsStarted=2**、verdict=一致（最终评级 🟡 与距击球区 32% 落 0-50% 带内、定性正向结论三者一致，建议维持 🟡）。模型还复述子 Agent 发现的**文档阈值漂移**（`设计语言规范.md` 与主计划仍写旧阈值 0-30%🟡/>30%🔴，需修正为 0-50%🟡/>50%🔴）——这是 ralph 脚本让子 Agent「inspect workspace」后带出的真实文件证据，佐证每轮确为新子 Agent 读盘而非同会话续答。
+- 结论: ✅ **headless 可触发 Ralph 循环** → spec Q3 进 P4（深度模式，V4-Pro 开启）。trigger 契约 = `ralph(objective, maxRounds)`，返回 `result.roundsStarted`/`result.report`。
+
+### T4 源码侦察命令与输出
+
+```bash
+cd scripts/dsh_p0/deepseek-harness
+grep -n "name: '\|objective\|maxRounds\|description:" packages/workflow/tool-ralph/src/index.ts | head -20
+#   export const name = 'tool-ralph'                       # cordis 插件名
+#   export const inject = ['tools', 'workflowEngine', 'subagents', 'systemPrompt']
+#   maxRounds?: number                                     # Config 部署上限（默认 256）
+#   name: 'ralph-loop',                                     # RALPH_META.name（workflow meta，非工具名）
+#   description: 'Iterate toward one objective with a fresh child and bounded structured handoff per round.'
+#   name: 'ralph',                                          # defineTool 注册的工具名
+#   objective: { type: 'string', required: true, ... }
+#   maxRounds: { type: 'number', ... }
+```
+
+```bash
+cd scripts/dsh_p0 && set -a && source ./.env && set +a
+NODE22=/c/Users/SXF-Admin/AppData/Local/Temp/dsh-node22/node_modules/node/bin/node.exe
+"$NODE22" node_modules/@deepseek-ai/dsh/lib/bin.js --profile headless --dump-config 2>&1 | grep -iE "ralph|workflow"
+#   - id: tool-ralph      name: '@deepseek-ai/dsh-tool-ralph'
+#   - id: workflow-worker-thread  name: '@deepseek-ai/dsh-workflow-worker-thread'
+#   - id: tool-workflow   name: '@deepseek-ai/dsh-tool-workflow'
+```
+
+（T1 的 dump-config 截取亦已含 `- id: tool-ralph` 行，与本结果一致。）
+
+### T4 探针输出（verbatim）
+
+```text
+Ralph 循环已完成：roundsStarted=2，verdict=一致（最终评级 🟡 与距击球区 32%（落在 0-50% 带内）及定性正向结论一致，建议维持 🟡；附带发现文档阈值漂移问题——设计语言规范.md 与主计划.md 仍写旧阈值 0-30%🟡/>30%🔴，需修正为 0-50%🟡/>50%🔴）。
+```
+
+### T4 副作用说明
+
+未创建 `ralph.patch.yml`（已注册即跳过）。探针运行调用真实 DeepSeek API 一次（授权）。**探针副作用产物**：ralph round-2 fresh child 在会话工作区写出自审报告 `scripts/dsh_p0/p0_1_t4_ralph/round2_verify_report.md`（本轮 fresh agent 的独立复核报告，含 `verdict=一致` + `suggestedRating=🟡` + 逐文件证据链表 + 4 处文档阈值漂移定位：`设计语言规范.md:65-66`、`主计划.md:489-495`、`主计划.md:61`、`股票WEB监控系统需求.md:8`，均为旧阈值 0-30%🟡/>30%🔴 与权威 0-50%🟡/>50%🔴 冲突）。该文件是「每轮新子 Agent 读盘产出」的直接物证，但按 T1 先例（副作用产物删除、不纳入提交），已删除未提交。提交仅含 `p0_1_t4_ralph/prompt.mjs` 与本报告。
