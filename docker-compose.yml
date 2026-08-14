@@ -9,6 +9,10 @@ services:
         # 国内 pip 镜像（默认官方源，其他环境不受影响）
         PIP_INDEX_URL: https://mirrors.cloud.tencent.com/pypi/simple
     env_file: .env
+    environment:
+      # DSH 接线（值可被 .env 覆盖：${VAR:-default} 优先读 .env）
+      - DSH_ENABLED=${DSH_ENABLED:-true}
+      - DSH_ENGINE_URL=${DSH_ENGINE_URL:-http://dsh-engine:8001}
     # 启动前先跑 alembic 迁移建表（新库无表则 API 报错），再启动 uvicorn
     command: sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
     # SQLite 数据持久化：容器重建不丢库
@@ -55,6 +59,38 @@ services:
   redis:
     image: redis:7-alpine
 
+  # DSH 分析引擎（P4 双容器：SDK 宿主 + dsh-jsonrpc-agent 同容器）
+  dsh-engine:
+    build:
+      context: .
+      dockerfile: dsh-engine/Dockerfile
+      args:
+        # 国内 npm 镜像（默认官方源，其他环境不受影响）
+        NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
+    environment:
+      - DSH_ENGINE_PORT=8001
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - DSH_TOOLS_MODE=${DSH_TOOLS_MODE:-native}
+    volumes:
+      # 会话日志持久化（S3 留存载体）：容器重建不丢
+      - dsh_sessions:/app/sessions
+      # I3 只读挂载（脚本防篡改）：skills 方法论资产 + plugins 插件脚本只读
+      # 开发期热更新可改为 :rw 或去掉挂载（改用镜像内 COPY 的副本）
+      - ./.dsh/skills:/app/.dsh/skills:ro
+      - ./.dsh/plugins:/app/.dsh/plugins:ro
+    healthcheck:
+      # sdk_host.py 仅暴露 POST /trigger，无 /health；用 FastAPI 自动生成的 /openapi.json 探活
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8001/openapi.json')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      - redis
+    restart: unless-stopped
+
 volumes:
   frontend_dist:
   app_data:
+  dsh_sessions:

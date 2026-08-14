@@ -12,8 +12,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# 让 vendored openharness（/app/vendor）可被 backend 导入（生产运行 LLM 模式必需）
-ENV PYTHONPATH=/app/vendor
-
 EXPOSE 8000
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

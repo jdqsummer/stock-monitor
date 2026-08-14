@@ -32,3 +32,14 @@ tests/
 .idea/
 .DS_Store
 Thumbs.db
+
+# DSH P4：backend 镜像不携带 DSH 资产（dsh-engine 独立构建 + 显式 COPY，见 dsh-engine/Dockerfile.dockerignore）
+.dsh/
+dsh-engine/
+skills/
+sessions/
+scripts/dsh_p0/deepseek-harness/
+scripts/dsh_p0/.dsh-home/
+scripts/dsh_p0/_session_*.jsonl
+scripts/dsh_p3/.dsh-home/
+scripts/dsh_p3/_session_*.jsonl
