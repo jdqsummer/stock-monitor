@@ -158,6 +158,8 @@ version: 1.0.0
 
 **PE 锚定规则（硬约束）**：击球 PE 由 LLM 综合前序定性/逆向结论设定；行业 PE 表仅作参考锚点与非法输入的兜底回退，**不作为取值来源**。LLM 输出非法（≤0 或 high<low）才回退锚点。`pe_rationale` 必须说明相对锚点的偏离理由。
 
+> **⑤ 结论阶段语义**：`output-conclusion` **综合 1-4 段全部输出**（定性质地 / 逆向四类结论+重大风险+否决 / 安全边际与信号灯），由 LLM 定性给出三档建议、`final_rating` 与 `action_items`，**并非仅复述逆向分析结论**；`checklist_veto`/`unassessable_risk` 只是输入的硬约束之一（触发强制 🔴 + 坚决放弃）。
+
 ### 4.4 确定性 TS 模块（纯函数，复刻现有 workflow.py 节点）
 
 ```
