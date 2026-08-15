@@ -4,9 +4,10 @@ from backend.models.stock import WatchlistItem, AnalysisSnapshot, Industry, Stoc
 from backend.models.portfolio import Position
 from backend.models.diary import Diary
 from backend.models.memory import Conversation, Memory
+from backend.models.reminder import Reminder
 
 __all__ = [
     "User", "WatchlistItem", "AnalysisSnapshot", "Industry",
     "StockSnapshot", "FinancialRecord",
-    "Position", "Diary", "Conversation", "Memory",
+    "Position", "Diary", "Conversation", "Memory", "Reminder",
 ]

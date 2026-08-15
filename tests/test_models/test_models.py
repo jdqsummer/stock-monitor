@@ -69,3 +69,8 @@ def test_analysis_snapshot_qualitative_columns():
         "analysis_source", "analysis_completed_at",
     ]:
         assert col in columns
+
+
+def test_reminder_model_fields():
+    from backend.models.reminder import Reminder
+    assert hasattr(Reminder, "user_id") and hasattr(Reminder, "reminder_date")

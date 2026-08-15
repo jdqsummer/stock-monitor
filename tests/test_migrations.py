@@ -119,3 +119,29 @@ def test_migration_from_head_adds_engine_metadata_columns(tmp_path):
     _run_alembic(db_path, "head")
     after = _snapshot_cols(db_path)
     assert "analysis_model" in after and "analysis_degraded" in after
+
+
+# ── Task 5：reminders 表 ──
+
+def _reminder_cols(db_path: str) -> set[str]:
+    conn = sqlite3.connect(db_path)
+    try:
+        return {r[1] for r in conn.execute("PRAGMA table_info(reminders)")}
+    finally:
+        conn.close()
+
+
+def test_head_has_reminders_table(tmp_path):
+    db_path = str(tmp_path / "reminders.db")
+    _run_alembic(db_path, "head")
+    cols = _reminder_cols(db_path)
+    assert {"id", "user_id", "code", "name", "message", "signal",
+            "reminder_date", "created_at", "read_at"} <= cols
+
+
+def test_migration_from_prev_head_adds_reminders(tmp_path):
+    db_path = str(tmp_path / "up_reminders.db")
+    _run_alembic(db_path, "2b82e6c3f525")
+    assert _reminder_cols(db_path) == set()   # 无 reminders 表
+    _run_alembic(db_path, "head")
+    assert "message" in _reminder_cols(db_path)
