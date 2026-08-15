@@ -265,3 +265,57 @@ async def test_process_one_reads_model_from_job(db_session, test_session_factory
 
     assert seen.get("model") == "deepseek-v4-pro"
     assert svc.get_status(job_id)["results"]["600519"] == STATUS_DONE
+
+
+# ── 切页/刷新后恢复：get_active_job ──
+
+
+@pytest.mark.asyncio
+async def test_get_active_job_returns_latest_running(db_session, test_session_factory):
+    """有进行中 job（存在 pending/running）→ 返回该用户最近创建的一个的 status。
+
+    前端切页/刷新后靠此恢复进度：旧 job 已完成应从候选剔除，避免恢复已结束的分析。
+    """
+    from backend.services.analysis_job_svc import STATUS_PENDING, STATUS_RUNNING
+
+    svc = AnalysisJobService(chain=FakeChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    done_id = svc.create_job("u1", ["600519"], "manual")
+    svc._jobs[done_id]["codes"]["600519"] = STATUS_DONE   # 已完成，应从候选剔除
+    running_id = svc.create_job("u1", ["000858", "600036"], "manual")
+    svc._jobs[running_id]["codes"]["000858"] = STATUS_RUNNING
+    # 600036 保持 pending
+
+    status = svc.get_active_job("u1")
+    assert status is not None
+    assert status["job_id"] == running_id
+    assert status["total"] == 2
+    assert status["done"] == 0
+    assert status["running"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_active_job_none_when_all_terminal(db_session, test_session_factory):
+    """全部终态（done/failed/skipped）→ 无进行中 job，返回 None。"""
+    from backend.services.analysis_job_svc import STATUS_FAILED, STATUS_SKIPPED
+
+    svc = AnalysisJobService(chain=FakeChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519", "000858"], "manual")
+    svc._jobs[job_id]["codes"]["600519"] = STATUS_FAILED
+    svc._jobs[job_id]["codes"]["000858"] = STATUS_SKIPPED
+
+    assert svc.get_active_job("u1") is None
+
+
+@pytest.mark.asyncio
+async def test_get_active_job_user_isolation(db_session, test_session_factory):
+    """用户隔离：A 的进行中 job 对 B 不可见（配合 API 端点的当前用户过滤）。"""
+    from backend.services.analysis_job_svc import STATUS_RUNNING
+
+    svc = AnalysisJobService(chain=FakeChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "manual")
+    svc._jobs[job_id]["codes"]["600519"] = STATUS_RUNNING
+
+    assert svc.get_active_job("u2") is None

@@ -77,6 +77,23 @@ class AnalysisJobService:
             "results": dict(codes),
         }
 
+    def get_active_job(self, user_id: str) -> dict | None:
+        """该用户最近创建的进行中 job 的 status（切页/刷新后前端恢复进度用）。
+
+        job 处于进行中 ⇔ 至少一个 code 仍是 pending/running（未全部终态）。
+        全部终态或非该用户 → None。无 job_id 依赖，前端刷新后无需记住旧 job。
+        """
+        terminal = (STATUS_DONE, STATUS_FAILED, STATUS_SKIPPED)
+        active = [
+            job for job in self._jobs.values()
+            if job["user_id"] == user_id
+            and any(s not in terminal for s in job["codes"].values())
+        ]
+        if not active:
+            return None
+        latest = max(active, key=lambda j: j["created_at"])
+        return self.get_status(latest["job_id"], user_id)
+
     async def _run(self, job_id: str):
         job = self._jobs[job_id]
         user_id = job["user_id"]

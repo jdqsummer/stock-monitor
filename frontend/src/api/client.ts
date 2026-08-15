@@ -73,6 +73,8 @@ export const analysisApi = {
     client.post<ApiResponse<{ job_id: string }>>('/analysis/watchlist/analyze', { codes, model }),
   watchlistStatus: (jobId: string) =>
     client.get<ApiResponse<JobStatus>>('/analysis/watchlist/status', { params: { job_id: jobId } }),
+  watchlistActive: () =>
+    client.get<ApiResponse<JobStatus>>('/analysis/watchlist/active'),
   getSnapshot: (code: string) =>
     client.get<ApiResponse<WatchlistBoardRow>>(`/analysis/snapshot/${code}`),
 };

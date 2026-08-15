@@ -271,6 +271,15 @@ async def watchlist_analyze_status(
     return {"code": 0, "data": status, "message": "ok"}
 
 
+@router.get("/watchlist/active", response_model=AnalyzeResponse)
+async def watchlist_active(current_user: User = Depends(get_current_user)):
+    """当前用户最近创建的进行中分析任务（切页/刷新后前端恢复进度用）"""
+    status = analysis_job_service.get_active_job(current_user.id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="无进行中的分析任务")
+    return {"code": 0, "data": status, "message": "ok"}
+
+
 @router.get("/snapshot/{code}", response_model=AnalyzeResponse)
 async def get_snapshot(
     code: str,

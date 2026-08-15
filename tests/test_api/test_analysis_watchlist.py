@@ -112,6 +112,71 @@ class TestWatchlistAnalyzeAPI:
         assert resp.status_code == 404
 
 
+class TestWatchlistActiveAPI:
+    """GET /watchlist/active —— 切页/刷新后前端恢复进行中分析进度用。"""
+
+    @pytest.mark.asyncio
+    async def test_active_requires_auth(self, client):
+        resp = await client.get("/api/analysis/watchlist/active")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_active_returns_running_job_status(self, client):
+        from backend.api import analysis as analysis_api
+
+        token = await _auth_token(client)
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+
+        svc = analysis_api.analysis_job_service
+        svc._jobs["job_active"] = {
+            "job_id": "job_active", "user_id": user_id, "source": "manual",
+            "created_at": "2026-08-12T15:30:00",
+            "codes": {"600519": STATUS_DONE, "000858": "pending"},
+        }
+        resp = await client.get(
+            "/api/analysis/watchlist/active",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["job_id"] == "job_active"
+        assert data["total"] == 2
+        assert data["done"] == 1
+
+    @pytest.mark.asyncio
+    async def test_active_404_when_none(self, client):
+        token = await _auth_token(client)
+        resp = await client.get(
+            "/api/analysis/watchlist/active",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_active_ignores_other_users_job(self, client):
+        """用户隔离：只返回当前用户的进行中 job，其他用户的 job 不可见"""
+        from backend.api import analysis as analysis_api
+
+        owner_token = await _auth_token(client)
+        owner_me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {owner_token}"})
+        owner_id = owner_me.json()["data"]["id"]
+
+        svc = analysis_api.analysis_job_service
+        svc._jobs["job_owner"] = {
+            "job_id": "job_owner", "user_id": owner_id, "source": "manual",
+            "created_at": "2026-08-12T15:30:00",
+            "codes": {"600519": "running"},
+        }
+
+        other_token = await _auth_token(client, email="wl3@example.com")
+        resp = await client.get(
+            "/api/analysis/watchlist/active",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 404
+
+
 class TestSnapshotAPI:
     @pytest.mark.asyncio
     async def test_snapshot_404_when_not_analyzed(self, client, db_session):

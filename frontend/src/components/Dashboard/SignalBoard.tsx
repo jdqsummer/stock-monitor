@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
 import { Button, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -44,9 +44,45 @@ export function SignalBoard({ data, loading, onRefresh }: {
 
   const pollTimer = useRef<number | null>(null);
 
-  useEffect(() => () => {
+  // 轮询 job 进度；完成（done+failed+skipped 达 total）后收尾并刷新数据。
+  // onRefresh 稳定（Dashboard useCallback 传入），useCallback 保持引用不变，避免 useEffect 反复重跑。
+  const startPolling = useCallback((jobId: string) => {
     if (pollTimer.current) window.clearInterval(pollTimer.current);
-  }, []);
+    pollTimer.current = window.setInterval(async () => {
+      try {
+        const st = (await analysisApi.watchlistStatus(jobId)).data.data;
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        if (st.done + st.failed + st.skipped >= st.total) {
+          if (pollTimer.current) window.clearInterval(pollTimer.current);
+          pollTimer.current = null;
+          setAnalyzing(false);
+          setProgress('');
+          message.success('分析完成');
+          onRefresh();
+        }
+      } catch {
+        /* 轮询失败忽略，下轮重试 */
+      }
+    }, 3000);
+  }, [onRefresh]);
+
+  // 切页/刷新后恢复进行中的分析：analyzing/progress/pollTimer 都在组件内存里，卸载即丢；
+  // 后端 job 仍在跑，重挂载时查最近进行中 job 继续轮询（后端为真相源，前端无需记住 job_id）。
+  useEffect(() => {
+    (async () => {
+      try {
+        const st = (await analysisApi.watchlistActive()).data.data;
+        setAnalyzing(true);
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        startPolling(st.job_id);
+      } catch {
+        /* 无进行中任务，忽略 */
+      }
+    })();
+    return () => {
+      if (pollTimer.current) window.clearInterval(pollTimer.current);
+    };
+  }, [startPolling]);
 
   const handleAnalyze = async () => {
     if (selectedKeys.length === 0) return;
@@ -55,22 +91,7 @@ export function SignalBoard({ data, loading, onRefresh }: {
     try {
       const res = await analysisApi.analyzeWatchlist(selectedKeys.map(String), model);
       const jobId = res.data.data.job_id;
-      if (pollTimer.current) window.clearInterval(pollTimer.current);
-      pollTimer.current = window.setInterval(async () => {
-        try {
-          const st = (await analysisApi.watchlistStatus(jobId)).data.data;
-          setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
-          if (st.done + st.failed + st.skipped >= st.total) {
-            if (pollTimer.current) window.clearInterval(pollTimer.current);
-            setAnalyzing(false);
-            setProgress('');
-            message.success('分析完成');
-            onRefresh();
-          }
-        } catch {
-          /* 轮询失败忽略，下轮重试 */
-        }
-      }, 3000);
+      startPolling(jobId);
     } catch (err) {
       if (pollTimer.current) {
         window.clearInterval(pollTimer.current);
