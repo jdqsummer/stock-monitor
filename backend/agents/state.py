@@ -111,6 +111,7 @@ class AnalysisState(TypedDict, total=False):
     analysis_started: str                    # 分析启动时间
     analysis_completed: Optional[str]        # 分析完成时间
     llm_model: str                           # 使用的 LLM 模型
+    api_keys: dict[str, str]                 # DSH 路径：厂商 API Key 透传
     analysis_source: str                     # 引擎类型: dsh-llm | rule-based | mock | manual
     analysis_model: str                      # 实际路由模型（DSH 路径回传真实模型；降级 none）
     analysis_degraded: bool                  # 降级分析标记

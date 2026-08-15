@@ -358,6 +358,7 @@ class AnalysisChain:
         user_query: str = "",
         industry: str = "",
         model: str = "",
+        api_keys: dict | None = None,
     ) -> AnalysisReport:
         """
         执行完整 9 步分析。
@@ -368,6 +369,7 @@ class AnalysisChain:
             user_query: 用户查询（可选）
             industry: 行业分类（可选，用于 PE 锚定）
             model: 用户选择的分析模型（I6，DSH 路径消费）；空=默认 provider model_id
+            api_keys: 厂商 API Key 透传（snake_case 键，DSH 路径消费）
 
         Returns:
             AnalysisReport 分析报告
@@ -379,6 +381,8 @@ class AnalysisChain:
             initial_state["industry_category"] = industry
         if model:
             initial_state["llm_model"] = model        # I6：用户选择模型透传（DSH 路径消费）
+        if api_keys:
+            initial_state["api_keys"] = api_keys
 
         # 运行 LangGraph 工作流
         state = await self.workflow_runner.run(
@@ -402,6 +406,7 @@ class AnalysisChain:
         news=None,
         industry: str = "",
         model: str = "",
+        api_keys: dict | None = None,
     ) -> AnalysisReport:
         """
         使用已有数据执行分析（跳过数据采集）。
@@ -413,6 +418,7 @@ class AnalysisChain:
             news: 已有新闻数据 list[CompanyNews]
             industry: 行业分类
             model: 用户选择的分析模型（I6，DSH 路径消费）；空=默认 provider model_id
+            api_keys: 厂商 API Key 透传（snake_case 键，DSH 路径消费）
 
         Returns:
             AnalysisReport
@@ -422,6 +428,8 @@ class AnalysisChain:
             initial_state["industry_category"] = industry
         if model:
             initial_state["llm_model"] = model        # I6：用户选择模型透传（DSH 路径消费）
+        if api_keys:
+            initial_state["api_keys"] = api_keys
 
         state = await self.workflow_runner.run_with_data(
             code=code,

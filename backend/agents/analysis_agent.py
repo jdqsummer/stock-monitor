@@ -194,7 +194,8 @@ class AnalysisAgent:
             retries = max(0, settings.DSH_RETRY_COUNT)
             for attempt in range(retries + 1):
                 try:
-                    updates = await orch.analyze(state, model=state.get("llm_model", ""))
+                    updates = await orch.analyze(state, model=state.get("llm_model", ""),
+                                                 api_keys=state.get("api_keys", {}))
                     _circuit_state["consecutive_failures"] = 0   # S6：成功清零熔断计数
                     updates.setdefault("analysis_source", "dsh-llm")
                     return updates

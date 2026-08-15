@@ -365,3 +365,33 @@ async def test_orchestrator_aclose_skips_runner_without_aclose():
     """底层 runner 无 aclose（如 FakeRunner）→ 安全跳过，不抛。"""
     orch = DshOrchestrator(runner=FakeRunner())
     await orch.aclose()
+
+
+@pytest.mark.asyncio
+async def test_http_runner_posts_api_keys():
+    captured = {}
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "result": RESULT, "model": "Qwen3.7-Max",
+            "usage": {"input_tokens": 10, "output_tokens": 5, "prompt_cache_hit_tokens": 0},
+            "degraded": False, "error": None,
+        })
+    runner = HttpDshRunner(base_url="http://dsh-engine:8000", timeout=60.0,
+                           client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    try:
+        await runner.run_five_stage(code="600519", name="贵州茅台", context={},
+                                    model="Qwen3.7-Max", session_id="x",
+                                    api_keys={"qwen": "sk-q"})
+    finally:
+        await runner._client.aclose()
+    assert captured["body"]["api_keys"] == {"qwen": "sk-q"}
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_analyze_passes_api_keys_from_state():
+    orch = DshOrchestrator(runner=FakeRunner())
+    state = dict(STATE)
+    state["api_keys"] = {"deepseek": "sk-d"}
+    await orch.analyze(state, model="")
+    assert orch._runner.calls[0]["api_keys"] == {"deepseek": "sk-d"}

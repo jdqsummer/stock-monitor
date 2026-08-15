@@ -57,7 +57,7 @@ async def test_analyze_with_real_llm_delegates_to_dsh(monkeypatch):
     sentinel = {"final_rating": "🔴", "analysis_source": "dsh-llm",
                 "analysis_model": "deepseek-v4-flash", "analysis_degraded": False}
 
-    async def _fake_analyze(self, state, model=""):
+    async def _fake_analyze(self, state, model="", api_keys=None):
         return sentinel
 
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
@@ -94,7 +94,7 @@ async def test_analyze_dsh_failure_falls_back_to_rule_based(reset_circuit, monke
     from backend.agents.dsh_orchestrator import DshOrchestrator
     from backend.llm.provider import LLMConfig, ProviderType
 
-    async def _boom(self, state, model=""):
+    async def _boom(self, state, model="", api_keys=None):
         raise RuntimeError("dsh boom")
 
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
@@ -123,7 +123,7 @@ async def test_analyze_dsh_retries_once_then_succeeds(reset_circuit, monkeypatch
     sentinel = {"final_rating": "🟢", "analysis_source": "dsh-llm",
                 "analysis_model": "deepseek-v4-flash", "analysis_degraded": False}
 
-    async def _flaky(self, state, model=""):
+    async def _flaky(self, state, model="", api_keys=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("first attempt boom")
@@ -150,7 +150,7 @@ async def test_analyze_dsh_retry_exhausted_falls_back_to_rule_based(reset_circui
     monkeypatch.setattr(settings, "DSH_RETRY_COUNT", 1)
     calls = {"n": 0}
 
-    async def _always_boom(self, state, model=""):
+    async def _always_boom(self, state, model="", api_keys=None):
         calls["n"] += 1
         raise RuntimeError("dsh always boom")
 
@@ -430,7 +430,7 @@ async def test_analyze_circuit_open_short_circuits_to_rule_based(reset_circuit, 
 
     called = {"n": 0}
 
-    async def _should_not_be_called(self, state, model=""):
+    async def _should_not_be_called(self, state, model="", api_keys=None):
         called["n"] += 1
         return {}
 
@@ -460,7 +460,7 @@ async def test_analyze_success_clears_circuit_failures(reset_circuit, monkeypatc
     sentinel = {"final_rating": "🟢", "analysis_source": "dsh-llm",
                 "analysis_model": "deepseek-v4-flash", "analysis_degraded": False}
 
-    async def _ok(self, state, model=""):
+    async def _ok(self, state, model="", api_keys=None):
         return sentinel
 
     monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)

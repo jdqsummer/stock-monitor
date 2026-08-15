@@ -39,6 +39,7 @@ class DshRunner(Protocol):
         session_id: str,
         pe_low_override: float | None = None,
         pe_high_override: float | None = None,
+        api_keys: dict | None = None,
     ) -> DshRunResponse:
         """POST {base_url}/trigger，返回 DshRunResponse（HTTP 触发契约）。"""
 
@@ -72,6 +73,7 @@ class HttpDshRunner:
         session_id: str,
         pe_low_override: float | None = None,
         pe_high_override: float | None = None,
+        api_keys: dict | None = None,
     ) -> DshRunResponse:
         payload = {
             "code": code,
@@ -82,6 +84,7 @@ class HttpDshRunner:
             "pe_low_override": pe_low_override,
             "pe_high_override": pe_high_override,
             "ralph_enabled": model == "deepseek-v4-pro",   # Q3：深度模式自动开启
+            "api_keys": api_keys or {},
         }
         resp = await self._client.post(f"{self._base_url}/trigger", json=payload)
         resp.raise_for_status()
@@ -273,7 +276,7 @@ class DshOrchestrator:
         """session_id = code-date（跨分析可续，I2 天然去重键）。"""
         return f"{code}-{date.today().isoformat()}"
 
-    async def analyze(self, state: dict, model: str = "") -> dict:
+    async def analyze(self, state: dict, model: str = "", api_keys: dict | None = None) -> dict:
         """执行 DSH 五段分析，返回 AnalysisState 兼容更新字典。
 
         降级语义：本方法只做「DSH 路径 + 标记」，不实现降级链；调用方（Task 4）在
@@ -290,6 +293,7 @@ class DshOrchestrator:
             context=context,
             model=requested,
             session_id=session_id,
+            api_keys=api_keys or state.get("api_keys") or {},
         )
         if resp.get("error"):
             raise RuntimeError(f"DSH 宿主错误: {resp['error']}")

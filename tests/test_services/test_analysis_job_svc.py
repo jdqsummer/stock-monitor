@@ -63,7 +63,7 @@ class FakeChain:
     def __init__(self, fail_codes: set[str] | None = None):
         self.fail_codes = fail_codes or set()
 
-    async def analyze(self, code, stock_name="", user_query="", industry="", model=""):
+    async def analyze(self, code, stock_name="", user_query="", industry="", model="", api_keys=None):
         if code in self.fail_codes:
             raise RuntimeError("boom")
         return _report(code, name=stock_name or "测试股", industry=industry or "")
@@ -141,7 +141,7 @@ async def test_per_job_concurrency_param_controls_semaphore(db_session, test_ses
         def __init__(self):
             self.active = 0
             self.max_active = 0
-        async def analyze(self, code, stock_name="", industry="", model=""):
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None):
             self.active += 1
             self.max_active = max(self.max_active, self.active)
             await asyncio.sleep(0.05)
@@ -172,7 +172,7 @@ async def test_concurrency_limited(db_session, test_session_factory):
             self.active = 0
             self.max_active = 0
 
-        async def analyze(self, code, stock_name="", user_query="", industry="", model=""):
+        async def analyze(self, code, stock_name="", user_query="", industry="", model="", api_keys=None):
             self.active += 1
             self.max_active = max(self.max_active, self.active)
             await asyncio.sleep(0.05)
@@ -195,7 +195,7 @@ async def test_queued_codes_stay_pending_while_running(db_session, test_session_
     from backend.services.analysis_job_svc import STATUS_PENDING, STATUS_RUNNING
 
     class SlowChain:
-        async def analyze(self, code, stock_name="", user_query="", industry="", model=""):
+        async def analyze(self, code, stock_name="", user_query="", industry="", model="", api_keys=None):
             await asyncio.sleep(0.2)
             return _report(code)
 
@@ -227,7 +227,7 @@ async def test_job_service_concurrent_same_code_serialized(db_session, test_sess
     windows = []  # (code, start, end)
 
     class StubChain:
-        async def analyze(self, code, stock_name="", industry="", model=""):
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None):
             start = asyncio.get_event_loop().time()
             await asyncio.sleep(0.05)
             end = asyncio.get_event_loop().time()
@@ -261,7 +261,7 @@ async def test_different_codes_run_concurrently(db_session, test_session_factory
             self.active = 0
             self.max_active = 0
 
-        async def analyze(self, code, stock_name="", industry="", model=""):
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None):
             self.active += 1
             self.max_active = max(self.max_active, self.active)
             await asyncio.sleep(0.05)
@@ -286,7 +286,7 @@ async def test_process_one_reads_model_from_job(db_session, test_session_factory
     seen = {}
 
     class ModelChain:
-        async def analyze(self, code, stock_name="", industry="", model=""):
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None):
             seen["model"] = model
             return _report(code)
 
@@ -352,3 +352,28 @@ async def test_get_active_job_user_isolation(db_session, test_session_factory):
     svc._jobs[job_id]["codes"]["600519"] = STATUS_RUNNING
 
     assert svc.get_active_job("u2") is None
+
+
+@pytest.mark.asyncio
+async def test_process_one_passes_api_keys_from_user_config(db_session, test_session_factory):
+    """_process_one 读 UserConfig key → chain.analyze(api_keys=...)"""
+    from backend.models.stock import WatchlistItem
+    from backend.models.user import User
+
+    async with test_session_factory() as s:
+        s.add(User(id="u_k", email="k@x.com", password_hash="x",
+                   config={"deepseek_api_key": "sk-ds"}))
+        s.add(WatchlistItem(user_id="u_k", stock_code="600519", stock_name="贵州茅台"))
+        await s.commit()
+
+    seen = {}
+    class KeyChain:
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None):
+            seen["api_keys"] = api_keys
+            return _report(code)
+
+    svc = AnalysisJobService(chain=KeyChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u_k", ["600519"], "manual")
+    await svc._run(job_id)
+    assert seen["api_keys"] == {"deepseek_api_key": "sk-ds"}

@@ -7,6 +7,7 @@ from uuid import uuid4
 from backend.agents.analysis_chain import create_analysis_chain
 from backend.db.database import async_session_factory
 from backend.llm.provider import is_llm_available
+from backend.models.user import User
 from backend.services.snapshot_svc import SnapshotService
 from backend.services.watchlist_svc import WatchlistService
 
@@ -137,6 +138,16 @@ class AnalysisJobService:
                     if not self._llm_available():
                         job["codes"][code] = STATUS_SKIPPED
                         return
+                    api_keys = {}
+                    async with self._session_factory() as session:
+                        try:
+                            user = await session.get(User, user_id)
+                            cfg = (user.config or {}) if user else {}
+                            api_keys = {k: cfg[k] for k in
+                                        ("deepseek_api_key", "qwen_api_key", "kimi_api_key")
+                                        if cfg.get(k)}
+                        finally:
+                            await session.close()
                     # create_analysis_chain 注入 LLM（has_real_llm=True → OpenHarness 走 LLM 定性路径）；
                     # 若用无参 AnalysisChain()（llm_provider=None），批量/自选分析只跑纯规则，缺定性/风险/清单
                     chain = self._chain or create_analysis_chain()
@@ -145,7 +156,8 @@ class AnalysisJobService:
                     model = job.get("model", "")          # 每 job 的模型（submit 传入，I6）
                     timeout = self._timeout_for()
                     report = await asyncio.wait_for(
-                        chain.analyze(code, stock_name=name, industry=industry, model=model),
+                        chain.analyze(code, stock_name=name, industry=industry,
+                                      model=model, api_keys=api_keys),
                         timeout=timeout,
                     )
                     async with self._session_factory() as session:
