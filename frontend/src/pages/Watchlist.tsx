@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, message, Popconfirm } from 'antd';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Key } from 'react';
+import { Button, Divider, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { watchlistApi } from '@/api/client';
+import { analysisApi, watchlistApi } from '@/api/client';
 import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
+import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
 import type { StockQuote, WatchlistItem } from '@/types';
 
@@ -14,7 +16,14 @@ export function Watchlist() {
   const [selectedStock, setSelectedStock] = useState<StockQuote | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchList = async () => {
+  // 自选分析：行勾选 + 模型选择 + 进度（从原仪表盘 SignalBoard 迁移）
+  const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [model, setModel] = useState<string>('deepseek-v4-flash');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [progress, setProgress] = useState('');
+  const pollTimer = useRef<number | null>(null);
+
+  const fetchList = useCallback(async () => {
     setLoading(true);
     try {
       const res = await watchlistApi.list();
@@ -22,9 +31,65 @@ export function Watchlist() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchList(); }, []);
+  useEffect(() => { fetchList(); }, [fetchList]);
+
+  // 轮询 job 进度；完成（done+failed+skipped 达 total）后收尾并刷新。
+  const startPolling = useCallback((jobId: string) => {
+    if (pollTimer.current) window.clearInterval(pollTimer.current);
+    pollTimer.current = window.setInterval(async () => {
+      try {
+        const st = (await analysisApi.watchlistStatus(jobId)).data.data;
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        if (st.done + st.failed + st.skipped >= st.total) {
+          if (pollTimer.current) window.clearInterval(pollTimer.current);
+          pollTimer.current = null;
+          setAnalyzing(false);
+          setProgress('');
+          message.success('分析完成');
+          fetchList();
+        }
+      } catch {
+        /* 轮询失败忽略，下轮重试 */
+      }
+    }, 3000);
+  }, [fetchList]);
+
+  // 切页/刷新后恢复进行中的分析：后端为真相源，重挂载时查最近进行中 job 继续轮询
+  useEffect(() => {
+    (async () => {
+      try {
+        const st = (await analysisApi.watchlistActive()).data.data;
+        setAnalyzing(true);
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        startPolling(st.job_id);
+      } catch {
+        /* 无进行中任务，忽略 */
+      }
+    })();
+    return () => {
+      if (pollTimer.current) window.clearInterval(pollTimer.current);
+    };
+  }, [startPolling]);
+
+  const handleAnalyze = async () => {
+    if (selectedKeys.length === 0) return;
+    setAnalyzing(true);
+    setProgress('提交任务...');
+    try {
+      const res = await analysisApi.analyzeWatchlist(selectedKeys.map(String), model);
+      startPolling(res.data.data.job_id);
+    } catch {
+      if (pollTimer.current) {
+        window.clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
+      setAnalyzing(false);
+      setProgress('');
+      message.error('提交分析失败');
+    }
+  };
 
   const handleAdd = async () => {
     if (!selectedStock || submitting) return;
@@ -66,16 +131,28 @@ export function Watchlist() {
   };
 
   const columns: ColumnsType<WatchlistItem> = [
-    { title: '股票代码', dataIndex: 'stock_code', width: 120 },
-    { title: '股票名称', dataIndex: 'stock_name', width: 120 },
-    { title: '行业分类', dataIndex: 'industry', width: 220,
+    { title: '股票代码', dataIndex: 'stock_code', width: 100 },
+    { title: '股票名称', dataIndex: 'stock_name', width: 120,
+      render: (text: string, record: WatchlistItem) => <a href={`/stock/${record.stock_code}`}>{text}</a> },
+    { title: '行业', dataIndex: 'industry', width: 160, ellipsis: true,
       render: (v: string | null) => v || '-' },
-    { title: '现价', dataIndex: 'current_price', width: 100,
-      render: (v: number) => (v ? `¥${v.toFixed(2)}` : '-') },
+    { title: '击球区市值', dataIndex: 'swing_market_cap', width: 130,
+      render: (v: string | null) => v || '-' },
+    { title: '击球股价', dataIndex: 'swing_price', width: 120,
+      render: (v: string | null) => v || '-' },
     { title: '总市值', dataIndex: 'total_market_cap', width: 110,
       render: (v: number) => (v ? `${v.toFixed(1)}亿` : '-') },
+    { title: '现价', dataIndex: 'current_price', width: 100,
+      render: (v: number) => (v ? `¥${v.toFixed(2)}` : '-') },
     { title: '动态PE', dataIndex: 'pe_dynamic', width: 100,
       render: (v: number | null) => (v != null ? v.toFixed(1) : '-') },
+    { title: '距击球区', dataIndex: 'distance_pct', width: 180,
+      render: (v: number | null, record: WatchlistItem) => (
+        <Space size={4}>
+          {record.signal ? <SignalBadge signal={record.signal} distancePct={v} /> : '-'}
+          {record.unassessable_risk && <Tag color="red">风险否决</Tag>}
+        </Space>
+      ) },
     { title: '操作', key: 'action', width: 80,
       render: (_: unknown, record: WatchlistItem) => (
         <Popconfirm title="确定删除？" onConfirm={() => handleRemove(record.id)}>
@@ -87,12 +164,24 @@ export function Watchlist() {
   return (
     <div>
       <h2>⭐ 自选股管理</h2>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>添加自选股</Button>
         <Button icon={<ThunderboltOutlined />} onClick={handleAutoClassify} loading={loading}>智能一键分类</Button>
+        <Divider type="vertical" />
+        <Select value={model} onChange={setModel} style={{ width: 180 }}
+          options={[
+            { value: 'deepseek-v4-flash', label: 'V4-Flash（省成本·默认）' },
+            { value: 'deepseek-v4-pro', label: 'V4-Pro（深度分析）' },
+          ]} />
+        <Button type="primary" disabled={selectedKeys.length === 0 || analyzing}
+          loading={analyzing} onClick={handleAnalyze}>
+          {analyzing ? progress || '分析中...' : `立即分析${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}
+        </Button>
       </Space>
 
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
+        scroll={{ x: 1300 }}
+        rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }}
         pagination={{ pageSize: 20 }} />
 
       <Modal title="添加自选股" open={modalOpen}

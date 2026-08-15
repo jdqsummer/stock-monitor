@@ -31,6 +31,12 @@ export interface WatchlistItem {
   current_price: number;
   total_market_cap: number;
   pe_dynamic: number | null;
+  // 分析快照派生字段（无快照为 null，渲染 -）
+  swing_market_cap: string | null;
+  swing_price: string | null;
+  distance_pct: number | null;
+  signal: Signal | null;
+  unassessable_risk?: boolean | null;
 }
 
 // ── 股票行情 ──
