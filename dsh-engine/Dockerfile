@@ -16,6 +16,12 @@ WORKDIR /app
 ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 ENV NPM_CONFIG_REGISTRY=$NPM_CONFIG_REGISTRY
 
+# 国内 pip 镜像（默认官方源，其他环境不受影响）。
+# 生产 compose 传入腾讯镜像：直连 pypi.org 的 57MB runtime-bin wheel 下载会长期停滞
+# （连接 ESTABLISHED 但 rxq=0 无数据，pip 无读超时无限挂起），腾讯镜像下载秒级完成。
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=$PIP_INDEX_URL
+
 # pnpm（corepack）—— 固定 10.22.0（与本地生成 lockfile 的版本一致）。
 # 勿用 @latest：新版 pnpm 默认启用 minimumReleaseAge 策略，会拒绝 lockfile 中
 # 24h 内新发布的传递依赖（如 @smithy/*），导致 frozen-lockfile 构建非确定性失败。

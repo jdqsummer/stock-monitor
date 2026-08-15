@@ -68,6 +68,8 @@ services:
       args:
         # 国内 npm 镜像（默认官方源，其他环境不受影响）
         NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
+        # 国内 pip 镜像（默认官方源，其他环境不受影响）
+        PIP_INDEX_URL: https://mirrors.cloud.tencent.com/pypi/simple
     environment:
       - DSH_ENGINE_PORT=8001
       # I4 确定性计算端点端口（calc_host.py 读此 env；sdk_host 8001 与其无冲突）
