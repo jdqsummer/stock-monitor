@@ -15,3 +15,9 @@ class WatchlistItemOut(BaseModel):
     current_price: float = 0.0              # 现价（元）；行情不可用时为 0
     total_market_cap: float = 0.0           # 总市值（亿元）
     pe_dynamic: float | None = None         # 动态 PE
+    # 分析快照派生字段（无快照为 None，前端渲染 -）
+    swing_market_cap: str | None = None      # 如 "13760-29470亿"
+    swing_price: str | None = None           # 如 "1147-2456元"
+    distance_pct: float | None = None        # 距击球区（%）
+    signal: str | None = None                # green/yellow/red/none/unquantifiable
+    unassessable_risk: bool | None = None    # 风险否决标记

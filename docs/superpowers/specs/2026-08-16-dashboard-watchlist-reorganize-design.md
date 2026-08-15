@@ -68,7 +68,7 @@ class WatchlistItemOut(BaseModel):
 ### 自选股管理页
 
 - **`pages/Watchlist.tsx`**：
-  - 表格列：股票代码、股票名称（链接跳 `/stock/:code`）、行业、击球区市值、击球股价、总市值、现价、动态PE、距击球区（SignalBadge）、操作（删除）。
+  - 表格列：股票代码、股票名称（链接跳 `/stock/:code`）、行业、击球区市值、击球股价、总市值、现价、动态PE、距击球区（SignalBadge + 风险否决 tag，与仪表盘一致）、操作（删除）。
   - 新增行勾选（rowSelection）+ 分析工具条：模型 Select + 立即分析按钮 + 进度。
   - 从原 SignalBoard 迁移分析轮询逻辑：提交任务（`analysisApi.analyzeWatchlist`）、轮询 `watchlistStatus`、挂载时 `watchlistActive` 恢复、完成后 `message.success` + 刷新列表。
   - 保留：添加自选股、智能一键分类。
