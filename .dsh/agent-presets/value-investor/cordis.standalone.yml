@@ -5,15 +5,27 @@
 # cordis 时，runtime **替换**而非合并配置 → 必须自包含全部插件，否则插件树加载失败：
 #
 #   生产实测（2026-08-15）：
-#   - `@deepseek-ai/dsh-agent-default-model` / `@deepseek-ai/dsh-mcp-client` /
-#     `@deepseek-ai/dsh-tools` 不在 runtime 内嵌 snapshot → 包名引用报
-#     `Cannot find package ... imported from /snapshot/...` → 改 `file://` 指向
-#     /app/node_modules（需为 dsh-engine package.json 直接依赖，pnpm 链接 + store
-#     内嵌套 node_modules 逐层可解析传递依赖）。
+#   - `@deepseek-ai/dsh-agent-default-model` / `@deepseek-ai/dsh-mcp-client`
+#     不在 runtime 内嵌 snapshot → 包名引用报 `Cannot find package ... imported
+#     from /snapshot/...` → 改 `file://` 指向 /app/node_modules（需为 dsh-engine
+#     package.json 直接依赖，pnpm 链接 + store 内嵌套 node_modules 逐层可解析传递依赖）。
+#   - ⚠️ `@deepseek-ai/dsh-tools` 不能单独用 `file://` 挂载：agent-spine-demo 内嵌
+#     snapshot 内部也会 `ctx.plugin(ToolRuntime)` 挂同一服务。若 cordis 再以 file://
+#     挂一个 /app/node_modules 实例，两实例的 `TOOL_RUNTIME_SCHEDULER` 是不同模块级
+#     Symbol → agent-loop 从 snapshot 实例取 scheduler 得 undefined → 首次工具调用崩
+#     `Cannot read properties of undefined (reading 'prepare')`。故 **不挂 tools 行**，
+#     tools 服务由 agent-spine 内嵌 snapshot 提供（自研插件 `ctx.tools.register(defineTool(...))`
+#     的 ToolDefinition 是普通对象，跨实例兼容）。
 #   - 核心 8 插件（sdk-jsonrpc-server/agent-spine/llm-deepseek/sessions/...）内嵌于
 #     runtime snapshot → 包名引用即可（见 runtime 自带 bundled default cordis.yml）。
 #   - `agent-default-model` 裸行缺 config 会报 `$.provider missing required value`，
 #     必须给 `{ provider, model }`。
+#   - `invest-five-stage` 插件 `inject: ['tools','workflowEngine']` 需要 workflow 栈：
+#     `dsh-subagent`（subagents 注册表）+ `dsh-subagent-spawn-in-process`（providerName:
+#     spawn）+ `dsh-workflow-worker-thread`（provider: spawn）。缺任一 → 插件树激活失败
+#     （`waiting for service: workflowEngine`）→ boot 抛错但 fail-loud 让进程存活 →
+#     initialize/session/prompt 永不响应 → sdk_host /trigger 无限挂起（P4 坑位 17 根因）。
+#     三者均在 runtime snapshot 依赖闭包内（sdk-runtime package.json），包名引用即可。
 #
 # ⚠️ file:// 路径是生产容器内绝对路径（/app/node_modules），仅 headless 生产使用；
 # 本地开发（Windows/WSL）走 dev harness 路径，不读本文件。
@@ -52,15 +64,28 @@
   config:
     cwd: !!js process.env.DSH_CWD ?? process.cwd()
 
-# —— host-plane 服务补充（tools/默认模型；snapshot 缺失 → file://）——
-- id: tools
-  name: 'file:///app/node_modules/@deepseek-ai/dsh-tools/lib/index.js'
-
+# —— host-plane 服务补充（默认模型；snapshot 缺失 → file://）——
+# 注意：tools 服务不在此挂载 —— 由 agent-spine 内嵌 snapshot 提供（见头部注释，
+# 双实例会破坏 tool scheduler 的模块级 Symbol 匹配）。
 - id: agent-default-model
   name: 'file:///app/node_modules/@deepseek-ai/dsh-agent-default-model/lib/index.js'
   config:
     provider: deepseek-official
     model: deepseek-v4-flash
+
+# —— workflow + subagent 栈（invest-five-stage 的 workflowEngine 依赖；均在 snapshot 闭包）——
+- id: subagent
+  name: '@deepseek-ai/dsh-subagent'
+
+- id: subagent-spawn
+  name: '@deepseek-ai/dsh-subagent-spawn-in-process'
+  config:
+    providerName: spawn
+
+- id: workflow-worker-thread
+  name: '@deepseek-ai/dsh-workflow-worker-thread'
+  config:
+    provider: spawn
 
 # —— skill 注册表 + 目录/加载工具（内嵌 snapshot，包名引用）——
 - id: skill
