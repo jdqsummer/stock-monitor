@@ -86,6 +86,43 @@ dsh-telemetry {"event":"tools/pre-execute","name":"invest-five-stage","ts":17552
 
 Grafana dashboard：按 `event` 过滤 + `name` 维度聚合工具调用频次 / 耗时分布；token 侧按会话聚合单次分析成本。exporter 落点与部署拓扑对齐（P4 Docker 化时定，见 `.dsh/docs/i2-concurrency.md` 的部署形态约定）。
 
+## 六、D5 上下文压缩监控（现状与结论，P4 查漏补缺）
+
+> 结论：**rc.6 事件流有压缩标记**——压缩监控可行，落 backend `dsh_events.extract_compaction`，非 invest-telemetry 插件（tools/* 钩子看不到会话事件）。非「无压缩事件降级」。
+
+### 6.1 可行性证据
+
+压缩是 DSH 框架内部行为（`compaction-basic` base 插件，非工具调用）。会话事件流（`result.events`）**包含**压缩 trace 事件（log-only，不进 surface），证据链：
+
+1. SDK 类型契约 `@deepseek-ai/dsh-compaction/types.ts`（vendored 于 `scripts/dsh_p0/deepseek-harness/packages/compaction/compaction/src/types.ts`）声明 `SessionEventMap` 四个压缩事件：
+   - `compaction/start` `{compactionId, sourceCommandId?, turn}` — 标记压缩开始
+   - `compaction/summary` `{summary, shadowedRange, shadowedSeqs, shadowedTokenCount, provider, model, maxTokens?, usage?}` — `shadowedTokenCount` = 压缩前 token 估计
+   - `compaction/end` `{compactionId, error?}` — 压缩结束
+   - `compaction/prune` `{shadowedRange, shadowedSeqs, shadowedTokenCount}` — 模型无关剪枝 shadow price
+2. `dsh-session` `KNOWN_SESSION_EVENT_TYPES`（`known-event-types.d.ts` + lib 运行时）收录 `compaction/start|summary|end|prune`。
+3. `compaction-basic` 自身经 `ctx.on('session/event', (session, event) => ...)` 观察会话事件（源码 `compaction-basic/src/index.ts:173`）——证明会话事件可被 cordis 插件订阅。
+
+### 6.2 采集落点：backend `extract_compaction`（非插件）
+
+- **invest-telemetry 插件不采集压缩**：插件 `inject=['tools']`，只用 `tools/pre-execute`/`tools/post-execute` 钩子，看不到 `result.events`（会话事件流）。`session/event` 钩子虽存在（源码可证），但**未在本仓库 headless 冒烟实测**（rc.6 真 runtime 仅 linux/macos，Windows 联调用 fake_runtime）——按插件「不承诺注册未实测钩子」的既有原则，不在插件注册 `session/event`，不编造。
+- **采集落在 backend**：`backend/agents/dsh_events.py` 新增 `extract_compaction(events)` 纯函数（`extract_usage` 同级），从 `result.events` 统计压缩事件，输出 `{triggered, count, shadowed_tokens, summary_output_tokens, ratio}`。`sdk_host.py` `/trigger` 响应新增 `compaction` 字段承载（对称 `usage`），契约见 `p3-http-trigger-contract.md`。
+
+### 6.3 指标语义（对应 spec D5「是否触发 + 压缩比例」）
+
+| 字段 | 类型 | 来源 | 说明 |
+|:--|:--|:--|:--|
+| `triggered` | bool | `compaction/start` 计数>0 | 每次分析是否触发压缩（D5 第一问） |
+| `count` | int | `compaction/start` 计数 | 压缩次数（多次压缩场景） |
+| `shadowed_tokens` | int | `shadowedTokenCount` 累加 | 压缩前 token 估计（被遮蔽内容） |
+| `summary_output_tokens` | int | `compaction/summary.usage.outputTokens` 累加 | 压缩后摘要规模近似 |
+| `ratio` | float\|null | `1 - summary_output_tokens/shadowed_tokens` | 压缩比例近似；摘要侧无 usage 时为 `null`（诚实标注，不编造） |
+
+> **诚实性说明**：DSH **无单一「压缩比例」字段**。`shadowedTokenCount` 是压缩前侧的确定性估计（可直接累加）；「压缩后」侧用摘要调用的 `usage.outputTokens` 近似（摘要文本规模），`usage` 不一定每次上报——缺失时 `ratio=None`，不编造精确值。`ratio` 只作为 D5「频繁触发 → D1 节约不到位」的趋势判据，不作为精确计量。
+
+### 6.4 监控消费（方向）
+
+`compaction` 字段随 `/trigger` 响应回传 backend；监控侧按会话聚合 `triggered`/`count` 判「频繁触发」、按 `ratio` 判「压缩深度」——若频繁触发且 `ratio` 低，说明 D1（PTC 上下文节约）不到位，需优化 `read_context` 摘要策略（spec D5 结论）。backend 告警消费与 Prometheus 导出同 `usage`（I7）一并落 P4 容器化 exporter，不在本插件内。
+
 ## 附：验证点登记
 
 - ✅ **已实测（P3 Task 10 headless 冒烟，Windows bash + 便携 node22 + 真实 DeepSeek API）**：`p3_telemetry_patch.yml` `--patch` 挂载后跑一次工具调用，日志出现 `dsh-telemetry tools/pre-execute` / `tools/post-execute`（冒烟实测 18 工具调用 → 18 pre + 18 post，0 `hook-unavailable`，EXIT=0）。

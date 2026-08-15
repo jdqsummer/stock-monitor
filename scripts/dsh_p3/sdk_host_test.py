@@ -33,6 +33,12 @@ EVENTS = [
                                  "isError": False}]}}},
     {"type": "assistant/chunk", "data": {"chunk": {"type": "usage",
         "usage": {"inputTokens": 2906, "outputTokens": 69, "cacheReadTokens": 7680}}}},
+    # D5 压缩 trace 事件（extract_compaction 输入）
+    {"type": "compaction/start", "data": {"compactionId": "c1", "turn": 1}},
+    {"type": "compaction/summary", "data": {
+        "compactionId": "c1", "shadowedTokenCount": 5000,
+        "usage": {"inputTokens": 5000, "outputTokens": 500}}},
+    {"type": "compaction/end", "data": {"compactionId": "c1"}},
 ]
 
 
@@ -52,6 +58,9 @@ def test_trigger_contract_shape(monkeypatch):
     assert body["model"] == "deepseek-v4-pro"                 # request/context 真实路由
     assert body["usage"]["input_tokens"] == 2906
     assert body["usage"]["prompt_cache_hit_tokens"] == 7680
+    assert body["compaction"]["triggered"] is True       # D5：是否触发压缩
+    assert body["compaction"]["shadowed_tokens"] == 5000
+    assert body["compaction"]["ratio"] == 0.9            # 压缩比例近似
     assert body["degraded"] is False and body["error"] is None
 
 

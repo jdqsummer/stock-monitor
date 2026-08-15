@@ -68,3 +68,40 @@ def extract_usage(events: list[dict]) -> dict:
         total["output_tokens"] += int(usage.get("outputTokens") or 0)
         total["prompt_cache_hit_tokens"] += int(usage.get("cacheReadTokens") or 0)
     return total
+
+
+def extract_compaction(events: list[dict]) -> dict:
+    """D5 上下文压缩监控：统计 compression/* trace 事件。
+
+    rc.6 会话事件流含压缩 trace 事件（@deepseek-ai/dsh-compaction/types.ts，log-only 不进 surface）：
+      - compaction/start    {compactionId, sourceCommandId?, turn}  标记一次压缩开始
+      - compaction/summary  {summary, shadowedRange, shadowedSeqs, shadowedTokenCount,
+                             provider, model, maxTokens?, usage?}   shadowedTokenCount=压缩前 token 估计
+      - compaction/end      {compactionId, error?}                  压缩结束（error 记录失败）
+      - compaction/prune    {shadowedRange, shadowedSeqs, shadowedTokenCount}  模型无关剪枝 shadow price
+
+    「是否触发」= compaction/start 计数>0；「压缩比例」无单一直接字段，用
+    shadowedTokenCount（压缩前）与 summary.usage.outputTokens（压缩后摘要规模，近似）推导，
+    两者缺一记为 None（诚实标注近似，非精确比例）。
+    """
+    total = {
+        "triggered": False,
+        "count": 0,
+        "shadowed_tokens": 0,
+        "summary_output_tokens": 0,
+        "ratio": None,
+    }
+    for ev in events:
+        ev_type = ev.get("type")
+        data = ev.get("data") or {}
+        if ev_type == "compaction/start":
+            total["count"] += 1
+        elif ev_type in ("compaction/summary", "compaction/prune"):
+            total["shadowed_tokens"] += int(data.get("shadowedTokenCount") or 0)
+            if ev_type == "compaction/summary":
+                usage = data.get("usage") or {}
+                total["summary_output_tokens"] += int(usage.get("outputTokens") or 0)
+    total["triggered"] = total["count"] > 0
+    if total["shadowed_tokens"] > 0 and total["summary_output_tokens"] > 0:
+        total["ratio"] = round(1 - total["summary_output_tokens"] / total["shadowed_tokens"], 4)
+    return total

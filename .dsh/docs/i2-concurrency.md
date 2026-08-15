@@ -115,3 +115,41 @@ P1 只定契约，以下数值/机制留待 P3 在真实环境定稿：
 - 本文档只定并发设计契约，**不修改** `backend/services/analysis_job_svc.py`、`backend/data/scheduler.py`、`backend/api/analysis.py` 及任何生产代码。
 - 不新增 Redis 锁实现、不改 DB 唯一约束、不实现 Orchestrator 排队逻辑——这些归 P3。
 - 仅新增资产：本文档 `.dsh/docs/i2-concurrency.md`。
+
+## 七、P4 查漏补缺：同股票锁方案定稿（方案 A：进程内锁）
+
+> 状态：P4 定稿 · 日期：2026-08-15 · 结论：**保持进程内 `asyncio.Lock`，零代码改动**（YAGNI）。
+
+### 7.1 生产部署核对：单 worker 确认
+
+`docker-compose.yml` backend `app` 服务启动命令：
+
+```bash
+sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+```
+
+**无 `--workers` 参数** → uvicorn 单 worker 单进程。`backend/services/analysis_job_svc.py` 的
+`AnalysisJobService` 已用 `asyncio.Lock`（`_code_locks`，按 `code` 惰性创建）+ `asyncio.Semaphore(3)`，
+单 worker 下进程内互斥即覆盖「同秒重复提交」——与 Redis 分布式锁在「防同秒重复」功能上**等价**
+（同进程内所有提交共享同一 `_code_locks` 字典）。
+
+### 7.2 方案选型与理由
+
+**选方案 A（保持进程内锁，零代码改动）**，理由：
+
+1. **功能等价**：单 worker 下 `asyncio.Lock` 与 Redis 分布式锁在「防同秒重复提交」语义一致；第二道防线
+   `session_id = code-date` 天然去重在 DSH 会话层（`DshOrchestrator._session_id`）同样独立生效。
+2. **YAGNI**：Redis 分布式锁是「未来多 worker 扩容」的演进项，非当前单 worker 部署的必需；提前引入
+   增加锁 TTL/释放/断线重连复杂度与故障面，无即时收益。
+3. **符合本文档 2.3 既有约定**：「生产多副本部署走 Redis 分布式锁；单副本可退化」——当前即单副本，
+   进程内锁是单副本的正确退化形态。
+
+**未来多 worker 升级路径**（届时再实施，非本次）：引入 `RedisLock`（复用 `backend` 已有 redis 5.0.7
+依赖 + compose `redis` 服务），锁键 `dsh:analyze:{code}:{date}`，TTL ≥ 单次分析最长耗时（120s+），
+`try/finally` 释放 + 过期兜底，替换/叠加 `_code_locks`。
+
+### 7.3 对第二节「P3 待钉死点」的回收
+
+原第二节第 108 行「Redis 分布式锁 vs DB 唯一约束最终选型」现定稿为：**单 worker 生产 = 进程内锁**
+（已落地 `analysis_job_svc.py` `_code_locks`）；Redis 分布式锁/DB 唯一约束标记为「未来多 worker 演进项，
+非当前必需」。

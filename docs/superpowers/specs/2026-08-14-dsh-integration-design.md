@@ -595,7 +595,7 @@ DSH 会话结束回传实际路由模型（DSH 会话事件 `llm/*` 记录实际
 | B2 cordis.yml 标注概念 + 附录 A | 阻断 | 组②（T4 已固化）+ 组③（附录 A，P1 产出） | 文档修订 + P0 验证 | 已完成（P0 T4 固化 composition vs patch、defineTool 真实签名；**附录 A 已回填**（文末附录节，可运行样例见 .dsh/agent-presets/value-investor/README.md，hello_echo 跑通）） |
 | B3 会话容错小节 5.1 | 阻断 | 组①（立即融入） | 文档修订（立即） | 已完成（本版已新增 5.1「会话生命周期与容错」） |
 | I1 Windows 开发环境约束 | 重要 | 组③（P1 设计时写入正文） | P1 | 已完成（v1.2 已写入正文「三、开发环境」） |
-| I2 并发模型 | 重要 | 组③（P1 任务调度设计时） | P1 | 已写入正文（v1.2「三、并发控制」），落地归 P1 |
+| I2 并发模型 | 重要 | 组③（P1 任务调度设计时） | P1 | 已写入正文（v1.2「三、并发控制」），落地归 P1；**P4 查漏补缺定稿**：生产 uvicorn 单 worker（compose 无 `--workers`），`analysis_job_svc.py` 进程内 `asyncio.Lock`（`_code_locks`）满足「防同秒重复提交」（与 Redis 分布式锁单 worker 下功能等价）；Redis 分布式锁标记为未来多 worker 演进项（详见 `.dsh/docs/i2-concurrency.md` 第七节） |
 | I3 脚本防篡改 | 重要 | 组③（P1 挂载结构设计时） | P1 | 已写入正文（v1.2「4.1 脚本防篡改」），落地归 P1 |
 | I4 双实现漂移 | 重要 | 组④（P4 收敛） | P4 | 已写入风险表（v1.2），收敛方案归 P4 |
 | I5 字段映射 | 重要 | 组③（P1 输出契约定稿时决策） | P1 | 决策点已写入实施路线（v1.3「I5 源头 snake_case + 附录 B 兜底」，**附录 B 已回填**（首选 snake_case 已采纳，兜底映射表保留为参考）），P1 定稿 |

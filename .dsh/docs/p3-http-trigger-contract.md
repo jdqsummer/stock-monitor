@@ -34,6 +34,8 @@
   },
   "model": "deepseek-v4-flash",
   "usage": {"input_tokens": 1000, "output_tokens": 500, "prompt_cache_hit_tokens": 790},
+  "compaction": {"triggered": false, "count": 0, "shadowed_tokens": 0,
+                 "summary_output_tokens": 0, "ratio": null},
   "degraded": false,
   "error": null
 }
@@ -41,7 +43,9 @@
 
 字段语义：`result` = 五段 stage 键（与前端 stage_results 契约逐字一致）；`model` = 真实路由模型
 （`request/context` 事件，非配置默认值，I6）；`usage` = `assistant/chunk` usage 累加（I7）；
-`degraded` = SDK 宿主内部降级（如 DSH 会话失败但宿主仍有兜底输出）；`error` = 宿主捕获的错误文本。
+`compaction` = D5 上下文压缩监控（`compaction/*` trace 事件提取，`triggered` 是否触发 +
+`ratio` 压缩比例近似）；`degraded` = SDK 宿主内部降级（如 DSH 会话失败但宿主仍有兜底输出）；
+`error` = 宿主捕获的错误文本。
 
 `ralph_enabled`（P4 新增，缺省 `false`）：深度模式开关。Orchestrator 在 `model == "deepseek-v4-pro"` 时
 置 `true`；`sdk_host` 经提示词透传给模型填 `invest-five-stage` 工具参数。开启时 `result` 附加**顶层键**

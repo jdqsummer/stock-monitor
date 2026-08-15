@@ -26,6 +26,7 @@ if str(_SDK_SRC) not in sys.path:
     sys.path.insert(0, str(_SDK_SRC))
 
 from backend.agents.dsh_events import (  # noqa: E402
+    extract_compaction,
     extract_five_stage_result,
     extract_model,
     extract_usage,
@@ -50,6 +51,7 @@ class TriggerResponse(BaseModel):
     result: dict
     model: str
     usage: dict
+    compaction: dict = {}   # D5 压缩监控（extract_compaction：是否触发 + 压缩比例近似）
     degraded: bool
     error: str | None = None
 
@@ -87,12 +89,15 @@ async def trigger(req: TriggerRequest):
         result = await _run_harness_async(config, _build_prompt(req), session_id)
         events = result.events or []
         five_stage = extract_five_stage_result(events)
+        compaction = extract_compaction(events)
         if five_stage is None:
             return TriggerResponse(result={}, model=extract_model(events),
-                                   usage=extract_usage(events), degraded=True,
+                                   usage=extract_usage(events), compaction=compaction,
+                                   degraded=True,
                                    error="未找到 invest-five-stage 工具输出（五段未完成）")
         return TriggerResponse(result=five_stage, model=extract_model(events) or req.model,
-                               usage=extract_usage(events), degraded=False)
+                               usage=extract_usage(events), compaction=compaction,
+                               degraded=False)
     except Exception as exc:  # noqa: BLE001
         logger.exception("trigger 失败")
         return TriggerResponse(result={}, model="", usage={}, degraded=True, error=str(exc))
