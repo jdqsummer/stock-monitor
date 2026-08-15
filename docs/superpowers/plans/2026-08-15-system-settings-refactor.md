@@ -17,6 +17,7 @@
 - **邮件配置（每用户可配）**：`reminder_email_recipient`（收件人，空=注册邮箱）+ `smtp_host/port/username/password/from`（留空回退全局 env）；`smtp_password` 明文存储、GET 掩码（`smtp_password_configured`）、空串不更新；验证码邮件**保持全局 env** 不变。
 - **并发**：`analysis_concurrency` 默认 3，约束 `ge=1, le=10`。
 - **刷新间隔**：`data_refresh_interval_minutes` 默认 30，约束 `ge=5, le=1440`，**每用户独立生效**。
+- **持仓⊂自选（业务约束）**：自选股一定包含持仓股；添加持仓股 → 默认也添加自选股；添加自选股 → 不添加持仓股；删除持仓股 → 不删除自选股。行情刷新/自动分析/提醒的股票范围 = **自选股**（天然含持仓）；本次**不提供持仓 CRUD**，未来做持仓管理时遵循此规则。
 - **收盘时间**：`analysis_schedule_afternoon` 默认 `"16:00"`；**移除早盘** `analysis_schedule_morning` 与 09:30 早盘 job。
 - **删除字段**：`llm_temperature` / `llm_max_tokens` / `analysis_schedule_morning` / `investment_style` / `risk_tolerance` / `westock_api_key`。
 - **删除后的 JSON 残留**：Pydantic 默认忽略 UserConfig 不认识的键，旧 `user.config` 残留字段不影响 `UserConfig(**stored)`（勿手动清洗旧数据）。
