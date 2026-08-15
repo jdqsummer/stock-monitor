@@ -1,0 +1,94 @@
+# `value-investor` headless 独立完整组合（生产 DSH 引擎用）
+#
+# 为什么需要本文件：`agent.cordis.yml` 是 preset-plane 组合（供 web/tui 的 preset
+# 目录 mount，host 提供核心服务）。headless 的 sdk_host 通过 `DSH_CORDIS_CONFIG` 传
+# cordis 时，runtime **替换**而非合并配置 → 必须自包含全部插件，否则插件树加载失败：
+#
+#   生产实测（2026-08-15）：
+#   - `@deepseek-ai/dsh-agent-default-model` / `@deepseek-ai/dsh-mcp-client` /
+#     `@deepseek-ai/dsh-tools` 不在 runtime 内嵌 snapshot → 包名引用报
+#     `Cannot find package ... imported from /snapshot/...` → 改 `file://` 指向
+#     /app/node_modules（需为 dsh-engine package.json 直接依赖，pnpm 链接 + store
+#     内嵌套 node_modules 逐层可解析传递依赖）。
+#   - 核心 8 插件（sdk-jsonrpc-server/agent-spine/llm-deepseek/sessions/...）内嵌于
+#     runtime snapshot → 包名引用即可（见 runtime 自带 bundled default cordis.yml）。
+#   - `agent-default-model` 裸行缺 config 会报 `$.provider missing required value`，
+#     必须给 `{ provider, model }`。
+#
+# ⚠️ file:// 路径是生产容器内绝对路径（/app/node_modules），仅 headless 生产使用；
+# 本地开发（Windows/WSL）走 dev harness 路径，不读本文件。
+
+# —— 核心 8 插件（与 runtime bundled default cordis.yml 一致，均内嵌 snapshot）——
+- id: sdk-jsonrpc-server
+  name: '@deepseek-ai/dsh-sdk-jsonrpc-server'
+
+- id: agent-core
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    workspaceContext:
+      maxBytes: 65536
+
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+
+- id: sessions
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js process.env.DSH_SESSION_ROOT ?? './.sessions'
+
+- id: session-checkpoints
+  name: '@deepseek-ai/dsh-session-checkpoint-policy'
+
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+
+- id: bash
+  name: '@deepseek-ai/dsh-bash-local'
+  config:
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+- id: fs-local
+  name: '@deepseek-ai/dsh-fs-local'
+  config:
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+# —— host-plane 服务补充（tools/默认模型；snapshot 缺失 → file://）——
+- id: tools
+  name: 'file:///app/node_modules/@deepseek-ai/dsh-tools/lib/index.js'
+
+- id: agent-default-model
+  name: 'file:///app/node_modules/@deepseek-ai/dsh-agent-default-model/lib/index.js'
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-flash
+
+# —— skill 注册表 + 目录/加载工具（内嵌 snapshot，包名引用）——
+- id: skill
+  name: '@deepseek-ai/dsh-skill'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# —— 自定义（value-investor 预设内容，file:// 绝对 URL）——
+- id: hello-tool
+  name: 'file:///app/.dsh/agent-presets/value-investor/hello-tool.mjs'
+
+- id: invest-five-stage
+  name: 'file:///app/.dsh/plugins/invest-five-stage/index.mjs'
+
+- id: invest-guard
+  name: 'file:///app/.dsh/plugins/invest-guard/index.mjs'
+
+- id: invest-schema
+  name: 'file:///app/.dsh/plugins/invest-schema/index.mjs'
+
+- id: invest-data-mcp
+  name: 'file:///app/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js'
+  config:
+    serverName: investdata
+    transport: streamable-http
+    url: http://backend:8000/mcp/investdata
+    failOnStartupError: false
+
+- id: invest-telemetry
+  name: 'file:///app/.dsh/plugins/invest-telemetry/index.mjs'

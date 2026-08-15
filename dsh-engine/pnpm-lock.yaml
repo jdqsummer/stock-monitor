@@ -11,6 +11,9 @@ importers:
       '@deepseek-ai/dsh':
         specifier: 0.1.0-rc.6
         version: 0.1.0-rc.6(4b02b31f4347d42e02dd8ae2631af2b2)
+      '@deepseek-ai/dsh-agent-default-model':
+        specifier: 0.1.0-rc.6
+        version: 0.1.0-rc.6(8bffb997b64260f42aff4629c695b626)
       '@deepseek-ai/dsh-mcp-client':
         specifier: 0.1.0-rc.6
         version: 0.1.0-rc.6(d9ec2605a01b4fe7b4e01a4a94e11c5c)

@@ -6,7 +6,8 @@
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-mcp-client": "0.1.0-rc.6"
+    "@deepseek-ai/dsh-mcp-client": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent-default-model": "0.1.0-rc.6"
   },
   "scripts": {
     "start": "bash entrypoint.sh"

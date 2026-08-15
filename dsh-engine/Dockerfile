@@ -61,7 +61,7 @@ VOLUME ["/app/.dsh/skills", "/app/sessions"]
 # sdk_host.py 以脚本运行（sys.path[0]=/app/scripts/dsh_p3），需 PYTHONPATH=/app 使 backend 可 import
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH=/app
-ENV DSH_CORDIS_CONFIG=/app/.dsh/agent-presets/value-investor/agent.cordis.yml
+ENV DSH_CORDIS_CONFIG=/app/.dsh/agent-presets/value-investor/cordis.standalone.yml
 ENV DSH_SESSION_ROOT=/app/sessions
 EXPOSE 8001
 CMD ["bash", "/app/entrypoint.sh"]
