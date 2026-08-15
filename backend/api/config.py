@@ -5,27 +5,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.deps import get_current_user, get_db
 from backend.models.user import User
 from backend.schemas.common import ApiResponse
-from backend.schemas.config import UserConfig
+from backend.schemas.config import UserConfig, UserConfigView
 from backend.services.config_svc import ConfigService
 
 router = APIRouter(prefix="/api/config", tags=["配置"])
 
 
-@router.get("", response_model=ApiResponse[UserConfig])
+@router.get("", response_model=ApiResponse[UserConfigView])
 async def get_config(current_user: User = Depends(get_current_user)):
-    config = await ConfigService.get_config(current_user)
-    return ApiResponse(data=config)
+    view = await ConfigService.get_config_view(current_user)
+    return ApiResponse(data=view)
 
 
-@router.put("", response_model=ApiResponse[UserConfig])
+@router.put("", response_model=ApiResponse[UserConfigView])
 async def update_config(
     req: UserConfig,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     updated_user = await ConfigService.update_config(current_user, req, db)
-    config = await ConfigService.get_config(updated_user)
-    return ApiResponse(data=config, message="配置已更新")
+    view = await ConfigService.get_config_view(updated_user)
+    return ApiResponse(data=view, message="配置已更新")
 
 
 @router.get("/llm-models")
