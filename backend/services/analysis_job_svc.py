@@ -19,6 +19,11 @@ STATUS_DONE = "done"
 STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped_llm_unavailable"
 
+# 进程级全局并发上限：所有 job 的并发分析总数闸（与单 job 上限一致，取 10）。
+# 16:00 多个自动分析 job 同时触发时，若无此闸，总并发 = 用户数 × 各自 analysis_concurrency，
+# 会打爆 DSH 引擎（backend 提交并发必须 ≤ DSH max_sessions）。
+_GLOBAL_CONCURRENCY = 10
+
 
 class AnalysisJobService:
     """异步分析队列：提交 job → 逐只跑 9 步链 → 落库 B 表，状态内存跟踪。"""
@@ -39,6 +44,9 @@ class AnalysisJobService:
         # 与 session_id = code-date 的天然去重构成双防线
         self._code_locks: dict[str, asyncio.Lock] = {}
         self._locks_guard = asyncio.Lock()
+        # 两级信号量之进程级：限制所有 job 的并发分析总数，防 16:00 多 job 同时触发打爆 DSH。
+        # job 级（per-job sem，见 _run）限制单 job 并发；进程级（本闸）限制全局总并发。
+        self._global_sem = asyncio.Semaphore(_GLOBAL_CONCURRENCY)
 
     def create_job(self, user_id: str, codes: list[str], source: str) -> str:
         job_id = f"job_{uuid4().hex[:8]}"
@@ -127,48 +135,52 @@ class AnalysisJobService:
 
     async def _process_one(self, job_id: str, code: str, user_id: str, item, sem: asyncio.Semaphore):
         job = self._jobs[job_id]
-        # 先取同股票锁、后取信号量（Important #2）：多个同 code job 撞车时，锁等待者不再占
-        # semaphore 槽位（避免饿死其他股票）；同 code 永不并发（I2 第二道防线仍生效）。
-        # 每任务只持一把 code 锁，锁获取次序恒为 code lock → semaphore，无嵌套循环等待 → 无死锁。
+        # 两级闸，锁获取次序恒为 code lock → 进程级闸(_global_sem) → job 级闸(sem)：
+        # - code lock：同 code 永不并发（I2 第二道防线），多个同 code job 撞车时锁等待者不占任何
+        #   semaphore 槽位（避免饿死其他股票）。
+        # - _global_sem：进程级总并发闸，防 16:00 多 job 同时触发时总并发 = 用户数 × concurrency 打爆 DSH。
+        # - sem（per-job）：限制单 job 并发（submit 的 analysis_concurrency）。
+        # 每任务只持一把 code 锁，锁获取次序全局一致，无嵌套循环等待 → 无死锁。
         lock = await self._lock_for(code)
         async with lock:
-            async with sem:
-                job["codes"][code] = STATUS_RUNNING
-                try:
-                    if not self._llm_available():
-                        job["codes"][code] = STATUS_SKIPPED
-                        return
-                    api_keys = {}
-                    async with self._session_factory() as session:
-                        try:
-                            user = await session.get(User, user_id)
-                            cfg = (user.config or {}) if user else {}
-                            api_keys = {k: cfg[k] for k in
-                                        ("deepseek_api_key", "qwen_api_key", "kimi_api_key")
-                                        if cfg.get(k)}
-                        finally:
-                            await session.close()
-                    # create_analysis_chain 注入 LLM（has_real_llm=True → OpenHarness 走 LLM 定性路径）；
-                    # 若用无参 AnalysisChain()（llm_provider=None），批量/自选分析只跑纯规则，缺定性/风险/清单
-                    chain = self._chain or create_analysis_chain()
-                    name = item.stock_name if item else ""
-                    industry = item.industry if item else ""
-                    model = job.get("model", "")          # 每 job 的模型（submit 传入，I6）
-                    timeout = self._timeout_for()
-                    report = await asyncio.wait_for(
-                        chain.analyze(code, stock_name=name, industry=industry,
-                                      model=model, api_keys=api_keys),
-                        timeout=timeout,
-                    )
-                    async with self._session_factory() as session:
-                        try:
-                            await SnapshotService.save_snapshot(session, user_id, report, source=job["source"])
-                        finally:
-                            await session.close()
-                    job["codes"][code] = STATUS_DONE
-                except Exception as e:
-                    logger.error(f"分析失败 {code}: {e}")
-                    job["codes"][code] = STATUS_FAILED
+            async with self._global_sem:
+                async with sem:
+                    job["codes"][code] = STATUS_RUNNING
+                    try:
+                        if not self._llm_available():
+                            job["codes"][code] = STATUS_SKIPPED
+                            return
+                        api_keys = {}
+                        async with self._session_factory() as session:
+                            try:
+                                user = await session.get(User, user_id)
+                                cfg = (user.config or {}) if user else {}
+                                api_keys = {k: cfg[k] for k in
+                                            ("deepseek_api_key", "qwen_api_key", "kimi_api_key")
+                                            if cfg.get(k)}
+                            finally:
+                                await session.close()
+                        # create_analysis_chain 注入 LLM（has_real_llm=True → OpenHarness 走 LLM 定性路径）；
+                        # 若用无参 AnalysisChain()（llm_provider=None），批量/自选分析只跑纯规则，缺定性/风险/清单
+                        chain = self._chain or create_analysis_chain()
+                        name = item.stock_name if item else ""
+                        industry = item.industry if item else ""
+                        model = job.get("model", "")          # 每 job 的模型（submit 传入，I6）
+                        timeout = self._timeout_for()
+                        report = await asyncio.wait_for(
+                            chain.analyze(code, stock_name=name, industry=industry,
+                                          model=model, api_keys=api_keys),
+                            timeout=timeout,
+                        )
+                        async with self._session_factory() as session:
+                            try:
+                                await SnapshotService.save_snapshot(session, user_id, report, source=job["source"])
+                            finally:
+                                await session.close()
+                        job["codes"][code] = STATUS_DONE
+                    except Exception as e:
+                        logger.error(f"分析失败 {code}: {e}")
+                        job["codes"][code] = STATUS_FAILED
 
 
 analysis_job_service = AnalysisJobService()

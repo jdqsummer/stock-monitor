@@ -110,8 +110,10 @@ class TaskScheduler:
                     replace_existing=True,
                 )
                 self._jobs[job_id] = job
-            except (ValueError, IndexError) as e:
-                # 坏时间格式（如 "bad" / "25:00"）只跳过该用户，不阻断整批。
+            except (ValueError, IndexError, AttributeError, TypeError) as e:
+                # 坏时间格式（如 "bad" / "25:00" / None / 123 等脏 JSON 值）只跳过该用户，
+                # 不阻断整批（与 sync_quote_refresh_jobs 的 (ValueError, TypeError) 对齐；
+                # None.split / 非字符串值会抛 AttributeError/TypeError）。
                 # 若该用户此前有有效 job，需一并移除 scheduler 中残留的幽灵 job；
                 # 但仅当 job 仍存在于 scheduler 时才调用 remove_job（"25:00" 场景下
                 # remove_job 已在 try 内执行过，重复调用会抛 JobLookupError）。

@@ -14,7 +14,7 @@
 | SDK JSON-RPC 断线 | 重连/超限 → 降级 | 宿主侧 `run_harness` 抛异常 → backend `OpenHarnessAgent.analyze` 的 try/except → `_rule_based`（`backend/agents/openharness.py`） |
 | DSH 进程异常 | 心跳 + 自动重启 | 容器重启策略（P4 Docker 化），重启后未完成会话按降级处置（同「SDK 断线」降级路径） |
 | 同股票并发 | 天然去重 + 同股票锁 | `session_id = code-date`（`dsh_orchestrator.py`）+ `_code_locks` asyncio 锁（`analysis_job_svc.py`） |
-| 慢分析占资源 | 并发闸 + 超时闸 | `asyncio.Semaphore(max_concurrency=3)`（`analysis_job_svc.py`）+ `DSH_TIMEOUT_SECONDS`（`_timeout_for`） |
+| 慢分析占资源 | 并发闸 + 超时闸 | 两级信号量（进程级 `_global_sem`(10) + per-job `analysis_concurrency`，`analysis_job_svc.py`）+ `DSH_TIMEOUT_SECONDS`（`_timeout_for`） |
 
 ## 一、单会话超时
 
@@ -104,7 +104,7 @@ async with lock:
 
 双闸限流：
 
-- 并发闸：`asyncio.Semaphore(max_concurrency=3)`（`AnalysisJobService.__init__`），进程内并发分析数上限。
+- 并发闸：两级信号量——进程级 `_global_sem = asyncio.Semaphore(_GLOBAL_CONCURRENCY=10)`（`AnalysisJobService.__init__`，全局总并发上限）+ per-job `asyncio.Semaphore(analysis_concurrency)`（`_run`，单 job 并发上限）。进程级闸防 16:00 多 job 同时触发时总并发 = 用户数 × concurrency 打爆 DSH。
 - 超时闸：`_timeout_for()` → `asyncio.wait_for`（见一），单次分析超时即释放信号量槽位，防「一个慢分析占满全部槽位」。
 
 > 与 DSH 容器 `max_sessions`（4-8）的**两层闸**关系见 `.dsh/docs/i2-concurrency.md` 2.1：backend 提交并发 ≤ DSH `max_sessions` 的对齐公式留待 P4 压测定值。

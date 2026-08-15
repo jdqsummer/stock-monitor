@@ -23,7 +23,7 @@
 
 - 含义：DSH 容器**同时存活**的 headless 会话上限，即「一个慢分析占满容器资源」的硬闸（对应 spec 5.1「慢分析占资源」行）。
 - 取值区间而非单值：**4-8 视容器规格**，P3 在真实容器上压测后取具体值（见第五节待钉死点）。4 为保守下限（常规 CPU 核数），8 为宽松上限（多核/大内存规格）。
-- 与 `backend` 侧并发的关系：`backend` 侧 `AnalysisJobService` 现有 `asyncio.Semaphore(max_concurrency=3)` 是**进程内**并发闸；DSH `max_sessions` 是**容器侧**会话闸。二者不是同一参数，P3 需对齐：`backend` 提交并发 ≤ DSH `max_sessions`，避免「backend 放行但容器拒绝」的悬空提交。
+- 与 `backend` 侧并发的关系：`backend` 侧 `AnalysisJobService` 现有**两级信号量**（进程级 `_global_sem = asyncio.Semaphore(_GLOBAL_CONCURRENCY=10)` 限全局总并发 + per-job `asyncio.Semaphore(analysis_concurrency)` 限单 job 并发）是**进程内**并发闸；DSH `max_sessions` 是**容器侧**会话闸。二者不是同一参数，P3 需对齐：`backend` 提交并发 ≤ DSH `max_sessions`，避免「backend 放行但容器拒绝」的悬空提交。
 
 ### 2.2 排队：FastAPI 任务队列 + 前端轮询
 
@@ -94,11 +94,11 @@ P1 不新建调度框架，P3 Orchestrator 复用以下现有件：
 
 | 现有件 | 位置 | 复用方式 |
 |:--|:--|:--|
-| 异步分析队列 | `backend/services/analysis_job_svc.py` `AnalysisJobService` | 已有 `asyncio.Semaphore(max_concurrency=3)` + `asyncio.create_task`/`gather` + `job_id` 内存状态（`pending/running/done/failed/skipped_llm_unavailable`）——P3 将其并发闸对齐到 DSH `max_sessions`，任务体换成「HTTP 触发 DSH」 |
+| 异步分析队列 | `backend/services/analysis_job_svc.py` `AnalysisJobService` | 已有两级信号量（进程级 `_global_sem`(10) 限总并发 + per-job `asyncio.Semaphore(analysis_concurrency)` 限单 job）+ `asyncio.create_task`/`gather` + `job_id` 内存状态（`pending/running/done/failed/skipped_llm_unavailable`）——P3 将其并发闸对齐到 DSH `max_sessions`，任务体换成「HTTP 触发 DSH」 |
 | 进度轮询端点 | `backend/api/analysis.py` `/watchlist/analyze`（提交）+ `/watchlist/status`（轮询） | 已存在的 `job_id` 提交/查询双端点即「排队 + 前端轮询」的落地范式，P3 复用 |
 | 定时调度 | `backend/data/scheduler.py` `TaskScheduler`（APScheduler） | 仪表盘 A 表刷新（行情 30min / 财报 30min / 收盘重算）不变，DSH 分析为**手动触发**，不并入定时链 |
 
-> 说明：现有 `max_concurrency=3` 是进程内信号量，与 DSH 容器 `max_sessions` 是**两层闸**。P3 对齐原则见 2.1——backend 提交并发 ≤ DSH `max_sessions`。
+> 说明：现有两级信号量（进程级 `_global_sem`(10) + per-job `analysis_concurrency`）是进程内信号量，与 DSH 容器 `max_sessions` 是**两层闸**。P3 对齐原则见 2.1——backend 提交并发 ≤ DSH `max_sessions`。
 
 ## 五、P3 待钉死点
 
@@ -129,7 +129,7 @@ sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 80
 ```
 
 **无 `--workers` 参数** → uvicorn 单 worker 单进程。`backend/services/analysis_job_svc.py` 的
-`AnalysisJobService` 已用 `asyncio.Lock`（`_code_locks`，按 `code` 惰性创建）+ `asyncio.Semaphore(3)`，
+`AnalysisJobService` 已用 `asyncio.Lock`（`_code_locks`，按 `code` 惰性创建）+ 两级信号量（进程级 `_global_sem`(10) + per-job `analysis_concurrency`），
 单 worker 下进程内互斥即覆盖「同秒重复提交」——与 Redis 分布式锁在「防同秒重复」功能上**等价**
 （同进程内所有提交共享同一 `_code_locks` 字典）。
 
