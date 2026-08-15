@@ -97,6 +97,28 @@ def test_trigger_missing_five_stage_returns_degraded(monkeypatch):
     assert "五段" in (body["error"] or "")
 
 
+def test_build_config_injects_api_key_per_vendor():
+    """_build_config：model=Qwen3.7-Max → env 注入 QWEN_API_KEY，provider 指向 qwen"""
+    req = sdk_host.TriggerRequest(code="600519", model="Qwen3.7-Max",
+                                  api_keys={"qwen": "sk-qwen-1", "deepseek": "sk-ds-1"})
+    cfg = sdk_host._build_config(req)
+    assert cfg.env.get("QWEN_API_KEY") == "sk-qwen-1"
+    assert cfg.model == "Qwen3.7-Max"
+
+
+def test_build_config_deepseek_keeps_env():
+    req = sdk_host.TriggerRequest(code="600519", model="deepseek-v4-flash",
+                                  api_keys={"deepseek": "sk-ds-1"})
+    cfg = sdk_host._build_config(req)
+    assert cfg.env.get("DEEPSEEK_API_KEY") == "sk-ds-1"
+    assert cfg.model == "deepseek-v4-flash"
+
+
+def test_trigger_request_accepts_api_keys():
+    req = sdk_host.TriggerRequest(code="600519", api_keys={"kimi": "sk-k1"})
+    assert req.api_keys == {"kimi": "sk-k1"}
+
+
 class _Result:
     def __init__(self, events):
         self.events = events

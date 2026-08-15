@@ -13,3 +13,11 @@ providers:
     description: 默认省成本模型（常规五段分析）
   - id: deepseek-v4-pro
     description: 深度分析（Q3 Ralph 自审仅在 V4-Pro 开启，P4）
+  - id: Qwen3.7-Max
+    description: 阿里通义旗舰（厂商 API Key: qwen）
+  - id: Qwen3.8-Max
+    description: 阿里通义旗舰（厂商 API Key: qwen）
+  - id: Kimi-K2.6
+    description: 月之暗面长文本（厂商 API Key: kimi）
+  - id: Kimi-K2.7
+    description: 月之暗面长文本（厂商 API Key: kimi）

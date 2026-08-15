@@ -35,6 +35,22 @@ from backend.agents.dsh_events import (  # noqa: E402
 logger = logging.getLogger(__name__)
 app = FastAPI(title="dsh-engine SDK 宿主")
 
+# 模型 → 厂商映射（wire 名 = 真实模型名，用户确认）
+MODEL_PROVIDER = {
+    "deepseek-v4-flash": "deepseek",
+    "deepseek-v4-pro": "deepseek",
+    "Qwen3.7-Max": "qwen",
+    "Qwen3.8-Max": "qwen",
+    "Kimi-K2.6": "kimi",
+    "Kimi-K2.7": "kimi",
+}
+
+# 厂商 → OpenAI 兼容 base_url（qwen/kimi）；deepseek 走原生 provider
+OPENAI_BASE = {
+    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "kimi": "https://api.moonshot.cn/v1",
+}
+
 
 class TriggerRequest(BaseModel):
     code: str = Field(..., description="股票代码")
@@ -45,6 +61,7 @@ class TriggerRequest(BaseModel):
     pe_low_override: float | None = None
     pe_high_override: float | None = None
     ralph_enabled: bool = False   # Q3 深度自审（V4-Pro 深度模式）
+    api_keys: dict[str, str] = {}   # 厂商 key 透传：{deepseek|qwen|kimi: key}
 
 
 class TriggerResponse(BaseModel):
@@ -108,18 +125,28 @@ async def trigger(req: TriggerRequest):
 
 
 def _build_config(req: TriggerRequest):
-    """构造 DeepSeekHarnessConfig（含 cordis 组合 / model / session_root）。
+    """构造 DeepSeekHarnessConfig；按模型厂商注入对应 API Key（透传优先，env 兜底）。
 
     env 注入：DSH_CORDIS_CONFIG（value-investor 组合）由 DeepSeekHarness(cordis=...) 或
     DSH_CORDIS_CONFIG 环境变量承载（P0 T4：headless 默认 rosterless 不挂 preset）。
+
+    联调点：qwen/kimi 走 provider="openai" + env 注入 {VENDOR}_API_KEY / LLM_API_KEY。
+    DeepSeekHarness SDK 是否原生支持 OpenAI 兼容 provider 需真实联调验证；若需显式
+    base_url，追加 env["LLM_API_BASE"] = OPENAI_BASE[vendor]（以 SDK 实际行为为准）。
     """
     from deepseek_harness import DeepSeekHarnessConfig
+    vendor = MODEL_PROVIDER.get(req.model or "", "deepseek")
+    key = (req.api_keys or {}).get(vendor) or os.getenv(f"{vendor.upper()}_API_KEY", "")
+    env = dict(os.environ)
+    env[f"{vendor.upper()}_API_KEY"] = key
+    if key:
+        env["LLM_API_KEY"] = key          # 兜底：兼容 SDK 通用 key 读取路径
     return DeepSeekHarnessConfig(
-        provider="deepseek-official",
+        provider="deepseek-official" if vendor == "deepseek" else "openai",
         model=req.model or "deepseek-v4-flash",
         cordis=os.getenv("DSH_CORDIS_CONFIG"),
         session_root=os.getenv("DSH_SESSION_ROOT"),
-        env=dict(os.environ),
+        env=env,
     )
 
 
