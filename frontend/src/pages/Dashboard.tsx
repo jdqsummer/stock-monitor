@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, Divider } from 'antd';
 import { OverviewCards } from '@/components/Dashboard/OverviewCards';
-import { SignalBoard } from '@/components/Dashboard/SignalBoard';
+import { WatchlistBoard } from '@/components/Dashboard/WatchlistBoard';
 import { PortfolioPanel } from '@/components/Dashboard/PortfolioPanel';
 import { Loading } from '@/components/Common/Loading';
 import { usePolling } from '@/hooks/usePolling';
@@ -42,12 +42,12 @@ export function Dashboard() {
 
       <Divider />
 
-      <Card title="🔔 安全边际监控看板" style={{ marginBottom: 16 }}>
-        <SignalBoard data={watchlist} loading={loading} onRefresh={fetchData} />
+      <Card title="💼 持仓股" style={{ marginBottom: 16 }}>
+        <PortfolioPanel data={positions} loading={loading} />
       </Card>
 
-      <Card title="💼 持仓分析">
-        <PortfolioPanel data={positions} loading={loading} />
+      <Card title="⭐ 自选股">
+        <WatchlistBoard data={watchlist} loading={loading} />
       </Card>
     </div>
   );
