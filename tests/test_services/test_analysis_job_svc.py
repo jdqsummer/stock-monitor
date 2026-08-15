@@ -377,3 +377,36 @@ async def test_process_one_passes_api_keys_from_user_config(db_session, test_ses
     job_id = svc.create_job("u_k", ["600519"], "manual")
     await svc._run(job_id)
     assert seen["api_keys"] == {"deepseek_api_key": "sk-ds"}
+
+
+@pytest.mark.asyncio
+async def test_global_semaphore_caps_total_concurrency(db_session, test_session_factory, monkeypatch):
+    """多 job 并发总数被进程级 _GLOBAL_CONCURRENCY 钳制（I-1 回归锁）"""
+    import backend.services.analysis_job_svc as svc_mod
+    from backend.services.analysis_job_svc import AnalysisJobService
+
+    monkeypatch.setattr(svc_mod, "_GLOBAL_CONCURRENCY", 2)   # 收窄全局闸便于断言
+
+    class ProbeChain:
+        def __init__(self):
+            self.active = 0
+            self.max_active = 0
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None):
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            await asyncio.sleep(0.05)
+            self.active -= 1
+            return _report(code)
+
+    probe = ProbeChain()
+    svc = AnalysisJobService(chain=probe, llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_a = svc.create_job("u1", ["600519", "000858", "600036"], "manual")
+    job_b = svc.create_job("u1", ["601318", "000001", "600030"], "manual")
+    svc._jobs[job_a]["concurrency"] = 3
+    svc._jobs[job_b]["concurrency"] = 3
+    await asyncio.gather(svc._run(job_a), svc._run(job_b))
+
+    assert probe.max_active <= 2          # 全局闸钳制：两 job 各 3 并发，总并发仍 ≤2
+    assert svc.get_status(job_a)["done"] == 3
+    assert svc.get_status(job_b)["done"] == 3
