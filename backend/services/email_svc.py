@@ -49,3 +49,30 @@ class EmailService:
                 password=settings.SMTP_PASSWORD,
                 use_tls=True,
             )
+
+    @staticmethod
+    async def send_reminder(to_email: str, items: list[str], smtp: dict | None = None) -> None:
+        """击球区提醒邮件。开发阶段打印控制台，生产走 SMTP。
+
+        smtp: 每用户覆盖（host/port/username/password/from），缺省字段回退全局 env。
+        """
+        lines = "\n".join(f"- {i}" for i in items)
+        content = f"以下自选股今日进入击球区：\n\n{lines}\n"
+        smtp = smtp or {}
+        host = smtp.get("host") or settings.SMTP_HOST
+        port = smtp.get("port") or settings.SMTP_PORT
+        username = smtp.get("username") or settings.SMTP_USERNAME
+        password = smtp.get("password") or settings.SMTP_PASSWORD
+        from_addr = smtp.get("from") or settings.SMTP_FROM
+        logger.info(f"[DEV] 击球区提醒发送到 {to_email}（{len(items)} 条）")
+        print(f"\n{'='*50}\n击球区提醒 → {to_email}\n{content}{'='*50}\n")
+        if host != "smtp.example.com":
+            message = MIMEText(content)
+            message["From"] = from_addr
+            message["To"] = to_email
+            message["Subject"] = "[股票监控系统] 今日击球区提醒"
+            await aiosmtplib.send(
+                message, hostname=host, port=port,
+                username=username, password=password,
+                use_tls=True,
+            )
