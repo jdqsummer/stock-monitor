@@ -28,6 +28,13 @@ services:
       start_period: 30s
     depends_on:
       - redis
+    # 网络别名 backend：DSH invest-data-mcp 的 streamable-http 通道按设计连
+    # http://backend:8000/mcp/investdata（见 main.py 注释），而 compose 服务名是 app，
+    # 不加别名则 dsh-engine 容器内 DNS 无法解析 backend → MCP 辅助通道建立失败。
+    networks:
+      default:
+        aliases:
+          - backend
 
   # 前端构建服务：构建产物写入共享卷后退出
   # (不直接暴露端口，由主 nginx 服务静态文件)
