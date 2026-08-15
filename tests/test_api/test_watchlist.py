@@ -1,8 +1,10 @@
 # stock-monitor/tests/test_api/test_watchlist.py
 import pytest
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 from backend.data.providers.base import ProviderError
+from backend.models.stock import AnalysisSnapshot, WatchlistItem
 from backend.schemas.stock import StockQuote
 
 
@@ -24,6 +26,13 @@ async def _auth_token(client) -> str:
         "password": "pass1234",
     })
     return resp.json()["data"]["access_token"]
+
+
+async def _auth_user(client) -> tuple[str, str]:
+    """注册并登录，返回 (access_token, user_id)"""
+    token = await _auth_token(client)
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    return token, me.json()["data"]["id"]
 
 
 def _mock_quote():
@@ -118,6 +127,38 @@ class TestWatchlistAPI:
         assert item["total_market_cap"] == 19500.0
         assert item["pe_dynamic"] == 25.3
         assert "added_at" not in item
+        # 无分析快照 → 派生字段降级为 None
+        assert item["swing_market_cap"] is None
+        assert item["swing_price"] is None
+        assert item["distance_pct"] is None
+        assert item["signal"] is None
+
+    @pytest.mark.asyncio
+    async def test_list_enriched_with_analysis(self, client, mock_redis, db_session):
+        """列表应返回分析快照派生字段：击球区市值/股价、距击球区、信号"""
+        token, user_id = await _auth_user(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        db_session.add(WatchlistItem(user_id=user_id, stock_code="600519", stock_name="贵州茅台", industry="白酒"))
+        db_session.add(AnalysisSnapshot(
+            user_id=user_id, stock_code="600519",
+            annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
+            pe_low=20, pe_high=35,
+            swing_market_cap_low=13760, swing_market_cap_high=29470,
+            swing_price_low=1147, swing_price_high=2456,
+            current_market_cap=19500, current_price=1560,
+            distance_pct=-38.9, signal="green", data_date=date(2026, 8, 11),
+        ))
+        await db_session.commit()
+
+        with patch("backend.api.watchlist._client.fetch_quote", AsyncMock(return_value=_mock_quote())):
+            resp = await client.get("/api/watchlist", headers=headers)
+        assert resp.status_code == 200
+        item = resp.json()["data"][0]
+        assert item["swing_market_cap"] == "13760-29470亿"
+        assert item["swing_price"] == "1147-2456元"
+        # 实时价 1560 vs 击球区上沿 2456 → 距击球区 -36.5%，信号绿
+        assert item["distance_pct"] == -36.5
+        assert item["signal"] == "green"
 
     @pytest.mark.asyncio
     async def test_list_quote_failure_degrades(self, client, mock_redis):

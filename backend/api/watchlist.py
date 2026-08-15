@@ -2,6 +2,7 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_db
@@ -9,8 +10,9 @@ from backend.data.providers.base import ProviderError
 from backend.data.westock_client import WestockClient
 from backend.llm.provider import is_llm_available
 from backend.services.analysis_job_svc import analysis_job_service
-from backend.models.stock import WatchlistItem
+from backend.models.stock import AnalysisSnapshot, WatchlistItem
 from backend.models.user import User
+from backend.services.stock_data_svc import StockDataService
 from backend.schemas.common import ApiResponse
 from backend.schemas.stock import StockQuote
 from backend.schemas.watchlist import (
@@ -53,7 +55,33 @@ async def list_watchlist(
     items = await WatchlistService.list_items(db, current_user.id)
     # 并行富化实时行情（现价/总市值/动态PE）；单只失败降级为占位值，不中断整批
     quotes = await asyncio.gather(*(_fetch_quote_safe(i.stock_code) for i in items))
-    return ApiResponse(data=[_to_out(i, q) for i, q in zip(items, quotes)])
+
+    # 批量取 B 表分析快照，富化击球区/距击球区/信号（无快照保留 None，前端渲染 -）
+    codes = [i.stock_code for i in items]
+    snapshots_by_code: dict[str, AnalysisSnapshot] = {}
+    if codes:
+        snap_rows = (
+            await db.execute(
+                select(AnalysisSnapshot).where(
+                    AnalysisSnapshot.user_id == current_user.id,
+                    AnalysisSnapshot.stock_code.in_(codes),
+                )
+            )
+        ).scalars().all()
+        snapshots_by_code = {s.stock_code: s for s in snap_rows}
+
+    outs: list[WatchlistItemOut] = []
+    for item, quote in zip(items, quotes):
+        out = _to_out(item, quote)
+        snap = snapshots_by_code.get(item.stock_code)
+        if snap is not None and quote is not None:
+            out.swing_market_cap = f"{snap.swing_market_cap_low:.0f}-{snap.swing_market_cap_high:.0f}亿"
+            out.swing_price = f"{snap.swing_price_low:.0f}-{snap.swing_price_high:.0f}元"
+            out.distance_pct, signal = StockDataService.recompute_distance_signal(snap, quote)
+            out.signal = signal.value
+            out.unassessable_risk = snap.unassessable_risk
+        outs.append(out)
+    return ApiResponse(data=outs)
 
 
 @router.post("", response_model=ApiResponse[WatchlistItemOut])
