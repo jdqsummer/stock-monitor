@@ -133,6 +133,37 @@ async def test_llm_unavailable_skips(db_session, test_session_factory):
 
 
 @pytest.mark.asyncio
+async def test_per_job_concurrency_param_controls_semaphore(db_session, test_session_factory):
+    """submit(concurrency=1) → 串行；concurrency=3 → 不同股票并发 3"""
+    from backend.services.analysis_job_svc import AnalysisJobService
+
+    class ProbeChain:
+        def __init__(self):
+            self.active = 0
+            self.max_active = 0
+        async def analyze(self, code, stock_name="", industry="", model=""):
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            await asyncio.sleep(0.05)
+            self.active -= 1
+            return _report(code)
+
+    probe = ProbeChain()
+    svc = AnalysisJobService(chain=probe, llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519", "000858", "600036"], "manual")
+    svc._jobs[job_id]["concurrency"] = 1
+    await svc._run(job_id)
+    assert probe.max_active == 1
+
+    probe.max_active = 0
+    job2 = svc.create_job("u1", ["600519", "000858", "600036"], "manual")
+    svc._jobs[job2]["concurrency"] = 3
+    await svc._run(job2)
+    assert probe.max_active == 3
+
+
+@pytest.mark.asyncio
 async def test_concurrency_limited(db_session, test_session_factory):
     """semaphore=1 时串行：两任务总耗时 ≈ 2 × 单任务耗时"""
 
@@ -149,9 +180,10 @@ async def test_concurrency_limited(db_session, test_session_factory):
             return _report(code)
 
     slow = SlowChain()
-    svc = AnalysisJobService(chain=slow, llm_available=lambda: True, max_concurrency=1,
+    svc = AnalysisJobService(chain=slow, llm_available=lambda: True,
                              session_factory=test_session_factory)
     job_id = svc.create_job("u1", ["600519", "000858"], "manual")
+    svc._jobs[job_id]["concurrency"] = 1
     await svc._run(job_id)
     assert slow.max_active == 1
     assert svc.get_status(job_id)["done"] == 2
@@ -168,8 +200,9 @@ async def test_queued_codes_stay_pending_while_running(db_session, test_session_
             return _report(code)
 
     svc = AnalysisJobService(chain=SlowChain(), llm_available=lambda: True,
-                             max_concurrency=1, session_factory=test_session_factory)
+                             session_factory=test_session_factory)
     job_id = svc.create_job("u1", ["600519", "000858"], "manual")
+    svc._jobs[job_id]["concurrency"] = 1
     task = asyncio.create_task(svc._run(job_id))
     await asyncio.sleep(0.05)  # 第一只正在跑，第二只应仍在排队
 

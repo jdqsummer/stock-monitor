@@ -24,14 +24,12 @@ class AnalysisJobService:
 
     def __init__(
         self,
-        max_concurrency: int = 3,
         per_stock_timeout: float = 120.0,
         chain=None,
         llm_available=None,
         session_factory=None,
     ):
         self._jobs: dict[str, dict] = {}
-        self._semaphore = asyncio.Semaphore(max_concurrency)
         self._timeout = per_stock_timeout
         self._chain = chain
         self._llm_available = llm_available or is_llm_available
@@ -52,9 +50,12 @@ class AnalysisJobService:
         }
         return job_id
 
-    def submit(self, user_id: str, codes: list[str], source: str, model: str = "") -> str:
+    def submit(self, user_id: str, codes: list[str], source: str, model: str = "",
+               concurrency: int | None = None) -> str:
         job_id = self.create_job(user_id, codes, source)
         self._jobs[job_id]["model"] = model       # I6：每 job 的模型（前端模型下拉 → 全批次统一）
+        if concurrency is not None:
+            self._jobs[job_id]["concurrency"] = max(1, min(10, concurrency))
         asyncio.create_task(self._run(job_id))
         return job_id
 
@@ -104,8 +105,10 @@ class AnalysisJobService:
             finally:
                 await session.close()
         by_code = {it.stock_code: it for it in items}
+        concurrency = max(1, min(10, job.get("concurrency") or 3))
+        sem = asyncio.Semaphore(concurrency)
         await asyncio.gather(
-            *(self._process_one(job_id, code, user_id, by_code.get(code)) for code in codes)
+            *(self._process_one(job_id, code, user_id, by_code.get(code), sem) for code in codes)
         )
 
     def _timeout_for(self) -> float:
@@ -121,14 +124,14 @@ class AnalysisJobService:
                 self._code_locks[code] = asyncio.Lock()
             return self._code_locks[code]
 
-    async def _process_one(self, job_id: str, code: str, user_id: str, item):
+    async def _process_one(self, job_id: str, code: str, user_id: str, item, sem: asyncio.Semaphore):
         job = self._jobs[job_id]
         # 先取同股票锁、后取信号量（Important #2）：多个同 code job 撞车时，锁等待者不再占
         # semaphore 槽位（避免饿死其他股票）；同 code 永不并发（I2 第二道防线仍生效）。
         # 每任务只持一把 code 锁，锁获取次序恒为 code lock → semaphore，无嵌套循环等待 → 无死锁。
         lock = await self._lock_for(code)
         async with lock:
-            async with self._semaphore:
+            async with sem:
                 job["codes"][code] = STATUS_RUNNING
                 try:
                     if not self._llm_available():
