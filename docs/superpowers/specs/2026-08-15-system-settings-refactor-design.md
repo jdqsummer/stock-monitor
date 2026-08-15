@@ -24,6 +24,7 @@
 | 4 | 击球区提醒触发规则 | **收盘后全量提醒**（凡 `signal=🟢` 的自选股汇总） |
 | 5 | 早盘任务 | **只保留收盘分析**（移除 09:30 早盘重算） |
 | 6 | API Key 存储 | **明文保存**（暂放弃加密，单用户自用可接受，见 §4.3） |
+| 7 | 邮件配置层级 | **收件人 + SMTP 每用户可配**（留空回退注册邮箱 / 全局 env，见 §4.1/§7.2） |
 
 ## 三、总体架构
 
@@ -49,6 +50,8 @@ DSH 引擎 (scripts/dsh_p3/sdk_host.py + .dsh/...)
 | 新增 | `analysis_concurrency` | 自动分析并发，默认 3，约束 1-10 |
 | 新增 | `reminder_email_enabled` | 邮件提醒渠道开关 |
 | 新增 | `reminder_bell_enabled` | 小喇叭提醒渠道开关 |
+| 新增 | `reminder_email_recipient` | 提醒收件邮箱，空 = 用注册邮箱 |
+| 新增 | `smtp_host` / `smtp_port` / `smtp_username` / `smtp_password` / `smtp_from` | 每用户 SMTP 覆盖（留空用全局 env）；凭据明文，GET 掩码 |
 | 保留 | `llm_model` | 默认分析模型（6 选 1） |
 | 保留 | `data_refresh_interval_minutes` | 每用户行情刷新间隔，默认 30，约束 5-1440 |
 | 保留 | `analysis_schedule_afternoon` | 收盘分析时间，默认改 `16:00` |
@@ -70,9 +73,9 @@ reminder_date (date) / created_at / read_at (nullable)
 
 ### 4.3 key 存储方案
 
-- **明文保存**（用户决策：暂放弃加密落库，单用户自用场景可接受）。
-- API 边界（明文下更严格）：`GET /config` **不回显 key 明文**——仅返回是否已配置布尔（`deepseek_api_key_configured: true`）；`PUT /config` 传空串 = 不更新原 key。
-- 风险提示：明文落库，DB 泄露即 key 泄露；后续接入加密时预留 schema 兼容迁移。
+- **明文保存**（用户决策：暂放弃加密落库，单用户自用场景可接受）。API Key 与 SMTP 密码同理。
+- API 边界（明文下更严格）：`GET /config` **不回显 key/密码明文**——仅返回是否已配置布尔（`deepseek_api_key_configured` / `smtp_password_configured`）；`PUT /config` 传空串 = 不更新原值。
+- 风险提示：明文落库，DB 泄露即 key/凭据泄露；后续接入加密时预留 schema 兼容迁移。
 
 ## 五、LLM 模型与 API Key 透传
 
@@ -149,7 +152,10 @@ reminder_date (date) / created_at / read_at (nullable)
 
 ### 7.2 渠道
 
-- **邮件**：复用 `EmailService`，新增 `send_reminder(to_email, items)`，当天绿灯股汇总一封，收件人 = 注册邮箱；SMTP 未配置降级控制台打印（与验证码一致）。
+- **邮件**：复用 `EmailService`，新增 `send_reminder(to_email, items, smtp=None)`，当天绿灯股汇总一封。
+  - **收件人优先级**：`reminder_email_recipient`（非空）> 注册邮箱。
+  - **SMTP 优先级**：每用户 `smtp_host/port/username/password/from`（任一非空即视为覆盖，缺省字段回退全局 env）> 全局 env。SMTP 未配置时降级控制台打印（与验证码一致）。
+  - 验证码邮件**保持全局 env 不变**（注册/登录时用户未必已配 SMTP）。
 - **小喇叭**：Header Bell 图标 + 未读 Badge，轮询 `GET /api/reminders/unread`，滚动文字展示，点击跳转 `StockDetail` 并标记已读。
 
 ### 7.3 API
@@ -165,7 +171,7 @@ POST /api/reminders/read-all    全部已读
 1. **Settings.tsx 重做**
    - LLM 卡片：6 模型 Select + 3 个厂商 Key 密码输入框（脱敏显示、加密提示）。
    - 数据更新卡片：行情刷新间隔（InputNumber + Tooltip 小 i）、收盘时间 TimePicker（默认 16:00）、自动分析 Switch、并发 InputNumber(1-10)。
-   - 击球区提醒卡片：三开关（总/邮件/小喇叭）。
+   - 击球区提醒卡片：三开关（总/邮件/小喇叭）+ 收件邮箱 Input + SMTP 配置区（主机/端口/账号/密码/发件人，密码掩码，留空回退全局）。
    - 删除：温度/最大长度、早盘时间、投资偏好。
 2. **SignalBoard.tsx**：模型下拉扩为 6 项（读 `configApi.getLLMModels()`）；**默认值取 UserConfig.`llm_model`**，用户当次选择仅本次生效、不写回配置。
 3. **AppLayout Header**：Bell 提醒组件（未读 Badge + 滚动文字 + 列表抽屉）。

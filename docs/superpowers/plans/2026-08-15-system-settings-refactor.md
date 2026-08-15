@@ -14,6 +14,7 @@
 
 - **模型 wire 名**（用户确认，DSH 路由用）：`deepseek-v4-flash` / `deepseek-v4-pro` / `Qwen3.7-Max` / `Qwen3.8-Max` / `Kimi-K2.6` / `Kimi-K2.7`（大小写敏感，勿改）。
 - **厂商 key 字段**：`deepseek_api_key` / `qwen_api_key` / `kimi_api_key`，**明文存储**；`GET /config` 不回显明文（置掩码 + 附加 `*_api_key_configured` 布尔）；`PUT` 空串/None = 不更新原值。
+- **邮件配置（每用户可配）**：`reminder_email_recipient`（收件人，空=注册邮箱）+ `smtp_host/port/username/password/from`（留空回退全局 env）；`smtp_password` 明文存储、GET 掩码（`smtp_password_configured`）、空串不更新；验证码邮件**保持全局 env** 不变。
 - **并发**：`analysis_concurrency` 默认 3，约束 `ge=1, le=10`。
 - **刷新间隔**：`data_refresh_interval_minutes` 默认 30，约束 `ge=5, le=1440`，**每用户独立生效**。
 - **收盘时间**：`analysis_schedule_afternoon` 默认 `"16:00"`；**移除早盘** `analysis_schedule_morning` 与 09:30 早盘 job。
@@ -47,7 +48,7 @@ from pydantic import BaseModel, Field
 
 
 class UserConfig(BaseModel):
-    """用户系统配置（key 明文存储，GET 经 UserConfigView 脱敏）"""
+    """用户系统配置（key/凭据明文存储，GET 经 UserConfigView 脱敏）"""
     llm_model: str = "deepseek-v4-flash"
     data_refresh_interval_minutes: int = Field(default=30, ge=5, le=1440)
     analysis_schedule_afternoon: str = "16:00"
@@ -59,13 +60,20 @@ class UserConfig(BaseModel):
     notification_enabled: bool = False
     reminder_email_enabled: bool = False
     reminder_bell_enabled: bool = False
+    reminder_email_recipient: str | None = None          # 提醒收件邮箱，空 = 用注册邮箱
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
 
 
 class UserConfigView(UserConfig):
-    """GET 响应视图：key 值脱敏为 '****'，附加是否已配置布尔"""
+    """GET 响应视图：key/密码值脱敏为 '****'，附加是否已配置布尔"""
     deepseek_api_key_configured: bool = False
     qwen_api_key_configured: bool = False
     kimi_api_key_configured: bool = False
+    smtp_password_configured: bool = False
 
 
 class LLMModelInfo(BaseModel):
@@ -99,20 +107,23 @@ class ConfigService:
 
     @staticmethod
     async def get_config_view(user) -> UserConfigView:
-        """GET 视图：key 脱敏 + 附加 configured 布尔"""
+        """GET 视图：key/密码脱敏 + 附加 configured 布尔"""
         config = await ConfigService.get_config(user)
         view = UserConfigView(**config.model_dump())
         for vendor in ("deepseek", "qwen", "kimi"):
             raw = getattr(config, f"{vendor}_api_key")
             setattr(view, f"{vendor}_api_key", "****" if raw else None)
             setattr(view, f"{vendor}_api_key_configured", bool(raw))
+        pw = getattr(config, "smtp_password", None)
+        setattr(view, "smtp_password", "****" if pw else None)
+        setattr(view, "smtp_password_configured", bool(pw))
         return view
 
     @staticmethod
     async def update_config(user, config, db) -> User:
         stored = dict(user.config or {})
         data = config.model_dump(exclude_none=True)
-        for k in ("deepseek_api_key", "qwen_api_key", "kimi_api_key"):
+        for k in ("deepseek_api_key", "qwen_api_key", "kimi_api_key", "smtp_password"):
             if not data.get(k):            # None 或空串 = 不更新，保留原值
                 if k in stored:
                     data[k] = stored[k]
@@ -151,6 +162,8 @@ async def test_get_config_key_masked(self, client):
     resp = await client.get("/api/config", headers={"Authorization": f"Bearer {token}"})
     assert resp.json()["data"]["deepseek_api_key"] is None
     assert resp.json()["data"]["deepseek_api_key_configured"] is False
+    assert resp.json()["data"]["smtp_password"] is None
+    assert resp.json()["data"]["smtp_password_configured"] is False
 
 @pytest.mark.asyncio
 async def test_update_config_empty_key_keeps_old(self, client, db_session):
@@ -831,7 +844,7 @@ git commit -m "feat(system-settings): reminders 表 + alembic 迁移（含升级
 
 **Interfaces:**
 - Consumes: `Reminder` / `AnalysisSnapshot` / `User` 模型
-- Produces: `ReminderService.generate_for_user(db, user_id) -> list[Reminder]`、`list_unread(db, user_id)`、`mark_read(db, reminder_id, user_id)`、`mark_all_read(db, user_id) -> int`、`EmailService.send_reminder(to_email, items)`
+- Produces: `ReminderService.generate_for_user(db, user_id) -> list[Reminder]`、`list_unread(db, user_id)`、`mark_read(db, reminder_id, user_id)`、`mark_all_read(db, user_id) -> int`、`EmailService.send_reminder(to_email, items, smtp=None)`
 
 - [ ] **Step 1: 写失败测试** — `tests/test_services/test_reminder_svc.py`
 
@@ -968,20 +981,29 @@ class ReminderService:
 
 ```python
     @staticmethod
-    async def send_reminder(to_email: str, items: list[str]) -> None:
-        """击球区提醒邮件。开发阶段打印控制台，生产走 SMTP（与验证码同 gate）。"""
+    async def send_reminder(to_email: str, items: list[str], smtp: dict | None = None) -> None:
+        """击球区提醒邮件。开发阶段打印控制台，生产走 SMTP。
+
+        smtp: 每用户覆盖（host/port/username/password/from），缺省字段回退全局 env。
+        """
         lines = "\n".join(f"- {i}" for i in items)
         content = f"以下自选股今日进入击球区：\n\n{lines}\n"
+        smtp = smtp or {}
+        host = smtp.get("host") or settings.SMTP_HOST
+        port = smtp.get("port") or settings.SMTP_PORT
+        username = smtp.get("username") or settings.SMTP_USERNAME
+        password = smtp.get("password") or settings.SMTP_PASSWORD
+        from_addr = smtp.get("from") or settings.SMTP_FROM
         logger.info(f"[DEV] 击球区提醒发送到 {to_email}（{len(items)} 条）")
         print(f"\n{'='*50}\n击球区提醒 → {to_email}\n{content}{'='*50}\n")
-        if settings.SMTP_HOST != "smtp.example.com":
+        if host != "smtp.example.com":
             message = MIMEText(content)
-            message["From"] = settings.SMTP_FROM
+            message["From"] = from_addr
             message["To"] = to_email
             message["Subject"] = "[股票监控系统] 今日击球区提醒"
             await aiosmtplib.send(
-                message, hostname=settings.SMTP_HOST, port=settings.SMTP_PORT,
-                username=settings.SMTP_USERNAME, password=settings.SMTP_PASSWORD,
+                message, hostname=host, port=port,
+                username=username, password=password,
                 use_tls=True,
             )
 ```
@@ -1177,7 +1199,12 @@ async def run_reminder_checks() -> int:
             if not rows:
                 continue
             if cfg.get("reminder_email_enabled"):
-                await EmailService.send_reminder(u.email, [r.message for r in rows])
+                recipient = cfg.get("reminder_email_recipient") or u.email   # 收件人优先级
+                smtp_cfg = {k: cfg.get(k) for k in
+                            ("smtp_host", "smtp_port", "smtp_username",
+                             "smtp_password", "smtp_from") if cfg.get(k)}
+                await EmailService.send_reminder(recipient, [r.message for r in rows],
+                                                 smtp=smtp_cfg or None)
             total += len(rows)
         await session.commit()
     return total
@@ -1599,6 +1626,7 @@ export function Settings() {
         deepseek_api_key: d.deepseek_api_key_configured ? '****' : '',
         qwen_api_key: d.qwen_api_key_configured ? '****' : '',
         kimi_api_key: d.kimi_api_key_configured ? '****' : '',
+        smtp_password: d.smtp_password_configured ? '****' : '',
       });
     }).catch(() => {});
     configApi.getLLMModels().then(res => {
@@ -1613,6 +1641,7 @@ export function Settings() {
       VENDOR_KEYS.forEach(({ name }) => {
         if (payload[name] === '****') delete payload[name];   // 掩码 = 不修改，提交时剔除
       });
+      if (payload.smtp_password === '****') delete payload.smtp_password;   // 同掩码不更新
       await configApi.update(payload as never);
       message.success('配置已保存');
     } catch {
@@ -1669,6 +1698,25 @@ export function Settings() {
           </Form.Item>
           <Form.Item name="reminder_bell_enabled" label="首页小喇叭提醒" valuePropName="checked" dependencies={['notification_enabled']}>
             <Switch />
+          </Form.Item>
+          <Divider>邮件服务器（留空回退全局 SMTP 配置）</Divider>
+          <Form.Item name="reminder_email_recipient" label="收件邮箱（留空用注册邮箱）">
+            <Input placeholder="例如 notify@example.com" />
+          </Form.Item>
+          <Form.Item name="smtp_host" label="SMTP 主机">
+            <Input placeholder="smtp.example.com" />
+          </Form.Item>
+          <Form.Item name="smtp_port" label="SMTP 端口">
+            <InputNumber min={1} max={65535} style={{ width: 160 }} />
+          </Form.Item>
+          <Form.Item name="smtp_username" label="SMTP 账号">
+            <Input placeholder="发件账号" />
+          </Form.Item>
+          <Form.Item name="smtp_password" label="SMTP 密码">
+            <Input.Password placeholder="掩码 **** 表示已配置，清空不修改" />
+          </Form.Item>
+          <Form.Item name="smtp_from" label="发件人地址">
+            <Input placeholder="noreply@stock-monitor.local" />
           </Form.Item>
         </Card>
 
