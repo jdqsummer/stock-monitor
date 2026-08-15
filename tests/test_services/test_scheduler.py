@@ -122,3 +122,23 @@ async def test_sync_auto_analysis_jobs_removes_phantom_on_out_of_range_mutation(
         assert "auto_u1" not in sched._jobs
     finally:
         sched.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_sync_quote_refresh_jobs_registers_and_removes():
+    async def collect1():
+        return [("u1", 30), ("u2", 15)]
+    async def collect2():
+        return [("u1", 30)]
+
+    sched = TaskScheduler()
+    sched.start()
+    try:
+        await sched.sync_quote_refresh_jobs(collect_func=collect1, run_func=lambda u: None)
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "quote_u1" in ids and "quote_u2" in ids
+        await sched.sync_quote_refresh_jobs(collect_func=collect2, run_func=lambda u: None)
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "quote_u1" in ids and "quote_u2" not in ids
+    finally:
+        sched.shutdown()

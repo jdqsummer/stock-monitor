@@ -131,3 +131,22 @@ async def test_refresh_financials_writes_multiple_periods(db_session):
     periods = {r.report_period for r in rows}
     assert len(rows) == 8
     assert "2026H1" in periods and "2024FY" in periods
+
+
+@pytest.mark.asyncio
+async def test_collect_quote_refresh_users_filters_no_watchlist(db_session):
+    """无自选股的用户不进刷新；有自选股返回 (user_id, 间隔)"""
+    from backend.models.user import User
+    from backend.models.stock import WatchlistItem
+    from backend.services.refresh_svc import collect_quote_refresh_users
+
+    db_session.add(User(id="u_empty", email="e1@x.com", password_hash="x"))
+    db_session.add(User(id="u_full", email="e2@x.com", password_hash="x",
+                        config={"data_refresh_interval_minutes": 15}))
+    db_session.add(WatchlistItem(user_id="u_full", stock_code="600519", stock_name="贵州茅台"))
+    await db_session.commit()
+
+    rows = await collect_quote_refresh_users(db_session)
+    ids = {u for u, _ in rows}
+    assert "u_empty" not in ids
+    assert dict(rows)["u_full"] == 15

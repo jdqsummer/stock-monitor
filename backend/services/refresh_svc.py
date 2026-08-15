@@ -148,6 +148,44 @@ async def run_quote_refresh() -> int:
             await session.close()
 
 
+async def collect_quote_refresh_users(db: AsyncSession) -> list[tuple[str, int]]:
+    """返回 (user_id, interval_minutes)：仅有自选股的用户，间隔取配置默认 30"""
+    from backend.models.user import User
+    users = (await db.execute(select(User))).scalars().all()
+    result = []
+    for u in users:
+        items = await WatchlistService.list_items(db, u.id)
+        if not items:
+            continue
+        cfg = u.config or {}
+        result.append((u.id, int(cfg.get("data_refresh_interval_minutes", 30))))
+    return result
+
+
+async def run_user_quote_refresh(user_id: str) -> int:
+    """刷新单个用户的自选股行情到 A 表（幂等 upsert，单只失败不中断）"""
+    async with async_session_factory() as session:
+        items = await WatchlistService.list_items(session, user_id)
+        codes = [it.stock_code for it in items]
+        if not codes:
+            return 0
+        client = WestockClient()
+        count = 0
+        try:
+            for code in codes:
+                try:
+                    quote = await client.fetch_quote(code)
+                except Exception as e:
+                    logger.warning(f"刷新行情失败 {code}: {e}")
+                    continue
+                await RefreshService._upsert_quote(session, quote)
+                count += 1
+            await session.commit()
+        finally:
+            await client.close()
+        return count
+
+
 async def collect_auto_analysis_users(db: AsyncSession) -> list[tuple[str, str]]:
     """返回 (user_id, 收盘时间) 列表：仅 analysis_auto_enabled=true 的用户"""
     from backend.models.user import User

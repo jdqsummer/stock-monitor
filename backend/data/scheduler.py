@@ -136,3 +136,32 @@ class TaskScheduler:
                         self._scheduler.remove_job(job_id)
                     self._jobs.pop(job_id, None)
                 continue
+
+    async def sync_quote_refresh_jobs(self, collect_func, run_func):
+        """按每用户间隔 reconcile 行情刷新 job（IntervalTrigger）"""
+        current = await collect_func()
+        wanted = {f"quote_{user_id}": minutes for user_id, minutes in current}
+
+        for job_id in list(self._jobs.keys()):
+            if job_id.startswith("quote_") and job_id not in wanted:
+                self._scheduler.remove_job(job_id)
+                self._jobs.pop(job_id, None)
+
+        for job_id, minutes in wanted.items():
+            try:
+                minutes = int(minutes)
+                if minutes < 5:
+                    continue
+                user_id = job_id[len("quote_"):]
+                self._scheduler.add_job(
+                    run_func,
+                    IntervalTrigger(minutes=minutes),
+                    id=job_id,
+                    name=f"行情刷新 {user_id}",
+                    args=[user_id],
+                    replace_existing=True,
+                )
+                self._jobs[job_id] = self._scheduler.get_job(job_id)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"跳过用户 {job_id} 的无效刷新间隔: {e}")
+                continue
