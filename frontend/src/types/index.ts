@@ -150,16 +150,39 @@ export interface MarginResult {
 // ── 用户配置 ──
 export interface UserConfig {
   llm_model: string;
-  llm_temperature: number;
-  llm_max_tokens: number;
   data_refresh_interval_minutes: number;
-  analysis_schedule_morning: string;
   analysis_schedule_afternoon: string;
   analysis_auto_enabled: boolean;
-  westock_api_key: string | null;
-  investment_style: string;
-  risk_tolerance: string;
+  analysis_concurrency: number;
+  deepseek_api_key: string | null;
+  qwen_api_key: string | null;
+  kimi_api_key: string | null;
   notification_enabled: boolean;
+  reminder_email_enabled: boolean;
+  reminder_bell_enabled: boolean;
+  reminder_email_recipient: string | null;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  smtp_password: string | null;
+  smtp_from: string | null;
+  // GET 脱敏视图附加（key/密码值 '****' 或 null，且附带是否已配置布尔）
+  deepseek_api_key_configured?: boolean;
+  qwen_api_key_configured?: boolean;
+  kimi_api_key_configured?: boolean;
+  smtp_password_configured?: boolean;
+}
+
+// ── 击球区提醒 ──
+export interface Reminder {
+  id: string;
+  code: string;
+  name: string;
+  message: string;
+  signal: string;
+  reminder_date: string;
+  created_at: string;
+  read_at: string | null;
 }
 
 export interface LLMModelInfo {
