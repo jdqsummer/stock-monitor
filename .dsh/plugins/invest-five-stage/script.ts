@@ -58,6 +58,7 @@ const reverse = await agent(
 // ④ anchor-industry-pe：LLM 只定 PE 区间，确定性结果 host 已算好注入 args.calc
 const anchor = await agent(
   '综合前序定性/逆向结论给定击球 PE 区间与理由（行业锚点仅参考，非法 PE 自动回退锚点）。' +
+  '注入只读数据（勿自行读盘/探索环境）：' + dataSummary + '。' +
   '行业锚点（host 已解析）：' + JSON.stringify(args.calc.pe_anchor) + '。' +
   '注入已算好的年化/击球区/安全边际确定性结果：' + JSON.stringify({
     annual_profit_low: args.calc.annual_profit_low,
