@@ -43,32 +43,17 @@ class TaskScheduler:
         self._jobs["quote_refresh"] = job
         logger.info(f"行情刷新任务已注册，间隔 {interval_minutes}min")
 
-    def add_analysis_job(self, func, morning_time: str = "09:30", afternoon_time: str = "15:30"):
-        """添加分析更新任务（早盘/收盘）"""
-        hour_m, minute_m = morning_time.split(":")
+    def add_analysis_job(self, func, afternoon_time: str = "16:00"):
+        """添加收盘任务（16:00 全局：重算 B 表 + 提醒检测）。早盘任务已移除。"""
         hour_a, minute_a = afternoon_time.split(":")
-
-        # 早盘分析
-        job_m = self._scheduler.add_job(
-            func,
-            CronTrigger(hour=int(hour_m), minute=int(minute_m), day_of_week="mon-fri"),
-            id="analysis_morning",
-            name="早盘分析",
-            replace_existing=True,
-        )
-        self._jobs["analysis_morning"] = job_m
-
-        # 收盘分析
         job_a = self._scheduler.add_job(
             func,
             CronTrigger(hour=int(hour_a), minute=int(minute_a), day_of_week="mon-fri"),
             id="analysis_afternoon",
-            name="收盘分析",
+            name="收盘任务",
             replace_existing=True,
         )
         self._jobs["analysis_afternoon"] = job_a
-
-        logger.info(f"分析任务已注册: 早{morning_time} 下午{afternoon_time}")
 
     def add_job(self, func, trigger, job_id: str, name: str = ""):
         """通用任务注册"""

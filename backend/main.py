@@ -4,46 +4,58 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from apscheduler.triggers.interval import IntervalTrigger
+
 from backend.api import api_router
 from backend.data.dsh_bridge import mcp as dsh_mcp
 from backend.data.scheduler import TaskScheduler
 from backend.services.refresh_svc import (
     collect_auto_analysis_users, collect_quote_refresh_users,
-    run_user_auto_analysis, run_user_quote_refresh,
+    run_recompute_analysis, run_user_auto_analysis, run_user_quote_refresh,
 )
 
-from apscheduler.triggers.interval import IntervalTrigger
+
+async def run_closing_tasks() -> dict:
+    """16:00 全局：收盘重算 B 表 + 击球区提醒检测（Task 7 接入 run_reminder_checks）"""
+    recomputed = await run_recompute_analysis()
+    return {"recomputed": recomputed}
+
+
+async def _reconcile_quote_and_auto(app):
+    """启动/保存配置后对齐每用户行情刷新 + 自动分析 job"""
+    scheduler = app.state.scheduler
+    from backend.db.database import async_session_factory
+    async with async_session_factory() as session:
+        try:
+            quote_users = await collect_quote_refresh_users(session)
+            auto_users = await collect_auto_analysis_users(session)
+        finally:
+            await session.close()
+
+    # sync_*_jobs 会 `await collect_func()`，故 collector 必须是 async 函数，
+    # 此处闭包直接返回已采集列表（数据已在上面单次 session 内取齐）。
+    async def _collect_quote_users():
+        return quote_users
+
+    async def _collect_auto_users():
+        return auto_users
+
+    await scheduler.sync_quote_refresh_jobs(_collect_quote_users, run_user_quote_refresh)
+    await scheduler.sync_auto_analysis_jobs(_collect_auto_users, run_user_auto_analysis)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler = TaskScheduler()
     app.state.scheduler = scheduler          # Task 4 配置保存触发 reconcile 用
+    app.state.reconcile_all = _reconcile_quote_and_auto     # config 保存触发
 
     from backend.services.refresh_svc import run_financials_refresh
     scheduler.add_job(run_financials_refresh, IntervalTrigger(minutes=30),
                       job_id="financials_refresh", name="财报数据刷新")
+    scheduler.add_analysis_job(run_closing_tasks)           # 16:00 全局收盘任务
 
-    # 每用户行情刷新 + 自动分析 reconcile（start 前，确保 startup 时已注册）
-    from backend.db.database import async_session_factory
-
-    async def _collect_quote_users():
-        async with async_session_factory() as session:
-            try:
-                return await collect_quote_refresh_users(session)
-            finally:
-                await session.close()
-
-    async def _collect_users():
-        async with async_session_factory() as session:
-            try:
-                return await collect_auto_analysis_users(session)
-            finally:
-                await session.close()
-
-    await scheduler.sync_quote_refresh_jobs(_collect_quote_users, run_user_quote_refresh)
-    await scheduler.sync_auto_analysis_jobs(_collect_users, run_user_auto_analysis)
-
+    await _reconcile_quote_and_auto(app)
     scheduler.start()
     # DataBridge MCP session manager（streamable-http 辅助通道）生命周期随 app 启停。
     # 必须先于 yield 进入，否则 /mcp/investdata 端点报「Task group is not initialized」。

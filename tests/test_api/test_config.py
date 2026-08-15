@@ -126,6 +126,21 @@ class TestConfig:
         assert "kimi" in providers
 
     @pytest.mark.asyncio
+    async def test_update_config_triggers_reconcile(self, client, monkeypatch):
+        """保存配置后触发 app.state.reconcile_all（即时对齐 per-user job，无需重启）"""
+        from unittest.mock import AsyncMock
+
+        from backend.main import app
+
+        token = await _register_and_login(client, "cfg_reconcile@example.com")
+        reconcile = AsyncMock()
+        monkeypatch.setattr(app.state, "reconcile_all", reconcile, raising=False)
+        resp = await client.put("/api/config", json=_default_payload(),
+                                headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        reconcile.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_config_requires_auth(self, client):
         resp = await client.get("/api/config")
         assert resp.status_code == 401

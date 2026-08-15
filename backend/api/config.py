@@ -1,5 +1,5 @@
 # stock-monitor/backend/api/config.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_db
@@ -22,8 +22,13 @@ async def update_config(
     req: UserConfig,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     updated_user = await ConfigService.update_config(current_user, req, db)
+    # 保存后即时对齐 per-user 行情刷新 / 自动分析 job（修复「需重启才生效」）
+    reconcile = getattr(request.app.state, "reconcile_all", None)
+    if reconcile is not None:
+        await reconcile(request.app)
     view = await ConfigService.get_config_view(updated_user)
     return ApiResponse(data=view, message="配置已更新")
 

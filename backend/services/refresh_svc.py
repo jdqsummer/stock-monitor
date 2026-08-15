@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.data.westock_client import WestockClient
 from backend.db.database import async_session_factory
 from backend.models.stock import StockSnapshot, WatchlistItem
+from backend.services.analysis_job_svc import analysis_job_service
 from backend.services.watchlist_svc import WatchlistService
 from backend.schemas.stock import FinancialReport, StockQuote
 
@@ -199,20 +200,24 @@ async def collect_auto_analysis_users(db: AsyncSession) -> list[tuple[str, str]]
     for u in users:
         cfg = u.config or {}
         if cfg.get("analysis_auto_enabled"):
-            result.append((u.id, cfg.get("analysis_schedule_afternoon", "15:30")))
+            result.append((u.id, cfg.get("analysis_schedule_afternoon", "16:00")))
     return result
 
 
 async def run_user_auto_analysis(user_id: str, session_factory=None) -> int:
-    """定时入口：收集该用户自选股 → 提交 scheduled job，返回数量"""
+    """定时入口：收集该用户自选股 → 提交 scheduled job（读配置并发），返回数量"""
+    from backend.models.user import User
+
     factory = session_factory or async_session_factory
     async with factory() as session:
         items = await WatchlistService.list_items(session, user_id)
         # session 块内提取纯列值，避免关闭后访问 ORM 对象
         codes = [it.stock_code for it in items]
+        user = await session.get(User, user_id)
+        cfg = (user.config or {}) if user else {}
+        concurrency = int(cfg.get("analysis_concurrency", 3))
     if codes:
-        from backend.services.analysis_job_svc import analysis_job_service
-        analysis_job_service.submit(user_id, codes, source="scheduled")
+        analysis_job_service.submit(user_id, codes, source="scheduled", concurrency=concurrency)
     return len(codes)
 
 
