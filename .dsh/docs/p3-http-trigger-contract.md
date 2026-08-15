@@ -19,7 +19,7 @@
   "pe_low_override": null,
   "pe_high_override": null,
   "ralph_enabled": false,
-  "api_keys": {"deepseek": "sk-...", "qwen": "sk-...", "kimi": "sk-..."}
+  "api_keys": {"deepseek_api_key": "sk-...", "qwen_api_key": "sk-...", "kimi_api_key": "sk-..."}
 }
 ```
 
@@ -52,7 +52,8 @@
 置 `true`；`sdk_host` 经提示词透传给模型填 `invest-five-stage` 工具参数。开启时 `result` 附加**顶层键**
 `ralph_review`（`{passed, issues, revision}`），不侵入 4 个 stage 键；关闭时 `result` 与上表完全一致。
 
-`api_keys`（P4 新增，缺省空对象 `{}`）：后端透传的厂商 key（`{deepseek|qwen|kimi}`），DSH 引擎按
-`model` 对应厂商取用；缺省空对象时回退引擎 env（`{VENDOR}_API_KEY`）。
+`api_keys`（P4 新增，缺省空对象 `{}`）：后端透传的厂商 key，键名为 snake_case 与后端
+`UserConfig` 字段一致（`{deepseek_api_key|qwen_api_key|kimi_api_key}`）；DSH 引擎按 `model`
+对应厂商取用（`VENDOR_KEY_FIELD` 映射），缺省空对象时回退引擎 env（`{VENDOR}_API_KEY`）。
 
 > ⚠️ 上表请求/响应字段为**契约定稿**，Task 6 `sdk_host.py` 与 Task 3 `DshOrchestrator.analyze` 必须与之一致。

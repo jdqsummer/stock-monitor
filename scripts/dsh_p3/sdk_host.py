@@ -51,6 +51,13 @@ OPENAI_BASE = {
     "kimi": "https://api.moonshot.cn/v1",
 }
 
+# 厂商 → api_keys 字段名（snake_case，与后端 UserConfig / Task 9 生产者一致）
+VENDOR_KEY_FIELD = {
+    "deepseek": "deepseek_api_key",
+    "qwen": "qwen_api_key",
+    "kimi": "kimi_api_key",
+}
+
 
 class TriggerRequest(BaseModel):
     code: str = Field(..., description="股票代码")
@@ -61,7 +68,7 @@ class TriggerRequest(BaseModel):
     pe_low_override: float | None = None
     pe_high_override: float | None = None
     ralph_enabled: bool = False   # Q3 深度自审（V4-Pro 深度模式）
-    api_keys: dict[str, str] = {}   # 厂商 key 透传：{deepseek|qwen|kimi: key}
+    api_keys: dict[str, str] = {}   # 厂商 key 透传：{deepseek_api_key|qwen_api_key|kimi_api_key: key}
 
 
 class TriggerResponse(BaseModel):
@@ -130,17 +137,20 @@ def _build_config(req: TriggerRequest):
     env 注入：DSH_CORDIS_CONFIG（value-investor 组合）由 DeepSeekHarness(cordis=...) 或
     DSH_CORDIS_CONFIG 环境变量承载（P0 T4：headless 默认 rosterless 不挂 preset）。
 
-    联调点：qwen/kimi 走 provider="openai" + env 注入 {VENDOR}_API_KEY / LLM_API_KEY。
-    DeepSeekHarness SDK 是否原生支持 OpenAI 兼容 provider 需真实联调验证；若需显式
-    base_url，追加 env["LLM_API_BASE"] = OPENAI_BASE[vendor]（以 SDK 实际行为为准）。
+    qwen/kimi 走 provider="openai" + env 注入 {VENDOR}_API_KEY / LLM_API_KEY /
+    LLM_API_BASE（= OPENAI_BASE[vendor]）。DeepSeekHarness SDK 是否原生支持 OpenAI
+    兼容 provider 仍需真实联调验证；契约层（字段/映射/注入）已落地。
     """
     from deepseek_harness import DeepSeekHarnessConfig
     vendor = MODEL_PROVIDER.get(req.model or "", "deepseek")
-    key = (req.api_keys or {}).get(vendor) or os.getenv(f"{vendor.upper()}_API_KEY", "")
+    key_field = VENDOR_KEY_FIELD.get(vendor, VENDOR_KEY_FIELD["deepseek"])
+    key = (req.api_keys or {}).get(key_field) or os.getenv(f"{vendor.upper()}_API_KEY", "")
     env = dict(os.environ)
     env[f"{vendor.upper()}_API_KEY"] = key
     if key:
         env["LLM_API_KEY"] = key          # 兜底：兼容 SDK 通用 key 读取路径
+    if vendor != "deepseek":
+        env["LLM_API_BASE"] = OPENAI_BASE[vendor]   # qwen/kimi OpenAI 兼容 base_url
     return DeepSeekHarnessConfig(
         provider="deepseek-official" if vendor == "deepseek" else "openai",
         model=req.model or "deepseek-v4-flash",
