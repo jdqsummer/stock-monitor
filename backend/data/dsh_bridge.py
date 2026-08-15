@@ -16,11 +16,21 @@ import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from backend.agents.constraints import resolve_pe_anchor
 from backend.data.westock_client import WestockClient
 
-mcp = FastMCP("investdata")
+# DNS rebinding 保护：FastMCP 默认只放行 127.0.0.1/localhost，跨容器 dsh-engine 以
+# Host=backend:8000 访问会被 421 拦截（坑位 18 遗留）。放行 backend:* 让辅助数据通道可用，
+# 其余白名单保持默认，未知 Host 仍被拒绝。
+mcp = FastMCP(
+    "investdata",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "backend:*"],
+    ),
+)
 
 _westock: WestockClient | None = None
 
