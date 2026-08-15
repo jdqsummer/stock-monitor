@@ -50,6 +50,8 @@ const reverse = await agent(
 const anchor = await agent(
   '综合前序定性/逆向结论给定击球 PE 区间与理由（行业锚点仅参考，非法 PE 自动回退锚点）。' +
   '注入只读数据（勿自行读盘/探索环境）：' + dataSummary + '。' +
+  '价值定性结论（② qualitative）：' + JSON.stringify(qualitative) + '。' +
+  '逆向定性结论（③ reverse）：' + JSON.stringify(reverse) + '。' +
   '行业锚点（host 已解析）：' + JSON.stringify(args.calc.pe_anchor) + '。' +
   '注入已算好的年化/击球区/安全边际确定性结果：' + JSON.stringify({
     annual_profit_low: args.calc.annual_profit_low,
