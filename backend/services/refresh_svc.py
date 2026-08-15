@@ -9,6 +9,8 @@ from backend.data.westock_client import WestockClient
 from backend.db.database import async_session_factory
 from backend.models.stock import StockSnapshot, WatchlistItem
 from backend.services.analysis_job_svc import analysis_job_service
+from backend.services.email_svc import EmailService
+from backend.services.reminder_svc import ReminderService
 from backend.services.watchlist_svc import WatchlistService
 from backend.schemas.stock import FinancialReport, StockQuote
 
@@ -228,6 +230,38 @@ async def run_recompute_analysis() -> int:
             return await RefreshService.recompute_analysis(session)
         finally:
             await session.close()
+
+
+async def run_reminder_checks() -> int:
+    """16:00 收盘后：对开启提醒的用户生成击球区提醒（邮件按开关发送，小喇叭落库）"""
+    from backend.models.user import User
+
+    async with async_session_factory() as session:
+        users = (await session.execute(select(User))).scalars().all()
+        total = 0
+        for u in users:
+            cfg = u.config or {}
+            if not cfg.get("notification_enabled"):
+                continue
+            rows = await ReminderService.generate_for_user(session, u.id)
+            if not rows:
+                continue
+            if cfg.get("reminder_email_enabled"):
+                recipient = cfg.get("reminder_email_recipient") or u.email   # 收件人优先级
+                # 配置键 smtp_* → send_reminder 期望的 smtp 字典键（host/port/username/password/from）
+                smtp_cfg = {
+                    "host": cfg.get("smtp_host"),
+                    "port": cfg.get("smtp_port"),
+                    "username": cfg.get("smtp_username"),
+                    "password": cfg.get("smtp_password"),
+                    "from": cfg.get("smtp_from"),
+                }
+                smtp_cfg = {k: v for k, v in smtp_cfg.items() if v}   # 只含非空字段
+                await EmailService.send_reminder(recipient, [r.message for r in rows],
+                                                 smtp=smtp_cfg or None)
+            total += len(rows)
+        await session.commit()
+    return total
 
 
 async def run_financials_refresh() -> int:

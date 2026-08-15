@@ -11,14 +11,16 @@ from backend.data.dsh_bridge import mcp as dsh_mcp
 from backend.data.scheduler import TaskScheduler
 from backend.services.refresh_svc import (
     collect_auto_analysis_users, collect_quote_refresh_users,
-    run_recompute_analysis, run_user_auto_analysis, run_user_quote_refresh,
+    run_recompute_analysis, run_reminder_checks,
+    run_user_auto_analysis, run_user_quote_refresh,
 )
 
 
 async def run_closing_tasks() -> dict:
-    """16:00 全局：收盘重算 B 表 + 击球区提醒检测（Task 7 接入 run_reminder_checks）"""
+    """16:00 全局：收盘重算 B 表 + 击球区提醒检测"""
     recomputed = await run_recompute_analysis()
-    return {"recomputed": recomputed}
+    reminders = await run_reminder_checks()
+    return {"recomputed": recomputed, "reminders": reminders}
 
 
 async def _reconcile_quote_and_auto(app):
