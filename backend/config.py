@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     DSH_ENABLED: bool = False                # 总开关：False 时走纯规则降级链
     DSH_ENGINE_URL: str = ""                 # dsh-engine HTTP 触发端点，如 http://dsh-engine:8000
     DSH_CALC_URL: str = ""                   # dsh-engine 确定性计算端点（I4 收敛），空则降级链纯本地
-    DSH_TIMEOUT_SECONDS: float = 600.0       # 单次五段分析超时（P2 实测 5 个 agent() 串行 >8min，120s 会误降级）
+    DSH_TIMEOUT_SECONDS: float = 1800.0      # 单次五段分析超时（P4 实测 5 个 agent() 串行 ~10min，600s 仍会误降级 rule-based）
     DSH_RETRY_COUNT: int = 1                 # 整体重试 ≤1 次
     DSH_MODEL_DEFAULT: str = "deepseek-v4-flash"
     DSH_BUDGET_PER_ANALYSIS: int = 100_000   # 单次分析 input+output token 预算阈值，超限降级

@@ -49,7 +49,7 @@ class HttpDshRunner:
     def __init__(
         self,
         base_url: str,
-        timeout: float = 600.0,
+        timeout: float = 1800.0,   # 五段串行 ~10min，默认超时须覆盖整次 /trigger 响应
         client: httpx.AsyncClient | None = None,
     ):
         self._base_url = base_url.rstrip("/")
@@ -236,16 +236,18 @@ class DshOrchestrator:
         self,
         runner: DshRunner | None = None,
         base_url: str = "",
-        timeout: float = 600.0,
+        timeout: float | None = None,
         model_default: str = "",
         budget: DshBudgetTracker | None = None,
     ):
-        # C1：参数缺省时读 settings 兜底——生产 `DshOrchestrator()` 即拿到正确 URL/budget/model。
+        # C1：参数缺省时读 settings 兜底——生产 `DshOrchestrator()` 即拿到正确 URL/budget/timeout/model。
         # 否则 base_url 空 → POST /trigger 抛 UnsupportedProtocol → 重试 → 静默降级 rule-based；
+        # timeout 不传 → 硬编码 600s 会误降级（五段串行 ~10min），须与 DSH_TIMEOUT_SECONDS 同步；
         # budget 不传 → I7 预算守卫生产死代码。
         from backend.config import settings
 
         base_url = base_url or settings.DSH_ENGINE_URL
+        timeout = settings.DSH_TIMEOUT_SECONDS if timeout is None else timeout
         model_default = model_default or settings.DSH_MODEL_DEFAULT
         budget = budget or (
             DshBudgetTracker(settings.DSH_BUDGET_PER_ANALYSIS, settings.DSH_DAILY_BUDGET)
