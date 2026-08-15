@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -99,6 +99,13 @@ export const configApi = {
   get: () => client.get<ApiResponse<UserConfig>>('/config'),
   update: (config: UserConfig) => client.put<ApiResponse<UserConfig>>('/config', config),
   getLLMModels: () => client.get<ApiResponse<LLMModelInfo[]>>('/config/llm-models'),
+};
+
+// 击球区提醒
+export const remindersApi = {
+  unread: () => client.get<ApiResponse<Reminder[]>>('/reminders/unread'),
+  read: (id: string) => client.post<ApiResponse<{ id: string }>>(`/reminders/${id}/read`),
+  readAll: () => client.post<ApiResponse<{ count: number }>>('/reminders/read-all'),
 };
 
 export default client;

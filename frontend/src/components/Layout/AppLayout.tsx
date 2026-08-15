@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { Layout, Button, Dropdown } from 'antd';
 import { UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { Sidebar } from './Sidebar';
+import { ReminderBell } from './ReminderBell';
 import { useAppStore } from '@/store';
 import { authApi } from '@/api/client';
 
@@ -35,7 +36,8 @@ export function AppLayout() {
         <Sidebar />
       </Sider>
       <Layout>
-        <Header style={{ background: '#fff', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0 24px' }}>
+        <Header style={{ background: '#fff', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0 24px', gap: 12 }}>
+          <ReminderBell />
           <Dropdown menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: handleLogout }] }}>
             <Button icon={<UserOutlined />}>{user?.email || user?.username || '用户'}</Button>
           </Dropdown>

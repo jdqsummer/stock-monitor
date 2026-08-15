@@ -4,8 +4,8 @@ import { Button, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
-import { analysisApi } from '@/api/client';
-import type { WatchlistBoardRow } from '@/types';
+import { analysisApi, configApi } from '@/api/client';
+import type { WatchlistBoardRow, LLMModelInfo, UserConfig } from '@/types';
 
 const columns: ColumnsType<WatchlistBoardRow> = [
   { title: '股票名称', dataIndex: 'name', key: 'name', width: 120,
@@ -39,6 +39,7 @@ export function SignalBoard({ data, loading, onRefresh }: {
   const navigate = useNavigate();
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [model, setModel] = useState<string>('deepseek-v4-flash');
+  const [models, setModels] = useState<LLMModelInfo[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState('');
 
@@ -65,6 +66,17 @@ export function SignalBoard({ data, loading, onRefresh }: {
       }
     }, 3000);
   }, [onRefresh]);
+
+  // 加载模型列表 + 默认模型（取用户配置 llm_model，当次选择仅本次生效）
+  useEffect(() => {
+    configApi.get().then(res => {
+      const d = res.data.data as UserConfig;
+      if (d.llm_model) setModel(d.llm_model);
+    }).catch(() => {});
+    configApi.getLLMModels().then(res => {
+      setModels((res.data.data || []) as LLMModelInfo[]);
+    }).catch(() => {});
+  }, []);
 
   // 切页/刷新后恢复进行中的分析：analyzing/progress/pollTimer 都在组件内存里，卸载即丢；
   // 后端 job 仍在跑，重挂载时查最近进行中 job 继续轮询（后端为真相源，前端无需记住 job_id）。
@@ -106,11 +118,10 @@ export function SignalBoard({ data, loading, onRefresh }: {
   return (
     <div>
       <Space style={{ marginBottom: 12 }}>
-        <Select value={model} onChange={setModel} style={{ width: 180 }}
-          options={[
-            { value: 'deepseek-v4-flash', label: 'V4-Flash（省成本·默认）' },
-            { value: 'deepseek-v4-pro', label: 'V4-Pro（深度分析）' },
-          ]} />
+        <Select value={model} onChange={setModel} style={{ width: 200 }}
+          options={models.length
+            ? models.map(m => ({ value: m.model_id, label: m.display_name }))
+            : [{ value: 'deepseek-v4-flash', label: 'V4-Flash（默认）' }]} />
         <Button type="primary" disabled={selectedKeys.length === 0 || analyzing}
           loading={analyzing} onClick={handleAnalyze}>
           {analyzing ? progress || '分析中...' : `立即分析${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}
