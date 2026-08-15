@@ -150,10 +150,10 @@ class TaskScheduler:
         for job_id, minutes in wanted.items():
             try:
                 minutes = int(minutes)
-                if minutes < 5:
-                    continue
+                if minutes < 5 or minutes > 1440:
+                    raise ValueError(f"间隔需在 [5, 1440] 分钟: {minutes}")
                 user_id = job_id[len("quote_"):]
-                self._scheduler.add_job(
+                job = self._scheduler.add_job(
                     run_func,
                     IntervalTrigger(minutes=minutes),
                     id=job_id,
@@ -161,7 +161,14 @@ class TaskScheduler:
                     args=[user_id],
                     replace_existing=True,
                 )
-                self._jobs[job_id] = self._scheduler.get_job(job_id)
+                self._jobs[job_id] = job
             except (ValueError, TypeError) as e:
+                # 坏间隔（非数字 / None / <5 / >1440）只跳过该用户，不阻断整批。
+                # 若该用户此前有有效 job，需一并移除 scheduler 中残留的幽灵 job；
+                # 仅当 job 仍存在于 scheduler 时才调用 remove_job（防御性 guard）。
                 logger.warning(f"跳过用户 {job_id} 的无效刷新间隔: {e}")
+                if job_id in self._jobs:
+                    if any(j.id == job_id for j in self._scheduler.get_jobs()):
+                        self._scheduler.remove_job(job_id)
+                    self._jobs.pop(job_id, None)
                 continue

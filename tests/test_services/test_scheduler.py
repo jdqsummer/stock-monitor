@@ -142,3 +142,72 @@ async def test_sync_quote_refresh_jobs_registers_and_removes():
         assert "quote_u1" in ids and "quote_u2" not in ids
     finally:
         sched.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_sync_quote_refresh_jobs_skips_invalid_intervals():
+    """非数字、<5、>1440 间隔均跳过，不注册 job"""
+    async def collect():
+        return [("u1", "bad"), ("u2", 2), ("u3", 1500), ("u4", 30)]
+
+    sched = TaskScheduler()
+    sched.start()
+    try:
+        await sched.sync_quote_refresh_jobs(collect_func=collect, run_func=lambda u: None)
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "quote_u4" in ids
+        assert "quote_u1" not in ids
+        assert "quote_u2" not in ids
+        assert "quote_u3" not in ids
+    finally:
+        sched.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_sync_quote_refresh_jobs_removes_phantom_on_invalid_interval_mutation():
+    """有效间隔 → 非法间隔（非数字）：残留 scheduler job（幽灵 job）必须被清理。"""
+    async def collect_valid():
+        return [("u1", 30)]
+
+    async def collect_bad():
+        return [("u1", "bad")]
+
+    sched = TaskScheduler()
+    sched.start()
+    try:
+        await sched.sync_quote_refresh_jobs(collect_func=collect_valid, run_func=lambda u: None)
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "quote_u1" in ids
+
+        await sched.sync_quote_refresh_jobs(collect_func=collect_bad, run_func=lambda u: None)
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "quote_u1" not in ids
+        assert "quote_u1" not in sched._jobs
+    finally:
+        sched.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_sync_quote_refresh_jobs_removes_phantom_on_out_of_range_mutation():
+    """有效间隔 → 越界间隔（<5 / >1440）：同样无幽灵 job。"""
+    async def collect_valid():
+        return [("u1", 30), ("u2", 30)]
+
+    async def collect_oob():
+        return [("u1", 1500), ("u2", 2)]
+
+    sched = TaskScheduler()
+    sched.start()
+    try:
+        await sched.sync_quote_refresh_jobs(collect_func=collect_valid, run_func=lambda u: None)
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "quote_u1" in ids and "quote_u2" in ids
+
+        await sched.sync_quote_refresh_jobs(collect_func=collect_oob, run_func=lambda u: None)
+        ids = {j.id for j in sched._scheduler.get_jobs()}
+        assert "quote_u1" not in ids
+        assert "quote_u2" not in ids
+        assert "quote_u1" not in sched._jobs
+        assert "quote_u2" not in sched._jobs
+    finally:
+        sched.shutdown()

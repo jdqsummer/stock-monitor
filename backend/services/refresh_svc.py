@@ -148,8 +148,12 @@ async def run_quote_refresh() -> int:
             await session.close()
 
 
-async def collect_quote_refresh_users(db: AsyncSession) -> list[tuple[str, int]]:
-    """返回 (user_id, interval_minutes)：仅有自选股的用户，间隔取配置默认 30"""
+async def collect_quote_refresh_users(db: AsyncSession) -> list[tuple[str, object]]:
+    """返回 (user_id, interval_minutes 原始值)：仅有自选股的用户，间隔取配置默认 30。
+
+    间隔不在此解析（脏数据如非数字/None 可能抛异常并沿 collect_func → sync →
+    lifespan 传播导致启动失败）；原始值交由 sync_quote_refresh_jobs 统一校验。
+    """
     from backend.models.user import User
     users = (await db.execute(select(User))).scalars().all()
     result = []
@@ -158,7 +162,7 @@ async def collect_quote_refresh_users(db: AsyncSession) -> list[tuple[str, int]]
         if not items:
             continue
         cfg = u.config or {}
-        result.append((u.id, int(cfg.get("data_refresh_interval_minutes", 30))))
+        result.append((u.id, cfg.get("data_refresh_interval_minutes", 30)))
     return result
 
 

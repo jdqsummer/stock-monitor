@@ -150,3 +150,23 @@ async def test_collect_quote_refresh_users_filters_no_watchlist(db_session):
     ids = {u for u, _ in rows}
     assert "u_empty" not in ids
     assert dict(rows)["u_full"] == 15
+
+
+@pytest.mark.asyncio
+async def test_collect_quote_refresh_users_returns_raw_interval(db_session):
+    """脏数据（非数字/None）不抛异常，返回原始值交由 sync_quote_refresh_jobs 统一校验"""
+    from backend.models.user import User
+    from backend.services.refresh_svc import collect_quote_refresh_users
+
+    db_session.add(User(id="u_bad", email="bad@x.com", password_hash="x",
+                        config={"data_refresh_interval_minutes": "abc"}))
+    db_session.add(User(id="u_none", email="none@x.com", password_hash="x",
+                        config={"data_refresh_interval_minutes": None}))
+    db_session.add(WatchlistItem(user_id="u_bad", stock_code="600519", stock_name="贵州茅台"))
+    db_session.add(WatchlistItem(user_id="u_none", stock_code="000333", stock_name="美的"))
+    await db_session.commit()
+
+    rows = await collect_quote_refresh_users(db_session)
+    d = dict(rows)
+    assert d["u_bad"] == "abc"
+    assert d["u_none"] is None
