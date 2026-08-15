@@ -16,8 +16,10 @@ WORKDIR /app
 ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 ENV NPM_CONFIG_REGISTRY=$NPM_CONFIG_REGISTRY
 
-# pnpm（corepack）
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# pnpm（corepack）—— 固定 10.22.0（与本地生成 lockfile 的版本一致）。
+# 勿用 @latest：新版 pnpm 默认启用 minimumReleaseAge 策略，会拒绝 lockfile 中
+# 24h 内新发布的传递依赖（如 @smithy/*），导致 frozen-lockfile 构建非确定性失败。
+RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
 
 # 锁文件优先安装（frozen-lockfile，禁 ^/~ 漂移）
 COPY dsh-engine/package.json dsh-engine/pnpm-lock.yaml ./
