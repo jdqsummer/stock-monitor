@@ -65,12 +65,16 @@ def _build_prompt(req: TriggerRequest) -> str:
     if req.ralph_enabled:
         ralph_hint = ("\n深度模式：请将 invest-five-stage 工具的 ralph_enabled 置为 true，"
                       "在五段结论后执行 Ralph 自审。")
+    # context 以 JSON 字符串呈现（ensure_ascii=False），模型原样透传给工具的 context 参数
+    #（工具参数已改为必填；Python dict repr 不是合法 JSON，模型无法可靠转发）。
+    import json as _json
+    context_json = _json.dumps(req.context, ensure_ascii=False)
     return (
         f"对 {req.code}（{req.name or ''}）执行价值投资五段式安全边际分析。\n"
         f"请调用 invest-five-stage 工具（stock_code={req.code}, stock_name={req.name or ''}），"
-        f"工具会注入只读上下文并跑固定五段 pipeline。\n"
+        f"必须把下面的只读上下文原样作为该工具的 context 参数传入（JSON 字符串，勿改字段）。\n"
         f"注入的只读上下文（由 Python collect_data 预聚合，勿自行读盘）：\n"
-        f"{req.context}\n{pe_hint}{ralph_hint}"
+        f"{context_json}\n{pe_hint}{ralph_hint}"
     )
 
 

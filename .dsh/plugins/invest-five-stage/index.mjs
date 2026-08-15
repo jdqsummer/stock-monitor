@@ -11,10 +11,29 @@ const FIXED_SCRIPT = String.raw`
 //    ① read_context 不依赖 PTC 开关，改为「invest-data-tool 单次调用返回聚合摘要」或
 //    「P3 Orchestrator 在 Python 侧预聚合注入」。实测：run_code 可被调用（程序 40+2=42）；
 //    模型自报工具清单不可靠（会幻觉 native 工具表），勿以自报为准。
-const context = args.context;
+const context = args.context || {};
+// 只读数据摘要（host 预聚合注入；子代理直接使用，勿自行读盘/探索环境找数据）。
+const dataSummary = JSON.stringify({
+  stock_code: context.code ?? args.stock_code,
+  stock_name: context.name ?? args.stock_name,
+  industry_category: context.industry_category ?? '',
+  current_price: context.current_price ?? context.quote?.current_price ?? null,
+  pe_dynamic: context.quote?.pe_dynamic ?? null,
+  total_market_cap: context.total_market_cap ?? null,
+  total_shares: context.total_shares ?? null,
+  net_profit_parent: context.net_profit_parent ?? null,
+  net_profit_deducted: context.net_profit_deducted ?? null,
+  financials: (context.financials ?? []).slice(0, 4).map((f) => ({
+    report_period: f.report_period,
+    revenue: f.revenue,
+    net_profit_parent: f.net_profit_parent,
+    net_profit_deducted: f.net_profit_deducted,
+  })),
+});
 // ② qualitative：blocks 子块 LLM 定性（host 已扫描子块注入 args.blocks，按 order 升序）
 const qualitative = await agent(
   '按 analyze-qualitative 方法论对注入数据做三维度定性（商业模式/护城河/经营质量）。' +
+  '注入只读数据（勿自行读盘/探索环境，以下即为全部所需数据）：' + dataSummary + '。' +
   '子块清单（按 order 升序执行）：' + JSON.stringify(args.blocks) + '。' +
   '确定性利润质量与增长指标已算好（见 qualitative 段的 calc.profit_quality_ok / growth_metrics），' +
   'LLM 在其上补充定性判断，不改写确定性数字。',
@@ -23,7 +42,8 @@ const qualitative = await agent(
 // ③ reverse-check：逆向 14 问（纯 LLM）
 const reverse = await agent(
   '按 run-reverse-checklist 方法论执行逆向审查（四类结论 + 重大风险 + 否决判定）。' +
-  '输入：定性结论 ' + JSON.stringify(qualitative) + ' + 注入 financials/current_price/pe_dynamic。',
+  '注入只读数据（勿自行读盘/探索环境）：' + dataSummary + '。' +
+  '输入：定性结论 ' + JSON.stringify(qualitative) + ' + 上述 financials/current_price/pe_dynamic。',
   { schema: args.schemas.reverse, label: 'reverse', phase: '③逆向' }
 );
 // ④ anchor-industry-pe：LLM 只定 PE 区间，确定性结果 host 已算好注入 args.calc
@@ -575,7 +595,7 @@ function apply(ctx) {
 				},
 				context: {
 					type: "string",
-					description: "只读注入上下文（JSON 字符串：financials/current_price/industry_category 等，P3 Orchestrator 预聚合）"
+					description: "必填：只读注入上下文（JSON 字符串：financials/current_price/industry_category 等，P3 Orchestrator 预聚合，主提示词已给出，原样透传即可）"
 				},
 				pe_low_override: {
 					type: "number",
@@ -590,7 +610,7 @@ function apply(ctx) {
 					description: "Q3 深度自审开关（V4-Pro 深度模式开启）"
 				}
 			},
-			required: ["stock_code", "stock_name"]
+			required: ["stock_code", "stock_name", "context"]
 		},
 		output: {
 			schema: { type: "object" },

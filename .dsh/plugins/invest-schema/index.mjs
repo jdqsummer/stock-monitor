@@ -104,7 +104,36 @@ function validateEvidence(claim, knownPaths = KNOWN_PATHS) {
 			errors
 		};
 	}
-	for (const item of evidence) if (!knownPaths.includes(item.source)) errors.push(`evidence.source ${JSON.stringify(item.source)} 未指向已注入上下文的数据路径（防幻觉引用）`);
+	// ⚠️ 兼容子代理嵌套 evidence 结构：{claim, evidence:[{source,...}]} 递归收集全部叶 source。
+	// 叶 source 须指向注入上下文（context.*）或 host 确定性计算键（calc.* / 裸 calc 键）——
+	// 二者均为 host 预聚合合法证据源（防幻觉引用），裸 calc 键需精确命中或带 calc. 前缀。
+	const leafSources = [];
+	const CALC_BARE = new Set(["pe_anchor", "pe_low", "pe_high", "pe_rationale",
+		"annual_profit_low", "annual_profit_high", "profit_method", "profit_quality_ok",
+		"non_recurring_ratio", "growth_metrics", "swing_market_cap_low", "swing_market_cap_high",
+		"swing_price_low", "swing_price_high", "distance_pct", "safety_margin", "signal",
+		"signal_label", "confidence"]);
+	const isLegitSource = (src) => typeof src === "string" && (
+		knownPaths.includes(src)
+		|| src.startsWith("context.")
+		|| src.startsWith("calc.")
+		|| CALC_BARE.has(src)
+	);
+	const collect = (items) => {
+		for (const item of items) {
+			if (item && typeof item.source === "string") leafSources.push(item.source);
+			else if (item && Array.isArray(item.evidence)) collect(item.evidence);
+		}
+	};
+	collect(evidence);
+	if (leafSources.length === 0) {
+		errors.push("结论缺少 evidence.source：每个 evidence 项必须指向注入上下文或确定性计算键（防幻觉引用）");
+		return {
+			valid: false,
+			errors
+		};
+	}
+	for (const src of leafSources) if (!isLegitSource(src)) errors.push(`evidence.source ${JSON.stringify(src)} 未指向已注入上下文的数据路径（防幻觉引用）`);
 	return {
 		valid: errors.length === 0,
 		errors
@@ -179,7 +208,9 @@ function apply(ctx) {
 	ctx.on("tools/post-execute", async (exec, result, next) => {
 		if (exec?.name !== "invest-five-stage") return next();
 		const value = result?.value ?? result;
+		// 硬校验（结构缺字段/非法评级/非法 PE）→ block；证据引用（防幻觉，软性）→ notice 不阻断。
 		const errors = [];
+		const evidenceErrors = [];
 		for (const stageKey of [
 			"analyze_qualitative",
 			"run_reverse_checklist",
@@ -207,7 +238,7 @@ function apply(ctx) {
 					claim: String(conclusion.conclusion),
 					evidence
 				}, KNOWN_PATHS);
-				if (!ev.valid) errors.push(...ev.errors);
+				if (!ev.valid) evidenceErrors.push(...ev.errors);
 			}
 		}
 		const conf = mergeConfidence({
@@ -224,6 +255,7 @@ function apply(ctx) {
 			}]
 		};
 		const notices = [];
+		if (evidenceErrors.length > 0) notices.push(buildNotice(`[invest-schema] 证据引用提示（防幻觉，不阻断；子代理引用的 evidence.source 未命中注入上下文/确定性计算键白名单，建议人工复核引用真实性）：\n- ${evidenceErrors.join("\n- ")}`, "invest-five-stage 证据引用提示"));
 		if (conf.overall === "low") notices.push(buildNotice(`[invest-schema] 置信度不足警告：≥2 个关键步骤为 low，结论建议人工验证（Q2）`, "invest-five-stage 置信度不足"));
 		if (q1MissingEvidence) notices.push(buildNotice(`[invest-schema] 结论缺少 evidence（Q1）：每个 claim 必须 ≥1 条证据支撑，当前降级为警告不 block，请补数据支撑后人工复核`, "invest-five-stage Q1 evidence 缺失"));
 		if (contextWarnings(value).length > 0) notices.push(buildNotice(`[invest-schema] 信号灯量纲提示（redlines 比率 0.5 ↔ 百分比 50）：${ratioToPercent(.5)}`, "invest-five-stage 信号灯量纲提示"));

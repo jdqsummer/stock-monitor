@@ -42,7 +42,9 @@ export function apply(ctx: any): void {
       return next()
     }
     const value = result?.value ?? result
+    // 硬校验（结构缺字段/非法评级/非法 PE）→ block；证据引用（防幻觉，软性）→ notice 不阻断。
     const errors: string[] = []
+    const evidenceErrors: string[] = []
 
     // ① 形状校验：4 个 stage 逐一（script return 键 = stage 键）
     for (const stageKey of ['analyze_qualitative', 'run_reverse_checklist', 'anchor_industry_pe', 'output_conclusion']) {
@@ -64,7 +66,8 @@ export function apply(ctx: any): void {
 
     // ③ Q1 证据引用：conclusion 段（knownPaths 指向 Orchestrator 注入的真实 context 键——P3 激活）
     // ⚠️ P2→P3：producer（output-conclusion schema）P3 已带 evidence 字段，缺失降级 warning notice（不 block）；
-    // evidence 存在但 source 不在 KNOWN_PATHS → 仍 block（防幻觉引用）。
+    // evidence 存在但 source 不在 KNOWN_PATHS → notice 不 block（防幻觉提示；子代理自由引用键无法穷举白名单，
+    // 硬 block 会造成 invest-five-stage 重试循环、浪费整轮 workflow）。
     const conclusion = value?.output_conclusion
     let q1MissingEvidence = false
     if (conclusion?.conclusion) {
@@ -76,7 +79,7 @@ export function apply(ctx: any): void {
           { claim: String(conclusion.conclusion), evidence },
           KNOWN_PATHS,
         )
-        if (!ev.valid) errors.push(...ev.errors)
+        if (!ev.valid) evidenceErrors.push(...ev.errors)
       }
     }
 
@@ -96,6 +99,12 @@ export function apply(ctx: any): void {
       }
     }
     const notices: any[] = []
+    if (evidenceErrors.length > 0) {
+      notices.push(buildNotice(
+        `[invest-schema] 证据引用提示（防幻觉，不阻断；子代理引用的 evidence.source 未命中注入上下文/确定性计算键白名单，建议人工复核引用真实性）：\n- ${evidenceErrors.join('\n- ')}`,
+        'invest-five-stage 证据引用提示',
+      ))
+    }
     if (conf.overall === 'low') {
       notices.push(buildNotice(
         `[invest-schema] 置信度不足警告：≥2 个关键步骤为 low，结论建议人工验证（Q2）`,

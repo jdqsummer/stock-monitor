@@ -81,9 +81,36 @@ export function validateEvidence(claim: ClaimLike, knownPaths: string[] = KNOWN_
     errors.push('结论缺少 evidence：每个 claim 必须至少 1 条证据支撑（Q1）')
     return { valid: false, errors }
   }
-  for (const item of evidence) {
-    if (!knownPaths.includes(item.source)) {
-      errors.push(`evidence.source ${JSON.stringify(item.source)} 未指向已注入上下文的数据路径（防幻觉引用）`)
+  // ⚠️ 兼容子代理嵌套 evidence 结构：{claim, evidence:[{source,...}]} 递归收集全部叶 source。
+  // 叶 source 须指向注入上下文（context.*）或 host 确定性计算键（calc.* / 裸 calc 键）——
+  // 二者均为 host 预聚合合法证据源（防幻觉引用），裸 calc 键需精确命中或带 calc. 前缀。
+  const leafSources: string[] = []
+  const CALC_BARE = new Set(['pe_anchor', 'pe_low', 'pe_high', 'pe_rationale',
+    'annual_profit_low', 'annual_profit_high', 'profit_method', 'profit_quality_ok',
+    'non_recurring_ratio', 'growth_metrics', 'swing_market_cap_low', 'swing_market_cap_high',
+    'swing_price_low', 'swing_price_high', 'distance_pct', 'safety_margin', 'signal',
+    'signal_label', 'confidence'])
+  const isLegitSource = (src: string | unknown): boolean =>
+    typeof src === 'string' && (
+      knownPaths.includes(src)
+      || src.startsWith('context.')
+      || src.startsWith('calc.')
+      || CALC_BARE.has(src)
+    )
+  const collect = (items: typeof evidence): void => {
+    for (const item of items) {
+      if (item && typeof item.source === 'string') leafSources.push(item.source)
+      else if (item && Array.isArray(item.evidence)) collect(item.evidence)
+    }
+  }
+  collect(evidence)
+  if (leafSources.length === 0) {
+    errors.push('结论缺少 evidence.source：每个 evidence 项必须指向注入上下文或确定性计算键（防幻觉引用）')
+    return { valid: false, errors }
+  }
+  for (const src of leafSources) {
+    if (!isLegitSource(src)) {
+      errors.push(`evidence.source ${JSON.stringify(src)} 未指向已注入上下文的数据路径（防幻觉引用）`)
     }
   }
   return { valid: errors.length === 0, errors }

@@ -57,7 +57,7 @@ export function apply(ctx: any): void {
     parameters: {
       stock_code: { type: 'string', required: true, description: '股票代码' },
       stock_name: { type: 'string', required: true, description: '股票名称' },
-      context: { type: 'string', required: false, description: '只读注入上下文（JSON 字符串：financials/current_price/industry_category 等，P3 Orchestrator 预聚合）' },
+      context: { type: 'string', required: true, description: '必填：只读注入上下文（JSON 字符串：financials/current_price/industry_category 等，P3 Orchestrator 预聚合，主提示词已给出，原样透传即可）' },
       pe_low_override: { type: 'number', required: false, description: 'PE 下限覆盖（D2 敏感性重跑，覆盖 LLM 自设区间）' },
       pe_high_override: { type: 'number', required: false, description: 'PE 上限覆盖（D2 敏感性重跑）' },
       ralph_enabled: { type: 'boolean', required: false, description: 'Q3 深度自审开关（V4-Pro 深度模式开启）' },
