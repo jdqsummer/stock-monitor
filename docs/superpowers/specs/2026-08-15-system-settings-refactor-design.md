@@ -8,7 +8,7 @@
 
 本次重构目标：
 
-1. **LLM 模型配置**：支持 6 个模型 + 按厂商配置 API Key（加密落库 + 透传 DSH 引擎）；移除温度/最大长度等模型参数。
+1. **LLM 模型配置**：支持 6 个模型 + 按厂商配置 API Key（明文存储 + 透传 DSH 引擎）；移除温度/最大长度等模型参数。
 2. **数据更新**：行情刷新间隔改为每用户可配置且真正生效；只保留收盘分析（默认 16:00）；自动分析支持并发配置。
 3. **投资偏好**：全部移除（画像留待后续基于投资笔记/记录）。
 4. **击球区提醒**：从死字段转为真功能——邮件 + Header 小喇叭双渠道。
@@ -23,7 +23,7 @@
 | 3 | 持仓股数据来源 | **暂不接入持仓**（本次范围 = 自选股，持仓逻辑预留） |
 | 4 | 击球区提醒触发规则 | **收盘后全量提醒**（凡 `signal=🟢` 的自选股汇总） |
 | 5 | 早盘任务 | **只保留收盘分析**（移除 09:30 早盘重算） |
-| 6 | API Key 存储 | **加密落库**（Fernet，key 由 env `CONFIG_ENCRYPTION_KEY` 提供） |
+| 6 | API Key 存储 | **明文保存**（暂放弃加密，单用户自用可接受，见 §4.3） |
 
 ## 三、总体架构
 
@@ -33,7 +33,7 @@
         │ REST
 后端 (backend/)
   UserConfig 增删字段 · config API · scheduler 重构（per-user 行情刷新 + 收盘自动分析 + 提醒检测）
-  refresh_svc / analysis_job_svc 扩展 · 新增 reminder_svc / crypto_svc / reminders API
+  refresh_svc / analysis_job_svc 扩展 · 新增 reminder_svc / reminders API
         │ POST /trigger（扩展 api_keys 字段）
 DSH 引擎 (scripts/dsh_p3/sdk_host.py + .dsh/...)
   _build_config 按模型选 provider · providers.yml 增模型卡片 · env 兜底 key
@@ -45,7 +45,7 @@ DSH 引擎 (scripts/dsh_p3/sdk_host.py + .dsh/...)
 
 | 操作 | 字段 | 说明 |
 |:--|:--|:--|
-| 新增 | `deepseek_api_key` / `qwen_api_key` / `kimi_api_key` | 3 个厂商 key，Fernet 加密存储 |
+| 新增 | `deepseek_api_key` / `qwen_api_key` / `kimi_api_key` | 3 个厂商 key，明文存储（GET 不回显） |
 | 新增 | `analysis_concurrency` | 自动分析并发，默认 3，约束 1-10 |
 | 新增 | `reminder_email_enabled` | 邮件提醒渠道开关 |
 | 新增 | `reminder_bell_enabled` | 小喇叭提醒渠道开关 |
@@ -68,11 +68,11 @@ reminder_date (date) / created_at / read_at (nullable)
 
 去重约束：`(user_id, reminder_date)` 同天只生成一批；渠道（邮件/小喇叭）共用这批记录。
 
-### 4.3 加密方案
+### 4.3 key 存储方案
 
-- 新增 `services/crypto_svc.py`：Fernet 对称加密。
-- env `CONFIG_ENCRYPTION_KEY`：缺失时**拒绝写入 key 字段**（返回配置错误），不静默降级明文。
-- API 边界：`GET /config` 返回 key 时**脱敏**（仅返回掩码/是否已配置布尔，如 `deepseek_api_key_configured: true`），`PUT /config` 全字段保存（空串 = 不更新原 key）。
+- **明文保存**（用户决策：暂放弃加密落库，单用户自用场景可接受）。
+- API 边界（明文下更严格）：`GET /config` **不回显 key 明文**——仅返回是否已配置布尔（`deepseek_api_key_configured: true`）；`PUT /config` 传空串 = 不更新原 key。
+- 风险提示：明文落库，DB 泄露即 key 泄露；后续接入加密时预留 schema 兼容迁移。
 
 ## 五、LLM 模型与 API Key 透传
 
@@ -84,17 +84,17 @@ reminder_date (date) / created_at / read_at (nullable)
 |:--|:--|:--|:--|
 | deepseek-v4-flash | DeepSeek | `deepseek-v4-flash` | `deepseek_api_key` |
 | deepseek-v4-pro | DeepSeek | `deepseek-v4-pro` | `deepseek_api_key` |
-| Qwen3.7-Max | 阿里通义 | `qwen3.7-max` ⚠️ | `qwen_api_key` |
-| Qwen3.8-Max | 阿里通义 | `qwen3.8-max` ⚠️ | `qwen_api_key` |
-| Kimi-K2.6 | 月之暗面 | `kimi-k2.6` ⚠️ | `kimi_api_key` |
-| Kimi-K2.7 | 月之暗面 | `kimi-k2.7` ⚠️ | `kimi_api_key` |
+| Qwen3.7-Max | 阿里通义 | `Qwen3.7-Max` | `qwen_api_key` |
+| Qwen3.8-Max | 阿里通义 | `Qwen3.8-Max` | `qwen_api_key` |
+| Kimi-K2.6 | 月之暗面 | `Kimi-K2.6` | `kimi_api_key` |
+| Kimi-K2.7 | 月之暗面 | `Kimi-K2.7` | `kimi_api_key` |
 
-> ⚠️ 4 个 wire 名按厂商命名惯例占位，真实 API 模型名需按各厂商文档校准后固化。
+> wire 名 = 真实 API 模型名（用户确认）；厂商 API base_url 按厂商标准：DeepSeek 原生、Qwen 走 dashscope OpenAI 兼容、Kimi 走月之暗面 OpenAI 兼容。
 
 ### 5.2 透传链路
 
-1. 设置页存 3 个厂商 key → `crypto_svc` 加密落 UserConfig。
-2. 分析触发时，`analysis_job_svc._process_one` 读当前用户 UserConfig、`crypto_svc` 解密对应厂商 key → 作为 `api_keys` 传入 `chain.analyze(...)` → `DshOrchestrator` 注入 `POST /trigger` 请求体新增字段 `api_keys: {deepseek, qwen, kimi}`。
+1. 设置页存 3 个厂商 key → 明文落 UserConfig（`GET /config` 不回显）。
+2. 分析触发时，`analysis_job_svc._process_one` 读当前用户 UserConfig 对应厂商 key 明文 → 作为 `api_keys` 传入 `chain.analyze(...)` → `DshOrchestrator` 注入 `POST /trigger` 请求体新增字段 `api_keys: {deepseek, qwen, kimi}`。
 3. `sdk_host._build_config` 改为：根据 `req.model` 查模型表 → 判定厂商 → 用 `req.api_keys` 或 env 兜底 → 构建对应 provider（DeepSeek 原生 / Qwen-Kimi 走 OpenAI 兼容接口）。
 4. DSH 引擎 `providers.yml` 加 4 张新模型卡片。
 
@@ -180,19 +180,18 @@ POST /api/reminders/read-all    全部已读
 
 | 层 | 覆盖 |
 |:--|:--|
-| 后端单测 | `crypto_svc` 加密/解密/脱敏 round-trip；`scheduler` per-user 行情刷新 reconcile；`analysis_job_svc` 并发数生效；`reminder_svc` 生成/去重/已读；`sdk_host._build_config` 按模型选 provider 与 key 透传 |
+| 后端单测 | config key 明文读写 + `GET /config` 不回显 key；`scheduler` per-user 行情刷新 reconcile；`analysis_job_svc` 并发数生效；`reminder_svc` 生成/去重/已读；`sdk_host._build_config` 按模型选 provider 与 key 透传 |
 | 契约 | `p3-http-trigger-contract.md` 更新 `api_keys` |
 | 回归 | `pytest tests/ -v` 全绿；前端跑通设置页/分析/小喇叭 |
 
 ## 十一、影响文件清单
 
-- 后端：`schemas/config.py`、`services/config_svc.py`、`api/config.py`、`services/refresh_svc.py`、`data/scheduler.py`、`services/analysis_job_svc.py`、`agents/dsh_orchestrator.py`、`api/analysis.py`、**新增** `services/crypto_svc.py`、`services/reminder_svc.py`、`api/reminders.py`、`models/reminder.py`
+- 后端：`schemas/config.py`、`services/config_svc.py`、`api/config.py`、`services/refresh_svc.py`、`data/scheduler.py`、`services/analysis_job_svc.py`、`agents/dsh_orchestrator.py`、`api/analysis.py`、**新增** `services/reminder_svc.py`、`api/reminders.py`、`models/reminder.py`
 - DSH 引擎：`scripts/dsh_p3/sdk_host.py`、`.dsh/agent-presets/value-investor/providers.yml`、`.dsh/docs/p3-http-trigger-contract.md`
 - 前端：`pages/Settings.tsx`、`components/Dashboard/SignalBoard.tsx`、`components/Layout/AppLayout.tsx`、`api/client.ts`、`types/index.ts`
 
 ## 十二、风险与注意事项
 
 1. **SQLite 并发写**：per-user 行情刷新多任务可能同时 upsert 同一股票 A 表；单用户场景无冲突，多用户需股票级 asyncio 锁（沿用 `_code_locks` 模式）。
-2. **key 脱敏边界**：`GET /config` 不可回显明文 key；前端 Key 输入框为空即「不修改」。
-3. **DSH 引擎 wire 名**：Qwen/Kimi 4 个 wire 名需按厂商 API 文档校准；未校准前选中对应模型分析会失败，需在模型下拉标注「需校准」或默认禁用。
-4. **提醒依赖 B 表**：B 表无快照（从未分析过）的股票不进入提醒；16:00 全局重算只更新已有快照。
+2. **key 明文风险**：明文落库，DB 泄露即 key 泄露；`GET /config` 不可回显明文 key（仅回传是否已配置布尔）；前端 Key 输入框为空即「不修改」。
+3. **提醒依赖 B 表**：B 表无快照（从未分析过）的股票不进入提醒；16:00 全局重算只更新已有快照。
