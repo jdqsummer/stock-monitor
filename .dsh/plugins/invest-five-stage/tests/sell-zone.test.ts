@@ -47,6 +47,10 @@ describe('calcSellZone（position 确定性卖出区）', () => {
       sell_pe_low: 30, sell_pe_high: 35,   // 亏损时 LLM 应给 0；即便给了也不出距离/信号
       total_shares: 100, current_price: 10,
     })
+    expect(r.sell_market_cap_low).toBe(0)
+    expect(r.sell_market_cap_high).toBe(0)
+    expect(r.sell_price_low).toBe(0)
+    expect(r.sell_price_high).toBe(0)
     expect(r.sell_distance_pct).toBeNull()
     expect(r.sell_signal).toBe('none')
   })

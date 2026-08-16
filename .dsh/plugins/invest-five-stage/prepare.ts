@@ -226,7 +226,7 @@ export function calcSellZone(input: CalcSellZoneInput): CalcSellZoneResult {
   const total_shares = input.total_shares || 0
   const current_price = input.current_price || 0
   let sell_market_cap_low = 0, sell_market_cap_high = 0, sell_price_low = 0, sell_price_high = 0
-  if (sell_pe_low > 0 && sell_pe_high >= sell_pe_low) {
+  if (sell_pe_low > 0 && sell_pe_high >= sell_pe_low && profit_low > 0) {
     sell_market_cap_low = roundHalfEven(profit_low * sell_pe_low, 2)
     sell_market_cap_high = roundHalfEven(profit_high * sell_pe_high, 2)
     if (total_shares > 0) {

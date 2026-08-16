@@ -37,7 +37,7 @@ export function EditableCell({ value, type, onSave }: EditableCellProps) {
       <DatePicker
         autoFocus
         value={draft ? dayjs(String(draft)) : null}
-        onChange={(d) => setDraft(d ? d.toISOString() : null)}
+        onChange={(d) => setDraft(d ? d.format('YYYY-MM-DD') : null)}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
       />

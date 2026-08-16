@@ -193,7 +193,7 @@ export function Portfolio() {
 
       {models.length > 0 && configLoaded && modelProvider && !modelKeyConfigured && (
         <Alert type="warning" showIcon style={{ marginBottom: 12 }}
-          message={<>{modelProvider} 未配置 API Key，持仓分析将按规则降级执行。<Link to="/settings">去系统设置配置 LLM</Link></>} />
+          message={<>{modelProvider} 未配置 API Key，持仓分析将被跳过（不会生成分析结果）。<Link to="/settings">去系统设置配置 LLM</Link></>} />
       )}
 
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
