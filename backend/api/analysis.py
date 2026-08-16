@@ -327,3 +327,24 @@ async def run_analysis(
     except Exception as e:
         logger.error(f"规则降级分析失败 {req.code}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/run/status", response_model=AnalyzeResponse)
+async def run_analysis_status(
+    job_id: str = Query(..., description="job id"),
+    current_user: User = Depends(get_current_user),
+):
+    """Analysis 页异步分析 job 进度（轮询用）"""
+    status = analysis_job_service.get_status(job_id, current_user.id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return {"code": 0, "data": status, "message": "ok"}
+
+
+@router.get("/run/active", response_model=AnalyzeResponse)
+async def run_analysis_active(current_user: User = Depends(get_current_user)):
+    """Analysis 页最近进行中的 job（source=analysis_page 作用域，刷新后恢复进度）"""
+    status = analysis_job_service.get_active_job(current_user.id, source="analysis_page")
+    if status is None:
+        raise HTTPException(status_code=404, detail="无进行中的分析任务")
+    return {"code": 0, "data": status, "message": "ok"}

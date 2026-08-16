@@ -86,3 +86,87 @@ class TestAnalysisRunAPI:
         assert saved["llm_provider"] is None
         assert saved["source"] == "rule-based"
         assert saved["analyze_kwargs"]["code"] == "600519"
+
+
+class TestAnalysisRunStatusAPI:
+    @pytest.mark.asyncio
+    async def test_run_status_requires_auth(self, client):
+        resp = await client.get("/api/analysis/run/status", params={"job_id": "job_x"})
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_run_status_returns_progress(self, client):
+        token = await _auth_token(client, email="ar3@example.com")
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+
+        svc = analysis_api.analysis_job_service
+        svc._jobs["job_run_x"] = {
+            "job_id": "job_run_x", "user_id": user_id, "source": "analysis_page",
+            "created_at": "2026-08-16T15:30:00",
+            "codes": {"600519": STATUS_DONE, "000858": "pending"},
+        }
+        resp = await client.get(
+            "/api/analysis/run/status", params={"job_id": "job_run_x"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["job_id"] == "job_run_x"
+        assert data["total"] == 2
+        assert data["done"] == 1
+
+    @pytest.mark.asyncio
+    async def test_run_status_denies_other_user(self, client):
+        owner_token = await _auth_token(client, email="ar4@example.com")
+        owner_me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {owner_token}"})
+        owner_id = owner_me.json()["data"]["id"]
+        svc = analysis_api.analysis_job_service
+        svc._jobs["job_run_y"] = {
+            "job_id": "job_run_y", "user_id": owner_id, "source": "analysis_page",
+            "created_at": "2026-08-16T15:30:00",
+            "codes": {"600519": STATUS_DONE},
+        }
+        other_token = await _auth_token(client, email="ar5@example.com")
+        resp = await client.get(
+            "/api/analysis/run/status", params={"job_id": "job_run_y"},
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 404
+
+
+class TestAnalysisRunActiveAPI:
+    @pytest.mark.asyncio
+    async def test_run_active_requires_auth(self, client):
+        resp = await client.get("/api/analysis/run/active")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_run_active_scoped_to_analysis_page(self, client):
+        """只返回 source=analysis_page 的进行中 job，不抢 manual/portfolio job"""
+        token = await _auth_token(client, email="ar6@example.com")
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+        svc = analysis_api.analysis_job_service
+        svc._jobs["job_wl"] = {
+            "job_id": "job_wl", "user_id": user_id, "source": "manual",
+            "created_at": "2026-08-16T15:30:00", "codes": {"600519": "running"},
+        }
+        svc._jobs["job_page"] = {
+            "job_id": "job_page", "user_id": user_id, "source": "analysis_page",
+            "created_at": "2026-08-16T15:40:00", "codes": {"000858": "running"},
+        }
+        resp = await client.get(
+            "/api/analysis/run/active", headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["job_id"] == "job_page"
+
+    @pytest.mark.asyncio
+    async def test_run_active_404_when_none(self, client):
+        token = await _auth_token(client, email="ar7@example.com")
+        resp = await client.get(
+            "/api/analysis/run/active", headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
