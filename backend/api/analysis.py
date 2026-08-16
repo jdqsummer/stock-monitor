@@ -12,7 +12,7 @@ from backend.agents.analysis_chain import AnalysisChain, AnalysisReport, create_
 from backend.agents.data_agent import DataAgent
 from backend.agents.workflow import WorkflowRunner
 from backend.api.deps import get_current_user, get_db
-from backend.llm.provider import get_llm
+from backend.llm.provider import get_llm, is_llm_available
 from backend.models.user import User
 from backend.services.analysis_job_svc import analysis_job_service
 from backend.services.snapshot_svc import SnapshotService
@@ -292,3 +292,38 @@ async def get_snapshot(
         raise HTTPException(status_code=404, detail="该股票尚未分析")
     quote = await StockDataService.get_quote_for_code(db, code)
     return {"code": 0, "data": StockDataService.snapshot_to_dict(snap, quote), "message": "ok"}
+
+
+class AnalysisRunRequest(BaseModel):
+    """Analysis 页发起任意股分析"""
+    code: str = Field(..., description="股票代码，如 600519")
+    name: str = Field(default="", description="股票名称")
+    model: str = Field(default="", description="分析模型（I6）；空=用户配置默认模型")
+
+
+@router.post("/run", response_model=AnalyzeResponse)
+async def run_analysis(
+    req: AnalysisRunRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Analysis 页任意股分析。
+
+    LLM 可用 → 提交异步 job（source=analysis_page），返回 job_id 供轮询；
+    LLM 不可用 → 同步纯规则链降级，照样出五段式结果（标注 rule-based）。
+    """
+    if is_llm_available():
+        job_id = analysis_job_service.submit(
+            current_user.id, [req.code], source="analysis_page", model=req.model,
+        )
+        return {"code": 0, "data": {"job_id": job_id, "mode": "async"}, "message": "ok"}
+    # LLM 不可用 → 纯规则链同步分析（llm_provider=None），不提交 job 不跳过
+    try:
+        chain = AnalysisChain(llm_provider=None)
+        report = await chain.analyze(code=req.code, stock_name=req.name, model=req.model)
+        await SnapshotService.save_snapshot(db, current_user.id, report, source="rule-based")
+        return {"code": 0, "data": {"job_id": None, "mode": "sync_degraded"}, "message": "ok"}
+    except Exception as e:
+        logger.error(f"规则降级分析失败 {req.code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
