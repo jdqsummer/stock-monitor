@@ -152,10 +152,13 @@ export function Analysis() {
       await watchlistApi.add(snap.code, snap.name, true);  // skip_analysis=true：刚分析完，不重复跑 LLM
       setInWatchlist(true);
       message.success(`已加入自选股 ${snap.name}（${snap.code}）`);
-    } catch {
-      // 409 已在自选 → 视为已加入
-      setInWatchlist(true);
-      message.success('已在自选股中');
+    } catch (err) {
+      if ((err as { response?: { status?: number } }).response?.status === 409) {
+        setInWatchlist(true);
+        message.success('已在自选股中');
+      } else {
+        message.error(getErrorMessage(err, '加入自选股失败'));
+      }
     } finally {
       setAdding(false);
     }
