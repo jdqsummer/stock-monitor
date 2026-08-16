@@ -87,6 +87,17 @@ export interface WatchlistBoardRow {
   stage_results?: Record<string, StageResult>;
   financials_8p?: FinancialRow[];
   reverse_analysis?: ReverseAnalysis;
+  // 持仓卖出分析（snapshot_to_dict sell 组）
+  analysis_mode?: string | null;
+  sell_pe?: string | null;
+  sell_market_cap?: string | null;
+  sell_price?: string | null;
+  sell_pe_rationale?: string | null;
+  sell_distance_pct?: number | null;
+  sell_signal?: Signal | null;
+  sell_action?: string | null;
+  sell_analysis?: Record<string, unknown>;
+  stage_results_sell?: Record<string, StageResult>;
 }
 
 // ── 自选股自动分析任务 ──
@@ -106,17 +117,29 @@ export interface PositionInfo {
   id: string;
   stock_code: string;
   stock_name: string;
-  shares: number;
-  cost_price: number;
-  current_price: number;
-  profit_loss: number;
-  profit_loss_pct: number;
-  daily_pl: number;
-  position_ratio: number;
-  distance_pct: number | null;
-  signal: Signal | null;
   industry: string | null;
+  shares: number | null;          // 可空：行内编辑
+  cost_price: number | null;
+  purchased_at: string | null;
+  current_price: number;
+  holding_value: number | null;
+  profit_loss: number | null;
+  profit_loss_pct: number | null;
+  daily_pl: number | null;
+  position_ratio: number | null;
+  holding_days: number | null;
+  sell_price_low: number | null;
+  sell_price_high: number | null;
+  sell_distance_pct: number | null;
+  sell_signal: Signal | null;
   pe_dynamic: number | null;
+  analysis_source?: string | null;
+}
+
+// 持仓详情：持仓上下文 + sell 五段快照
+export interface PositionDetail {
+  position: PositionInfo;
+  snapshot: WatchlistBoardRow | null;
 }
 
 // ── 仪表盘总览 ──

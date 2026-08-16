@@ -19,9 +19,9 @@ const columns: ColumnsType<PositionInfo> = [
     render: (v: number) => <span style={{ color: v >= 0 ? '#3f8600' : '#cf1322' }}>{v.toFixed(2)}万</span> },
   { title: '持仓比例', dataIndex: 'position_ratio', key: 'position_ratio', width: 90,
     render: (v: number) => `${v.toFixed(1)}%` },
-  { title: '距击球区', dataIndex: 'distance_pct', key: 'distance_pct', width: 140,
+  { title: '距击球区', dataIndex: 'sell_distance_pct', key: 'sell_distance_pct', width: 140,
     render: (v: number | null, record: PositionInfo) =>
-      v !== null && record.signal ? <SignalBadge signal={record.signal} distancePct={v} /> : '-' },
+      v !== null && record.sell_signal ? <SignalBadge signal={record.sell_signal} distancePct={v} /> : '-' },
 ];
 
 export function PortfolioPanel({ data, loading }: { data: PositionInfo[]; loading: boolean }) {

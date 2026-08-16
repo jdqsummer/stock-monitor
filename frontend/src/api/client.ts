@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -77,6 +77,21 @@ export const analysisApi = {
     client.get<ApiResponse<JobStatus>>('/analysis/watchlist/active'),
   getSnapshot: (code: string) =>
     client.get<ApiResponse<WatchlistBoardRow>>(`/analysis/snapshot/${code}`),
+};
+
+// 持仓
+export const portfolioApi = {
+  list: () => client.get<ApiResponse<PositionInfo[]>>('/portfolio'),
+  add: (stockCode: string) => client.post<ApiResponse<PositionInfo>>('/portfolio', { stock_code: stockCode }),
+  update: (id: string, patch: Partial<Pick<PositionInfo, 'shares' | 'cost_price' | 'purchased_at'>>) =>
+    client.patch<ApiResponse<PositionInfo>>(`/portfolio/${id}`, patch),
+  remove: (id: string) => client.delete<ApiResponse>(`/portfolio/${id}`),
+  analyze: (positionIds: string[], model?: string) =>
+    client.post<ApiResponse<{ job_id: string }>>('/portfolio/analyze', { position_ids: positionIds, model }),
+  status: (jobId: string) =>
+    client.get<ApiResponse<JobStatus>>('/portfolio/status', { params: { job_id: jobId } }),
+  active: () => client.get<ApiResponse<JobStatus>>('/portfolio/active'),
+  getSnapshot: (id: string) => client.get<ApiResponse<PositionDetail>>(`/portfolio/${id}/snapshot`),
 };
 
 // 聊天
