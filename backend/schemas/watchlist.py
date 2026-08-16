@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 class WatchlistAddRequest(BaseModel):
     stock_code: str = Field(..., min_length=1, max_length=20, description="股票代码")
     stock_name: str = Field(..., min_length=1, max_length=100, description="股票名称")
+    skip_analysis: bool = Field(default=False, description="是否跳过加自选后的自动分析（Analysis 页刚分析过同一只股时传 true）")
 
 
 class WatchlistItemOut(BaseModel):

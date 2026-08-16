@@ -50,3 +50,39 @@ async def test_add_watchlist_skips_when_llm_mock(client, monkeypatch):
     }, headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert calls == [], "LLM mock 时不触发分析"
+
+
+@pytest.mark.asyncio
+async def test_add_watchlist_skip_analysis_true_skips_submit(client, monkeypatch):
+    """skip_analysis=true（Analysis 页刚分析完同一只股）→ 不提交自动分析 job"""
+    calls = []
+    def fake_submit(user_id, codes, source):
+        calls.append((user_id, codes, source))
+        return "job_x"
+    monkeypatch.setattr(watchlist_api.analysis_job_service, "submit", fake_submit)
+    monkeypatch.setattr(watchlist_api, "is_llm_available", lambda: True)
+
+    token = await _auth_token(client)
+    resp = await client.post("/api/watchlist", json={
+        "stock_code": "600519", "stock_name": "贵州茅台", "skip_analysis": True,
+    }, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert calls == [], "skip_analysis=true 时不提交自动分析"
+
+
+@pytest.mark.asyncio
+async def test_add_watchlist_skip_analysis_default_false_still_triggers(client, monkeypatch):
+    """默认 skip_analysis=false：LLM 可用仍触发分析（回归现有行为）"""
+    calls = []
+    def fake_submit(user_id, codes, source):
+        calls.append((user_id, codes, source))
+        return "job_x"
+    monkeypatch.setattr(watchlist_api.analysis_job_service, "submit", fake_submit)
+    monkeypatch.setattr(watchlist_api, "is_llm_available", lambda: True)
+
+    token = await _auth_token(client)
+    resp = await client.post("/api/watchlist", json={
+        "stock_code": "000858", "stock_name": "五粮液",
+    }, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert calls and calls[0][2] == "watchlist_add"

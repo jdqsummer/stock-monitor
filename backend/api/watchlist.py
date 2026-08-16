@@ -101,7 +101,8 @@ async def add_watchlist(
     except DuplicateStockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     # 加自选即触发单只分析（LLM 可用才提交；异步不阻塞 add 响应）
-    if is_llm_available():
+    # skip_analysis=true（Analysis 页刚分析完同一只股）→ 跳过，避免重复跑 LLM
+    if not req.skip_analysis and is_llm_available():
         analysis_job_service.submit(current_user.id, [item.stock_code], source="watchlist_add")
     return ApiResponse(data=_to_out(item), message="添加成功")
 
