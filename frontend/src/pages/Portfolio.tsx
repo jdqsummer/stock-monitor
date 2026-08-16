@@ -140,10 +140,12 @@ export function Portfolio() {
     { title: '开始时间', dataIndex: 'purchased_at', width: 130,
       render: (v: string | null, r: PositionInfo) => (
         <EditableCell value={v} type="date"
-          onSave={(val) => handleCellSave(r.id, { purchased_at: String(val) })} />
+          onSave={(val) => handleCellSave(r.id, { purchased_at: val == null ? null : String(val) })} />
       ) },
     { title: '现价', dataIndex: 'current_price', width: 80,
       render: (v: number) => (v ? `¥${v.toFixed(2)}` : '-') },
+    { title: '持有市值', dataIndex: 'holding_value', width: 100,
+      render: (v: number | null) => v == null ? '-' : `${v.toFixed(2)}万` },
     { title: '当日盈亏', dataIndex: 'daily_pl', width: 100,
       render: (v: number | null) => v == null ? '-' : (
         <span style={{ color: v >= 0 ? '#3f8600' : '#cf1322' }}>{v.toFixed(2)}万</span>
@@ -199,9 +201,9 @@ export function Portfolio() {
         rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }}
         pagination={{ pageSize: 20 }} />
 
-      <Modal title="添加持仓股" open={modalOpen} onCancel={() => setModalOpen(false)}
+      <Modal title="添加持仓股" open={modalOpen} onCancel={() => { setModalOpen(false); setSelectedStock(null); }}
         footer={[
-          <Button key="cancel" onClick={() => setModalOpen(false)}>取消</Button>,
+          <Button key="cancel" onClick={() => { setModalOpen(false); setSelectedStock(null); }}>取消</Button>,
           <Button key="ok" type="primary" disabled={!selectedStock} loading={submitting} onClick={handleAdd}>
             确认添加
           </Button>,

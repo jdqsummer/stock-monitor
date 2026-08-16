@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 interface EditableCellProps {
   value: number | string | null;
   type: 'number' | 'date';
-  onSave: (value: number | string) => Promise<void> | void;
+  onSave: (value: number | string | null) => Promise<void> | void;
 }
 
 export function EditableCell({ value, type, onSave }: EditableCellProps) {
