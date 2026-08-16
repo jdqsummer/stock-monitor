@@ -20,6 +20,7 @@ export function Settings() {
   const [form] = Form.useForm();
   const [models, setModels] = useState<LLMModelInfo[]>([]);
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // live 跟随表单：默认模型、自动分析开关、提醒开关、邮件渠道、SMTP 主机
@@ -37,6 +38,7 @@ export function Settings() {
         qwen_api_key_configured: !!d.qwen_api_key_configured,
         kimi_api_key_configured: !!d.kimi_api_key_configured,
       });
+      setConfigLoaded(true);
       form.setFieldsValue({
         ...d,
         deepseek_api_key: d.deepseek_api_key_configured ? '****' : '',
@@ -53,6 +55,7 @@ export function Settings() {
   const ready = models.length > 0;
   const defaultProvider = models.find(m => m.model_id === defaultModel)?.provider;
   const llmReady = !!(defaultProvider && configured[`${defaultProvider}_api_key_configured`]);
+  const llmWarning = ready && configLoaded && !llmReady;
 
   const handleSave = async (values: UserConfig) => {
     setLoading(true);
@@ -84,7 +87,7 @@ export function Settings() {
           </div>
           {ready && (llmReady
             ? <div style={{ color: '#3f8600' }}>✅ {defaultProvider} API Key 已配置，LLM 深度分析可用</div>
-            : <Alert type="warning" showIcon message="未配置 LLM API Key，股票分析将降级为纯规则计算。"
+            : llmWarning && <Alert type="warning" showIcon message="未配置 LLM API Key，股票分析将降级为纯规则计算。"
                 description="请在下方「LLM 模型配置」为对应厂商填写 API Key。" />)}
         </Space>
       </Card>
@@ -143,9 +146,9 @@ export function Settings() {
           <Form.Item name="analysis_concurrency" label="分析并发数（同时分析的股票数，1-10）">
             <InputNumber min={1} max={10} disabled={!autoEnabled} />
           </Form.Item>
-          <Alert type={ready && !llmReady ? 'warning' : 'info'} showIcon
+          <Alert type={llmWarning ? 'warning' : 'info'} showIcon
             message="生效于：默认分析模型 + 对应厂商 API Key、收盘时间、并发数。"
-            description={ready && !llmReady ? '当前未配置默认模型厂商的 API Key，自动分析将按规则降级执行。' : undefined} />
+            description={llmWarning ? '当前未配置默认模型厂商的 API Key，自动分析将按规则降级执行。' : undefined} />
         </Card>
 
         <Card title="击球区提醒" style={{ marginBottom: 16 }}>

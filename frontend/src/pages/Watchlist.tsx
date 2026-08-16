@@ -29,6 +29,7 @@ export function Watchlist() {
   const [model, setModel] = useState<string>('deepseek-v4-flash');
   const [models, setModels] = useState<LLMModelInfo[]>([]);
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState('');
   const pollTimer = useRef<number | null>(null);
@@ -55,6 +56,7 @@ export function Watchlist() {
         qwen_api_key_configured: !!d.qwen_api_key_configured,
         kimi_api_key_configured: !!d.kimi_api_key_configured,
       });
+      setConfigLoaded(true);
     }).catch(() => {});
     configApi.getLLMModels().then(res => {
       setModels((res.data.data || []) as LLMModelInfo[]);
@@ -213,7 +215,7 @@ export function Watchlist() {
         </Button>
       </Space>
 
-      {models.length > 0 && !modelKeyConfigured && (
+      {models.length > 0 && configLoaded && modelProvider && !modelKeyConfigured && (
         <Alert type="warning" showIcon style={{ marginBottom: 12 }}
           message={<>{modelProvider} 未配置 API Key，分析将按规则降级执行。<Link to="/settings">去系统设置配置 LLM</Link></>} />
       )}
