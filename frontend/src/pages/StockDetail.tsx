@@ -36,7 +36,7 @@ export function StockDetail() {
       <Card>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>返回</Button>
-          <Empty description="该股票尚未分析。请在仪表盘看板勾选后点击「立即分析」。" />
+          <Empty description="该股票尚未分析。请到「AI 分析」页发起分析。" />
         </Space>
       </Card>
     );
