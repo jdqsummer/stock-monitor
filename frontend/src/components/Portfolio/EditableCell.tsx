@@ -46,7 +46,6 @@ export function EditableCell({ value, type, unit, onSave }: EditableCellProps) {
           void doSave(next);
         }}
         onOpenChange={(open) => { if (!open) setEditing(false); }}
-        onBlur={() => setEditing(false)}
       />
     );
   }
