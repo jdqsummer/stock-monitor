@@ -113,6 +113,23 @@ async def test_patch_position_valid_purchased_at_200(client, db_session, user):
 
 
 @pytest.mark.asyncio
+async def test_portfolio_analyze_and_snapshot(client, db_session, user):
+    pos = await _mk_position(db_session, user.id, "600519")
+    # 分析提交（LLM 未配置时 mock 判定跳过，job 仍返回 job_id）
+    res = await client.post("/api/portfolio/analyze",
+                            json={"position_ids": [pos.id], "model": "deepseek-v4-flash"},
+                            headers=user_headers(user))
+    assert res.status_code == 200
+    job_id = res.json()["data"]["job_id"]
+    # status 轮询（source=portfolio 作用域）
+    res = await client.get(f"/api/portfolio/status?job_id={job_id}", headers=user_headers(user))
+    assert res.status_code == 200
+    # snapshot：无分析快照 → 404
+    res = await client.get(f"/api/portfolio/{pos.id}/snapshot", headers=user_headers(user))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_delete_position_keeps_watchlist(client, db_session, user):
     pos = await _mk_position(db_session, user.id, "600519")
     db_session.add(WatchlistItem(user_id=user.id, stock_code="600519", stock_name="贵州茅台"))

@@ -2,7 +2,8 @@
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,8 +14,11 @@ from backend.models.stock import AnalysisSnapshot
 from backend.models.user import User
 from backend.schemas.common import ApiResponse
 from backend.schemas.portfolio import PositionAddRequest, PositionOut, PositionUpdateRequest
+from backend.services.analysis_job_svc import analysis_job_service
 from backend.services.portfolio_calc import compute_position_row
 from backend.services.portfolio_svc import DuplicatePositionError, PortfolioService
+from backend.services.snapshot_svc import SnapshotService
+from backend.services.stock_data_svc import StockDataService
 from backend.services.watchlist_svc import WatchlistService
 
 router = APIRouter(prefix="/api/portfolio", tags=["持仓"])
@@ -143,3 +147,63 @@ async def remove_position(position_id: str, current_user: User = Depends(get_cur
     if not removed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="持仓不存在")
     return ApiResponse(message="已删除")
+
+
+class PortfolioAnalyzeRequest(BaseModel):
+    position_ids: list[str] = Field(..., min_length=1, max_length=50)
+    model: str = Field(default="")
+
+
+class PortfolioSnapshotOut(BaseModel):
+    position: PositionOut
+    snapshot: dict | None = None
+
+
+@router.post("/analyze", response_model=ApiResponse)
+async def analyze_portfolio(req: PortfolioAnalyzeRequest,
+                            current_user: User = Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
+    positions = await PortfolioService.list_positions(db, current_user.id)
+    by_id = {p.id: p for p in positions}
+    missing = [pid for pid in req.position_ids if pid not in by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"持仓不存在: {missing}")
+    codes = [by_id[pid].stock_code for pid in req.position_ids]
+    modes = {c: "position" for c in codes}
+    job_id = analysis_job_service.submit(current_user.id, codes, source="portfolio",
+                                         model=req.model, modes=modes)
+    return ApiResponse(data={"job_id": job_id}, message="持仓分析已提交")
+
+
+@router.get("/status", response_model=ApiResponse)
+async def portfolio_status(job_id: str = Query(...), current_user: User = Depends(get_current_user)):
+    status = analysis_job_service.get_status(job_id, current_user.id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return ApiResponse(data=status)
+
+
+@router.get("/active", response_model=ApiResponse)
+async def portfolio_active(current_user: User = Depends(get_current_user)):
+    """持仓页最近进行中的 job（source=portfolio 作用域，避免与自选股 job 抢）。"""
+    status = analysis_job_service.get_active_job(current_user.id, source="portfolio")
+    if status is None:
+        raise HTTPException(status_code=404, detail="无进行中的持仓分析")
+    return ApiResponse(data=status)
+
+
+@router.get("/{position_id}/snapshot", response_model=ApiResponse)
+async def position_snapshot(position_id: str, current_user: User = Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
+    pos = await PortfolioService.get_position(db, current_user.id, position_id)
+    if pos is None:
+        raise HTTPException(status_code=404, detail="持仓不存在")
+    snap = await SnapshotService.get_latest_snapshot(db, current_user.id, pos.stock_code)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="该持仓尚未分析")
+    quote = await StockDataService.get_quote_for_code(db, pos.stock_code)
+    position_out = await _to_out(db, current_user.id, pos, quote, None, {})
+    return ApiResponse(data={
+        "position": position_out.model_dump(),
+        "snapshot": StockDataService.snapshot_to_dict(snap, quote),
+    })

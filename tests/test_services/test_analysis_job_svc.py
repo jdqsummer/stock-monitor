@@ -355,6 +355,26 @@ async def test_get_active_job_user_isolation(db_session, test_session_factory):
 
 
 @pytest.mark.asyncio
+async def test_get_active_job_source_scope(db_session, test_session_factory):
+    """source 过滤：持仓页只恢复 portfolio job，不与自选股(manual) job 抢。"""
+    from backend.services.analysis_job_svc import STATUS_RUNNING
+
+    svc = AnalysisJobService(chain=FakeChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    wl_id = svc.create_job("u1", ["600519"], "manual")
+    svc._jobs[wl_id]["codes"]["600519"] = STATUS_RUNNING
+    pf_id = svc.create_job("u1", ["000858"], "portfolio")
+    svc._jobs[pf_id]["codes"]["000858"] = STATUS_RUNNING
+
+    status = svc.get_active_job("u1", source="portfolio")
+    assert status is not None
+    assert status["job_id"] == pf_id
+
+    # source 不匹配 → None（即便存在进行中的 manual job）
+    assert svc.get_active_job("u1", source="watchlist") is None
+
+
+@pytest.mark.asyncio
 async def test_process_one_passes_api_keys_from_user_config(db_session, test_session_factory):
     """_process_one 读 UserConfig key → chain.analyze(api_keys=...)"""
     from backend.models.stock import WatchlistItem
