@@ -185,9 +185,18 @@ def map_dsh_result_to_state(result: dict, mode: str = "watchlist") -> dict:
 
 
 def _block_text(block: object) -> str:
-    """子块输出 {title, text} → text 字符串（或空串）。"""
+    """子块输出 → 文本字符串。兼容两种子块 schema：
+    - 常规 {title, text}
+    - 经营质量专用 {title, growth_quality, rationale}（无 text，正文在 rationale）
+    仅取正文，标题/结构化标记不并入。
+    """
     if isinstance(block, dict):
-        return str(block.get("text") or "")
+        text = block.get("text")
+        if text:
+            return str(text)
+        rationale = block.get("rationale")
+        if rationale:
+            return str(rationale)
     return ""
 
 

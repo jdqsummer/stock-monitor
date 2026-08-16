@@ -294,7 +294,10 @@ export interface StageResult {
   moat_assessment?: { title: string; text: string };
   operating_quality?: {
     title: string;
-    text: string;
+    // 两种子块 schema：常规 {title,text} 与专用 handler {title,growth_quality,rationale}（正文在 rationale）
+    text?: string;
+    rationale?: string;
+    growth_quality?: 'good' | 'warning' | 'deteriorating';
     profit_quality_ok?: boolean;
     profit_quality_warnings?: string[];
   };

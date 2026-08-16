@@ -14,6 +14,9 @@ function Block({ title, text }: { title: string; text?: string }) {
 export function StageQualitative({ snap }: { snap: WatchlistBoardRow }) {
   const stage = snap.stage_results?.analyze_qualitative;
   const op = stage?.operating_quality;
+  // 经营质量子块存在两种输出 schema：常规 {title,text} 与专用 handler {title,growth_quality,rationale}。
+  // 正文统一取 text || rationale，避免 rationale 中的完整结论被误显示为"（未评估）"。
+  const opText = op?.text || op?.rationale;
   return (
     <Card title="2. 定性分析">
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -22,14 +25,14 @@ export function StageQualitative({ snap }: { snap: WatchlistBoardRow }) {
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {op?.title ?? '经营质量'}
-            {op && (
+            {op?.profit_quality_ok != null && (
               <Tag style={{ marginLeft: 8 }} color={op.profit_quality_ok ? 'success' : 'warning'}>
                 {op.profit_quality_ok ? '✅ 利润质量良好' : '⚠️ 利润质量存疑'}
               </Tag>
             )}
           </div>
           {/* text 已含：利润质量结论 + 增长趋势 + 定性判断 */}
-          <div style={{ color: '#666', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{op?.text || '（未评估）'}</div>
+          <div style={{ color: '#666', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{opText || '（未评估）'}</div>
           {op?.profit_quality_warnings && op.profit_quality_warnings.length > 0 && (
             <List
               size="small"

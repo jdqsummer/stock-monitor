@@ -9,6 +9,11 @@ export function StageSwingZone({ snap }: { snap: WatchlistBoardRow }) {
     stage?.pe_low != null && stage?.pe_high != null && stage?.annual_profit_low != null && stage?.annual_profit_high != null;
   return (
     <Card title="4. 安全边际分析">
+      {!hasStageNums && (
+        <div style={{ color: '#999', marginBottom: 12 }}>
+          ⚠️ 该分析未产出安全边际测算（持仓模式或数据不足），以下为历史/占位数据。
+        </div>
+      )}
       <Descriptions column={2} size="small" bordered>
         <Descriptions.Item label="击球区PE">
           {hasStageNums ? `${stage!.pe_low!.toFixed(0)}-${stage!.pe_high!.toFixed(0)} 倍` : snap.swing_pe || '—'}

@@ -41,6 +41,11 @@ function LegacyView({ snap }: { snap: WatchlistBoardRow }) {
 }
 
 export function FiveStageAnalysis({ snap }: { snap: WatchlistBoardRow }) {
+  // 持仓模式快照（stage_results 无 anchor_industry_pe 段）→ 切持仓视图（卖出分析替代安全边际段），
+  // 避免 watchlist 安全边际视图强解 position 结果：安全边际卡全"—"、结论卡却显示卖出分析结论。
+  if (snap.analysis_mode === 'position') {
+    return <PositionFiveStageAnalysis snap={snap} />;
+  }
   const hasStages = !!snap.stage_results && Object.keys(snap.stage_results).length > 0;
   if (!hasStages) {
     return (

@@ -51,6 +51,63 @@ def test_map_dsh_result_to_state_missing_anchor():
     assert s["distance_pct"] == 0.0 and s["signal"] == ""
 
 
+def test_map_operating_quality_falls_back_to_rationale():
+    """经营质量子块输出 {title, growth_quality, rationale}（无 text 字段）时，
+    顶层 operating_quality 取 rationale，不落为"未评估"空串（生产 300750 冲突现场）。"""
+    result = {
+        "analyze_qualitative": {
+            "qualitative_analysis": "质地优良",
+            "business_model": {"title": "商业模式", "text": "白酒龙头"},
+            "moat_assessment": {"title": "护城河", "text": "强"},
+            "operating_quality": {"title": "经营质量", "growth_quality": "good",
+                                  "rationale": "确定性检查通过：非经常占比9.87%，经营质量良好"},
+        },
+    }
+    s = map_dsh_result_to_state(result)
+    assert s["operating_quality"] == "确定性检查通过：非经常占比9.87%，经营质量良好"
+
+
+def test_map_operating_quality_keeps_text_when_present():
+    """子块已带 text 时优先用 text（常规 {title,text} 契约不受影响）。"""
+    result = {
+        "analyze_qualitative": {
+            "operating_quality": {"title": "经营质量", "text": "利润质量良好", "growth_quality": "good",
+                                  "rationale": "备用说明"},
+        },
+    }
+    s = map_dsh_result_to_state(result)
+    assert s["operating_quality"] == "利润质量良好"
+
+
+def test_map_dsh_position_mode_maps_sell_keeps_quant_empty():
+    """持仓模式五段结果（无 anchor_industry_pe）→ 卖出组正常映射、量化组保持空，
+    不抛错、不覆盖（前端据此用持仓视图，而非 watchlist 安全边际视图强解）。"""
+    result = {
+        "analyze_qualitative": {"qualitative_analysis": "质地优良",
+            "business_model": {"title": "商业模式", "text": "双龙头"},
+            "moat_assessment": {"title": "护城河", "text": "深厚"},
+            "operating_quality": {"title": "经营质量", "growth_quality": "good",
+                                  "rationale": "经营质量良好"}},
+        "run_reverse_checklist": {"checklist_veto": False, "overall_assessment": "通过", "major_risks": []},
+        "sell_analysis": {"sell_pe_low": 30.0, "sell_pe_high": 35.0, "sell_signal": "yellow",
+                          "sell_action": "hold", "sell_distance_pct": -13.5, "sell_pe_rationale": "锚点15-28"},
+        "sell_conclusion": {"conclusion": "继续持有，无卖出理由", "recommendation": "继续持有",
+                            "action_items": ["关注固态技术"]},
+    }
+    s = map_dsh_result_to_state(result, mode="position")
+    assert s["analysis_mode"] == "position"
+    assert s["stage_results_sell"] == result
+    assert s["sell_pe_low"] == 30.0 and s["sell_pe_high"] == 35.0
+    assert s["sell_signal"] == "yellow" and s["sell_distance_pct"] == -13.5
+    assert s["sell_pe_rationale"] == "锚点15-28"
+    assert s["conclusion"] == "继续持有，无卖出理由"
+    assert s["recommendation"] == "继续持有"
+    assert s["action_items"] == ["关注固态技术"]
+    # 无 anchor 段：量化安全边际字段保持空（前端切持仓视图，不误显示安全边际）
+    assert s["pe_low"] == 0.0 and s["distance_pct"] == 0.0 and s["signal"] == ""
+    assert s["operating_quality"] == "经营质量良好"
+
+
 @pytest.mark.asyncio
 async def test_http_runner_posts_trigger_contract():
     captured = {}
