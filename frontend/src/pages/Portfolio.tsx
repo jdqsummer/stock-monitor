@@ -129,7 +129,7 @@ export function Portfolio() {
       render: (v: string | null) => v || '-' },
     { title: '持有数量', dataIndex: 'shares', width: 110,
       render: (v: number | null, r: PositionInfo) => (
-        <EditableCell value={v ?? null} type="number"
+        <EditableCell value={v ?? null} type="number" unit="股"
           onSave={(val) => handleCellSave(r.id, { shares: Number(val) })} />
       ) },
     { title: '成本价', dataIndex: 'cost_price', width: 110,
@@ -145,18 +145,18 @@ export function Portfolio() {
     { title: '现价', dataIndex: 'current_price', width: 80,
       render: (v: number) => (v ? `¥${v.toFixed(2)}` : '-') },
     { title: '持有市值', dataIndex: 'holding_value', width: 100,
-      render: (v: number | null) => v == null ? '-' : `${v.toFixed(2)}万` },
+      render: (v: number | null) => v == null ? '-' : `¥${v.toFixed(2)}` },
     { title: '当日盈亏', dataIndex: 'daily_pl', width: 100,
       render: (v: number | null) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#3f8600' : '#cf1322' }}>{v.toFixed(2)}万</span>
+        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>¥{v.toFixed(2)}</span>
       ) },
     { title: '盈亏金额', dataIndex: 'profit_loss', width: 100,
       render: (v: number | null) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#3f8600' : '#cf1322' }}>{v.toFixed(2)}万</span>
+        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>¥{v.toFixed(2)}</span>
       ) },
     { title: '盈亏比例', dataIndex: 'profit_loss_pct', width: 90,
       render: (v: number | null) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#3f8600' : '#cf1322' }}>{v.toFixed(2)}%</span>
+        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>{v.toFixed(2)}%</span>
       ) },
     { title: '持仓比例', dataIndex: 'position_ratio', width: 90,
       render: (v: number | null) => v == null ? '-' : `${(v * 100).toFixed(1)}%` },

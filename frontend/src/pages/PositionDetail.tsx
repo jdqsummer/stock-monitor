@@ -57,8 +57,8 @@ export function PositionDetail() {
           <Descriptions.Item label="持有数量">{p.shares ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="成本价">{p.cost_price != null ? `¥${p.cost_price}` : '-'}</Descriptions.Item>
           <Descriptions.Item label="现价">{p.current_price != null ? `¥${p.current_price}` : '-'}</Descriptions.Item>
-          <Descriptions.Item label="持有市值">{p.holding_value ?? '-'}万</Descriptions.Item>
-          <Descriptions.Item label="盈亏金额">{p.profit_loss ?? '-'}万</Descriptions.Item>
+          <Descriptions.Item label="持有市值">{p.holding_value != null ? `¥${p.holding_value.toFixed(2)}` : '-'}</Descriptions.Item>
+          <Descriptions.Item label="盈亏金额">{p.profit_loss != null ? `¥${p.profit_loss.toFixed(2)}` : '-'}</Descriptions.Item>
           <Descriptions.Item label="盈亏比例">{p.profit_loss_pct ?? '-'}%</Descriptions.Item>
           <Descriptions.Item label="持仓比例">{p.position_ratio != null ? `${(p.position_ratio * 100).toFixed(1)}%` : '-'}</Descriptions.Item>
           <Descriptions.Item label="持有天数">{p.holding_days ?? '-'}天</Descriptions.Item>

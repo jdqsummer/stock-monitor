@@ -5,3 +5,25 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* 可编辑单元格：非编辑态虚线提示 + 铅笔图标，空值灰色占位 */
+.editable-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-bottom: 1px dashed #d9d9d9;
+  padding-bottom: 1px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.editable-cell:hover {
+  background-color: rgba(64, 169, 255, 0.08);
+  border-bottom-color: #40a9ff;
+}
+.editable-cell .editable-cell-icon {
+  font-size: 12px;
+  color: #bbb;
+}
+.editable-cell-empty {
+  color: #888;
+}

@@ -3,12 +3,12 @@ import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import type { DashboardOverview } from '@/types';
 
 export function OverviewCards({ data }: { data: DashboardOverview }) {
-  const plColor = data.total_pl >= 0 ? '#3f8600' : '#cf1322';
+  const plColor = data.total_pl >= 0 ? '#cf1322' : '#3f8600';
 
   return (
     <Row gutter={16}>
       <Col span={6}>
-        <Card><Statistic title="总市值" value={data.total_market_value} precision={2} suffix="万" /></Card>
+        <Card><Statistic title="总市值" value={data.total_market_value} precision={2} suffix="元" /></Card>
       </Col>
       <Col span={6}>
         <Card>
@@ -16,7 +16,7 @@ export function OverviewCards({ data }: { data: DashboardOverview }) {
             title="总盈亏"
             value={data.total_pl}
             precision={2}
-            suffix="万"
+            suffix="元"
             valueStyle={{ color: plColor }}
             prefix={data.total_pl >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
           />
@@ -27,7 +27,7 @@ export function OverviewCards({ data }: { data: DashboardOverview }) {
       </Col>
       <Col span={6}>
         <Card>
-          <Statistic title="当日盈亏" value={data.daily_pl} precision={2} suffix="万" valueStyle={{ color: data.daily_pl >= 0 ? '#3f8600' : '#cf1322' }} />
+          <Statistic title="当日盈亏" value={data.daily_pl} precision={2} suffix="元" valueStyle={{ color: data.daily_pl >= 0 ? '#cf1322' : '#3f8600' }} />
         </Card>
       </Col>
       <Col span={6}>
