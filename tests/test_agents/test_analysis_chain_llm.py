@@ -41,3 +41,28 @@ async def test_analyze_without_llm_runs_full_chain():
     assert report.annual_profit_low > 0 or report.errors
     assert report.final_rating
     assert isinstance(report.checklist_veto, bool)   # Task 1 新增字段存在且为 bool
+
+
+@pytest.mark.asyncio
+async def test_map_dsh_position_result_to_state():
+    from backend.agents.dsh_orchestrator import map_dsh_result_to_state
+
+    result = {
+        "analyze_qualitative": {"qualitative_analysis": "q"},
+        "run_reverse_checklist": {"conclusions": {"about_company": "c"}},
+        "sell_analysis": {"sell_pe_low": 30, "sell_pe_high": 35, "sell_action": "sell",
+                          "sell_market_cap_low": 960.0, "sell_price_low": 76.0,
+                          "sell_distance_pct": 38.2, "sell_signal": "red",
+                          "principles": {"price_crazy": {"triggered": True}}},
+        "sell_conclusion": {"conclusion": "建议卖出", "recommendation": "建议卖出",
+                            "action_items": ["分批减仓"]},
+    }
+    state = map_dsh_result_to_state(result, mode="position")
+    assert state["analysis_mode"] == "position"
+    assert state["sell_pe_low"] == 30
+    assert state["sell_signal"] == "red"
+    assert state["sell_action"] == "sell"
+    assert state["stage_results_sell"]["sell_analysis"]["sell_action"] == "sell"
+    # watchlist 映射保持原状（无 sell 键污染）
+    state2 = map_dsh_result_to_state({"anchor_industry_pe": {"pe_low": 20}}, mode="watchlist")
+    assert "sell_pe_low" not in state2

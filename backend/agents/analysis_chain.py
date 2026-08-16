@@ -110,6 +110,22 @@ class AnalysisReport:
     operating_quality: str = ""
     financials_8p: list[dict] = field(default_factory=list)
 
+    # 持仓模式
+    analysis_mode: str = "watchlist"
+    position_context: dict = field(default_factory=dict)
+    sell_pe_low: float = 0
+    sell_pe_high: float = 0
+    sell_pe_rationale: str = ""
+    sell_market_cap_low: float = 0
+    sell_market_cap_high: float = 0
+    sell_price_low: float = 0
+    sell_price_high: float = 0
+    sell_distance_pct: float | None = None
+    sell_signal: str = "none"
+    sell_action: str = ""
+    sell_analysis: dict = field(default_factory=dict)
+    stage_results_sell: dict = field(default_factory=dict)
+
     # 元数据
     errors: list[str] = field(default_factory=list)
     warnings_list: list[str] = field(default_factory=list)
@@ -174,6 +190,20 @@ class AnalysisReport:
             analysis_source=state.get("analysis_source", "manual"),
             analysis_model=state.get("analysis_model", ""),
             analysis_degraded=state.get("analysis_degraded", False),
+            analysis_mode=state.get("analysis_mode", "watchlist"),
+            position_context=state.get("position_context", {}),
+            sell_pe_low=state.get("sell_pe_low", 0),
+            sell_pe_high=state.get("sell_pe_high", 0),
+            sell_pe_rationale=state.get("sell_pe_rationale", ""),
+            sell_market_cap_low=state.get("sell_market_cap_low", 0),
+            sell_market_cap_high=state.get("sell_market_cap_high", 0),
+            sell_price_low=state.get("sell_price_low", 0),
+            sell_price_high=state.get("sell_price_high", 0),
+            sell_distance_pct=state.get("sell_distance_pct"),
+            sell_signal=state.get("sell_signal", "none"),
+            sell_action=state.get("sell_action", ""),
+            sell_analysis=state.get("sell_analysis", {}),
+            stage_results_sell=state.get("stage_results_sell", {}),
         )
 
     def to_dict(self) -> dict:
@@ -359,6 +389,8 @@ class AnalysisChain:
         industry: str = "",
         model: str = "",
         api_keys: dict | None = None,
+        mode: str = "watchlist",
+        position_context: dict | None = None,
     ) -> AnalysisReport:
         """
         执行完整 9 步分析。
@@ -370,6 +402,8 @@ class AnalysisChain:
             industry: 行业分类（可选，用于 PE 锚定）
             model: 用户选择的分析模型（I6，DSH 路径消费）；空=默认 provider model_id
             api_keys: 厂商 API Key 透传（snake_case 键，DSH 路径消费）
+            mode: 分析模式 "watchlist" | "position"（Task 7，透传给 DSH 触发 position 分支）
+            position_context: 持仓上下文（position 模式注入 DSH）
 
         Returns:
             AnalysisReport 分析报告
@@ -383,6 +417,9 @@ class AnalysisChain:
             initial_state["llm_model"] = model        # I6：用户选择模型透传（DSH 路径消费）
         if api_keys:
             initial_state["api_keys"] = api_keys
+        initial_state["analysis_mode"] = mode
+        if position_context:
+            initial_state["position_context"] = position_context
 
         # 运行 LangGraph 工作流
         state = await self.workflow_runner.run(

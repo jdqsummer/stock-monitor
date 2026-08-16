@@ -98,10 +98,11 @@ class HttpDshRunner:
         )
 
 
-def map_dsh_result_to_state(result: dict) -> dict:
+def map_dsh_result_to_state(result: dict, mode: str = "watchlist") -> dict:
     """五段结构化结果 → AnalysisState 兼容扁平字段（I5 已源头 snake_case，此处仅展平/归位）。
 
     stage_results 保留 stage 键（前端契约不可破）；各段字段按 contract-pinning 第一节映射归位。
+    mode="position" 时额外映射 sell 组（sell_analysis/sell_conclusion）。
     """
     state: dict = {
         "stage_results": result,
@@ -154,6 +155,32 @@ def map_dsh_result_to_state(result: dict) -> dict:
                     "unassessable_risk", "loss_exception_rationale", "forward_valuation_basis"):
             if conclusion.get(key) is not None:
                 state[key] = conclusion[key]
+
+    if mode != "position":
+        return state
+
+    state["analysis_mode"] = "position"
+    state["stage_results_sell"] = result
+    sell = result.get("sell_analysis") or {}
+    if isinstance(sell, dict):
+        for key in ("sell_pe_low", "sell_pe_high", "sell_market_cap_low",
+                    "sell_market_cap_high", "sell_price_low", "sell_price_high"):
+            if sell.get(key) is not None:
+                state[key] = sell[key]
+        state["sell_pe_rationale"] = sell.get("sell_pe_rationale", "")
+        state["sell_distance_pct"] = sell.get("sell_distance_pct")
+        state["sell_signal"] = sell.get("sell_signal", "none")
+        state["sell_action"] = sell.get("sell_action", "")
+        state["sell_analysis"] = {
+            "principles": sell.get("principles", {}),
+            "sell_rationale": sell.get("sell_rationale", ""),
+            "avoid_traps": sell.get("avoid_traps", ""),
+        }
+    concl = result.get("sell_conclusion") or {}
+    if isinstance(concl, dict):
+        state["conclusion"] = concl.get("conclusion", "")
+        state["recommendation"] = concl.get("recommendation", "")
+        state["action_items"] = concl.get("action_items", [])
     return state
 
 
@@ -181,7 +208,7 @@ def build_context(state: dict) -> dict:
     只挑确定性字段注入（financials/current_price/…），原始 JSON 不进上下文（D1 上下文节约精神）。
     quote/financials/news 为 pydantic 对象，先 _json_safe 展开为普通 dict 保证全 JSON-safe。
     """
-    return {
+    context = {
         "code": state.get("stock_code", ""),
         "name": state.get("stock_name", ""),
         "quote": _json_safe(state.get("quote")),
@@ -193,7 +220,13 @@ def build_context(state: dict) -> dict:
         "total_shares": state.get("total_shares", 0.0),
         "net_profit_parent": state.get("net_profit_parent", 0.0),
         "net_profit_deducted": state.get("net_profit_deducted", 0.0),
+        "turnover_rate": (state.get("quote") or {}).turnover_rate
+                        if hasattr(state.get("quote"), "turnover_rate") else None,
+        "analysis_mode": state.get("analysis_mode", "watchlist"),
     }
+    if state.get("position_context"):
+        context["position_context"] = state["position_context"]
+    return context
 
 
 def decide_rerun_scope(existing_snapshot) -> str:
@@ -298,7 +331,8 @@ class DshOrchestrator:
         if resp.get("error"):
             raise RuntimeError(f"DSH 宿主错误: {resp['error']}")
 
-        updates = map_dsh_result_to_state(resp.get("result") or {})
+        updates = map_dsh_result_to_state(resp.get("result") or {},
+                                          mode=state.get("analysis_mode", "watchlist"))
         updates["analysis_source"] = "dsh-llm"
         updates["analysis_model"] = resp.get("model") or extract_model([]) or requested
         updates["analysis_degraded"] = bool(resp.get("degraded"))

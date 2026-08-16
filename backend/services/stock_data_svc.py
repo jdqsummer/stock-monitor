@@ -152,6 +152,17 @@ class StockDataService:
             # 逆向四类结论 + 重大风险：取自五段式 stage_results（run_reverse_checklist 子块），
             # 而非 checklist_results（Q1-Q14 逐题回答），与前端消费的四类结构对齐。
             "reverse_analysis": _safe_json_dict(snapshot.stage_results).get("run_reverse_checklist", {}),
+            "analysis_mode": snapshot.analysis_mode,
+            "sell_pe": f"{snapshot.sell_pe_low:.0f}-{snapshot.sell_pe_high:.0f}倍" if snapshot.sell_pe_high else None,
+            "sell_market_cap": (f"{snapshot.sell_market_cap_low:.0f}-{snapshot.sell_market_cap_high:.0f}亿"
+                                if snapshot.sell_market_cap_high else None),
+            "sell_price": f"{snapshot.sell_price_low:.0f}-{snapshot.sell_price_high:.0f}元" if snapshot.sell_price_high else None,
+            "sell_pe_rationale": snapshot.sell_pe_rationale,
+            "sell_distance_pct": snapshot.sell_distance_pct,
+            "sell_signal": snapshot.sell_signal,
+            "sell_action": snapshot.sell_action,
+            "sell_analysis": _safe_json_dict(snapshot.sell_analysis),
+            "stage_results_sell": _safe_json_dict(snapshot.stage_results_sell),
         }
 
     @staticmethod

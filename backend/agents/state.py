@@ -117,6 +117,22 @@ class AnalysisState(TypedDict, total=False):
     analysis_degraded: bool                  # 降级分析标记
     retry_count: int                         # 重试次数
 
+    # ── 持仓模式（position）──
+    analysis_mode: str                      # "watchlist" | "position"
+    position_context: dict                  # {shares, cost_price, position_value, purchased_at, holding_days}
+    sell_pe_low: float
+    sell_pe_high: float
+    sell_pe_rationale: str
+    sell_market_cap_low: float
+    sell_market_cap_high: float
+    sell_price_low: float
+    sell_price_high: float
+    sell_distance_pct: float | None
+    sell_signal: str
+    sell_action: str
+    sell_analysis: dict
+    stage_results_sell: dict
+
 
 # ── 数据采集状态 ──
 

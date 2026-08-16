@@ -71,6 +71,24 @@ class SnapshotService:
         existing.financials_8p = (
             json.dumps(report.financials_8p, ensure_ascii=False) if report.financials_8p else None
         )
+        existing.analysis_mode = report.analysis_mode or "watchlist"
+        existing.sell_pe_low = report.sell_pe_low
+        existing.sell_pe_high = report.sell_pe_high
+        existing.sell_pe_rationale = report.sell_pe_rationale or None
+        existing.sell_market_cap_low = report.sell_market_cap_low
+        existing.sell_market_cap_high = report.sell_market_cap_high
+        existing.sell_price_low = report.sell_price_low
+        existing.sell_price_high = report.sell_price_high
+        existing.sell_distance_pct = report.sell_distance_pct
+        existing.sell_signal = report.sell_signal or "none"
+        existing.sell_action = report.sell_action or None
+        existing.sell_analysis = (
+            json.dumps(report.sell_analysis, ensure_ascii=False) if report.sell_analysis else None
+        )
+        existing.stage_results_sell = (
+            json.dumps(report.stage_results_sell, ensure_ascii=False)
+            if report.stage_results_sell else None
+        )
         # 语义变化：analysis_source 从「触发来源」扩展为「引擎类型」；
         # P3 起以 report.analysis_source 为准，source 参数保留为兼容兜底。
         existing.analysis_source = report.analysis_source or source or "manual"

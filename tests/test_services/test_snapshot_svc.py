@@ -167,3 +167,23 @@ async def test_save_snapshot_writes_engine_metadata(db_session):
     assert snap2.analysis_source == "rule-based"
     assert snap2.analysis_model == "none"
     assert snap2.analysis_degraded is True
+
+
+@pytest.mark.asyncio
+async def test_save_snapshot_writes_sell_group(db_session):
+    from backend.agents.analysis_chain import AnalysisReport
+    from backend.services.snapshot_svc import SnapshotService
+
+    report = AnalysisReport(
+        code="600519", name="茅台", data_date="2026-08-16", analysis_mode="position",
+        sell_pe_low=30.0, sell_pe_high=35.0, sell_pe_rationale="疯狂卖出",
+        sell_market_cap_low=960.0, sell_market_cap_high=1225.0,
+        sell_price_low=76.0, sell_price_high=98.0,
+        sell_distance_pct=38.2, sell_signal="red", sell_action="sell",
+        sell_analysis={"principles": {"price_crazy": {"triggered": True}}},
+        stage_results_sell={"sell_analysis": {"sell_action": "sell"}},
+    )
+    snap = await SnapshotService.save_snapshot(db_session, "u1", report)
+    assert snap.sell_signal == "red"
+    assert snap.sell_action == "sell"
+    assert "price_crazy" in snap.sell_analysis
