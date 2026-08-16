@@ -144,8 +144,8 @@ async def dashboard_positions(
         snap = snapshots_by_code.get(p.stock_code)
         sell_distance = snap.sell_distance_pct if snap else None
         sell_signal_val = snap.sell_signal if snap else None
-        # 快照有卖出价但缺 distance/signal 时用 calc_sell_signal 兜底重算
-        if snap is not None and snap.sell_price_low and (
+        # 快照有卖出价但缺 distance/signal 时用 calc_sell_signal 兜底重算（无行情 quote=None 不重算，避免 price=0 算出误导性 green）
+        if quote is not None and snap is not None and snap.sell_price_low and (
                 sell_distance is None or not sell_signal_val or sell_signal_val == "none"):
             sell_distance, sell_signal_val = calc_sell_signal(
                 price, snap.sell_price_low, snap.annual_profit_low)

@@ -180,3 +180,20 @@ async def test_dashboard_overview_skips_empty_shares(client, db_session, user):
     assert data["position_count"] == 1
     assert data["total_market_value"] == 0.0
     assert data["daily_pl"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_dashboard_positions_skips_empty_shares(client, db_session, user):
+    """positions 空 shares/cost_price 行正常序列化（null），不返回 500"""
+    from backend.models.portfolio import Position
+    from backend.models.stock import StockSnapshot
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="贵州茅台",
+                            shares=None, cost_price=None, purchased_at=None))
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=105.0,
+                                 change_pct=5.0, total_market_cap=1000.0))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/positions", headers=user_headers(user))
+    assert res.status_code == 200
+    row = res.json()["data"][0]
+    assert row["shares"] is None
+    assert row["cost_price"] is None

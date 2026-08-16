@@ -99,8 +99,8 @@ class DashboardPositionRow(BaseModel):
     id: str
     stock_code: str
     stock_name: str
-    shares: float
-    cost_price: float
+    shares: float | None = None
+    cost_price: float | None = None
     current_price: float
     profit_loss: float
     profit_loss_pct: float
