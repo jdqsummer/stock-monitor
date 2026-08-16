@@ -22,6 +22,7 @@ export function Settings() {
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [configLoaded, setConfigLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('deepseek');
 
   // live 跟随表单：默认模型、自动分析开关、提醒开关、邮件渠道、SMTP 主机
   const defaultModel = Form.useWatch('llm_model', form) || 'deepseek-v4-flash';
@@ -51,6 +52,12 @@ export function Settings() {
       setModels((res.data.data || []) as LLMModelInfo[]);
     }).catch(() => {});
   }, [form]);
+
+  // 选择默认模型 → 联动切换到对应厂商 Tab（如选 Qwen3.7-Max → Qwen Tab）
+  useEffect(() => {
+    const v = VENDORS.find(x => x.models.includes(defaultModel));
+    if (v) setActiveTab(v.key);
+  }, [defaultModel]);
 
   const ready = models.length > 0;
   const defaultProvider = models.find(m => m.model_id === defaultModel)?.provider;
@@ -98,6 +105,8 @@ export function Settings() {
             <Select options={models.map(m => ({ value: m.model_id, label: `${m.display_name} (${m.provider})` }))} />
           </Form.Item>
           <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
             items={VENDORS.map(v => ({
               key: v.key,
               label: v.short,
@@ -161,27 +170,31 @@ export function Settings() {
           <Form.Item name="reminder_bell_enabled" label="首页小喇叭提醒" valuePropName="checked">
             <Switch disabled={!remindEnabled} />
           </Form.Item>
-          <Divider>邮件服务器（留空回退全局 SMTP 配置）</Divider>
-          <Form.Item name="reminder_email_recipient" label="收件邮箱（留空用注册邮箱）">
-            <Input placeholder="例如 notify@example.com" disabled={!remindEnabled || !emailEnabled} />
-          </Form.Item>
-          <Form.Item name="smtp_host" label="SMTP 主机">
-            <Input placeholder="smtp.example.com" disabled={!remindEnabled || !emailEnabled} />
-          </Form.Item>
-          <Form.Item name="smtp_port" label="SMTP 端口">
-            <InputNumber min={1} max={65535} style={{ width: 160 }} disabled={!remindEnabled || !emailEnabled} />
-          </Form.Item>
-          <Form.Item name="smtp_username" label="SMTP 账号">
-            <Input placeholder="发件账号" disabled={!remindEnabled || !emailEnabled} />
-          </Form.Item>
-          <Form.Item name="smtp_password" label="SMTP 密码">
-            <Input.Password placeholder="掩码 **** 表示已配置，清空不修改" disabled={!remindEnabled || !emailEnabled} />
-          </Form.Item>
-          <Form.Item name="smtp_from" label="发件人地址">
-            <Input placeholder="noreply@stock-monitor.local" disabled={!remindEnabled || !emailEnabled} />
-          </Form.Item>
-          {remindEnabled && emailEnabled && !smtpHost && (
-            <Alert type="info" showIcon message="未配置本机 SMTP，邮件提醒将回退使用全局 SMTP 配置。" />
+          {emailEnabled && (
+            <>
+              <Divider>邮件服务器（留空回退全局 SMTP 配置）</Divider>
+              <Form.Item name="reminder_email_recipient" label="收件邮箱（留空用注册邮箱）">
+                <Input placeholder="例如 notify@example.com" disabled={!remindEnabled} />
+              </Form.Item>
+              <Form.Item name="smtp_host" label="SMTP 主机">
+                <Input placeholder="smtp.example.com" disabled={!remindEnabled} />
+              </Form.Item>
+              <Form.Item name="smtp_port" label="SMTP 端口">
+                <InputNumber min={1} max={65535} style={{ width: 160 }} disabled={!remindEnabled} />
+              </Form.Item>
+              <Form.Item name="smtp_username" label="SMTP 账号">
+                <Input placeholder="发件账号" disabled={!remindEnabled} />
+              </Form.Item>
+              <Form.Item name="smtp_password" label="SMTP 密码">
+                <Input.Password placeholder="掩码 **** 表示已配置，清空不修改" disabled={!remindEnabled} />
+              </Form.Item>
+              <Form.Item name="smtp_from" label="发件人地址">
+                <Input placeholder="noreply@stock-monitor.local" disabled={!remindEnabled} />
+              </Form.Item>
+              {remindEnabled && !smtpHost && (
+                <Alert type="info" showIcon message="未配置本机 SMTP，邮件提醒将回退使用全局 SMTP 配置。" />
+              )}
+            </>
           )}
         </Card>
 
