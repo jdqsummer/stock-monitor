@@ -37,6 +37,7 @@ export interface WatchlistItem {
   distance_pct: number | null;
   signal: Signal | null;
   unassessable_risk?: boolean | null;
+  analysis_source: string | null;            // dsh-llm | rule-based | mock | manual
 }
 
 // ── 股票行情 ──

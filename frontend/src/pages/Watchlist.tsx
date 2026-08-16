@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
-import { Button, Divider, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
+import { Alert, Button, Divider, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
+import { Link } from 'react-router-dom';
 import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { analysisApi, configApi, watchlistApi } from '@/api/client';
@@ -8,6 +9,13 @@ import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
 import type { LLMModelInfo, StockQuote, UserConfig, WatchlistItem } from '@/types';
+
+const SOURCE_TAG: Record<string, { color: string; text: string }> = {
+  'dsh-llm': { color: 'blue', text: 'DSH LLM' },
+  'rule-based': { color: 'orange', text: '纯规则' },
+  mock: { color: 'default', text: '测试数据' },
+  manual: { color: 'default', text: '手动' },
+};
 
 export function Watchlist() {
   const [data, setData] = useState<WatchlistItem[]>([]);
@@ -20,6 +28,7 @@ export function Watchlist() {
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [model, setModel] = useState<string>('deepseek-v4-flash');
   const [models, setModels] = useState<LLMModelInfo[]>([]);
+  const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState('');
   const pollTimer = useRef<number | null>(null);
@@ -41,6 +50,11 @@ export function Watchlist() {
     configApi.get().then(res => {
       const d = res.data.data as UserConfig;
       if (d.llm_model) setModel(d.llm_model);
+      setConfigured({
+        deepseek_api_key_configured: !!d.deepseek_api_key_configured,
+        qwen_api_key_configured: !!d.qwen_api_key_configured,
+        kimi_api_key_configured: !!d.kimi_api_key_configured,
+      });
     }).catch(() => {});
     configApi.getLLMModels().then(res => {
       setModels((res.data.data || []) as LLMModelInfo[]);
@@ -84,6 +98,10 @@ export function Watchlist() {
       if (pollTimer.current) window.clearInterval(pollTimer.current);
     };
   }, [startPolling]);
+
+  // 所选模型的厂商 API Key 是否已配置（未配置 → 分析将规则降级）
+  const modelProvider = models.find(m => m.model_id === model)?.provider;
+  const modelKeyConfigured = modelProvider ? !!configured[`${modelProvider}_api_key_configured`] : false;
 
   const handleAnalyze = async () => {
     if (selectedKeys.length === 0) return;
@@ -165,6 +183,12 @@ export function Watchlist() {
           {record.unassessable_risk && <Tag color="red">风险否决</Tag>}
         </Space>
       ) },
+    { title: '分析类型', dataIndex: 'analysis_source', width: 110,
+      render: (v: string | null) => {
+        if (!v) return '-';
+        const cfg = SOURCE_TAG[v];
+        return cfg ? <Tag color={cfg.color}>{cfg.text}</Tag> : <Tag>{v}</Tag>;
+      } },
     { title: '操作', key: 'action', width: 80,
       render: (_: unknown, record: WatchlistItem) => (
         <Popconfirm title="确定删除？" onConfirm={() => handleRemove(record.id)}>
@@ -188,6 +212,11 @@ export function Watchlist() {
           {analyzing ? progress || '分析中...' : `立即分析${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}
         </Button>
       </Space>
+
+      {models.length > 0 && !modelKeyConfigured && (
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }}
+          message={<>{modelProvider} 未配置 API Key，分析将按规则降级执行。<Link to="/settings">去系统设置配置 LLM</Link></>} />
+      )}
 
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
         scroll={{ x: 1300 }}
