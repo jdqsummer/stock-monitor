@@ -192,21 +192,48 @@ async def test_collect_auto_analysis_users_uses_concurrency_default(db_session):
 
 @pytest.mark.asyncio
 async def test_run_user_auto_analysis_submits_concurrency(test_session_factory, monkeypatch):
-    """scheduled 提交带 concurrency；用 monkeypatch 桩掉 submit 记录参数"""
+    """scheduled 提交带 concurrency + 混合 mode；用 monkeypatch 桩掉 submit 记录参数"""
     from backend.services import refresh_svc as mod
 
     calls = {}
     def fake_submit(user_id, codes, source, concurrency=None, **kw):
-        calls.update(user_id=user_id, concurrency=concurrency)
+        calls.update(user_id=user_id, concurrency=concurrency,
+                     codes=list(codes), modes=kw.get("modes"))
     monkeypatch.setattr(mod.analysis_job_service, "submit", fake_submit)
 
     from backend.models.user import User
     from backend.models.stock import WatchlistItem
+    from backend.models.portfolio import Position
     async with test_session_factory() as s:
         s.add(User(id="u_c", email="c@x.com", password_hash="x",
                    config={"analysis_concurrency": 7}))
         s.add(WatchlistItem(user_id="u_c", stock_code="600519", stock_name="贵州茅台"))
+        s.add(Position(user_id="u_c", stock_code="600519", stock_name="贵州茅台"))
         await s.commit()
 
     await mod.run_user_auto_analysis("u_c", session_factory=test_session_factory)
     assert calls["user_id"] == "u_c" and calls["concurrency"] == 7
+    assert calls["codes"] == ["600519"]
+    assert calls["modes"] == {"600519": "position"}
+
+
+@pytest.mark.asyncio
+async def test_auto_analysis_mixed_mode(db_session):
+    """自动分析：持仓股 position 模式 + 纯自选股 watchlist 模式，合并去重"""
+    from backend.models.user import User
+    from backend.models.portfolio import Position
+    from backend.services.refresh_svc import collect_auto_analysis_codes
+
+    user = User(email="mix@example.com", password_hash="x",
+                config={"analysis_auto_enabled": True})
+    db_session.add(user)
+    await db_session.commit()
+    # 持仓（也属自选）+ 纯自选
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="茅台"))
+    db_session.add(WatchlistItem(user_id=user.id, stock_code="600519", stock_name="茅台"))
+    db_session.add(WatchlistItem(user_id=user.id, stock_code="000858", stock_name="五粮液"))
+    await db_session.commit()
+
+    watchlist, positions = await collect_auto_analysis_codes(db_session, user.id)
+    assert "600519" in positions and "600519" in watchlist
+    assert "000858" in watchlist and "000858" not in positions

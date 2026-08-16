@@ -10,6 +10,7 @@ from backend.db.database import async_session_factory
 from backend.models.stock import StockSnapshot, WatchlistItem
 from backend.services.analysis_job_svc import analysis_job_service
 from backend.services.email_svc import EmailService
+from backend.services.portfolio_svc import PortfolioService
 from backend.services.reminder_svc import ReminderService
 from backend.services.watchlist_svc import WatchlistService
 from backend.schemas.stock import FinancialReport, StockQuote
@@ -206,20 +207,34 @@ async def collect_auto_analysis_users(db: AsyncSession) -> list[tuple[str, str]]
     return result
 
 
+async def collect_auto_analysis_codes(db: AsyncSession, user_id: str) -> tuple[list[str], list[str]]:
+    """返回 (watchlist_codes, position_codes)：持仓 ⊂ 自选，position_codes 为持仓代码。"""
+    items = await WatchlistService.list_items(db, user_id)
+    positions = await PortfolioService.list_positions(db, user_id)
+    wl = [i.stock_code for i in items]
+    pos = [p.stock_code for p in positions]
+    return wl, pos
+
+
 async def run_user_auto_analysis(user_id: str, session_factory=None) -> int:
-    """定时入口：收集该用户自选股 → 提交 scheduled job（读配置并发），返回数量"""
+    """定时入口：收集自选+持仓 codes，持仓跑 position、纯自选跑 watchlist，提交混合 mode job。"""
     from backend.models.user import User
 
     factory = session_factory or async_session_factory
     async with factory() as session:
-        items = await WatchlistService.list_items(session, user_id)
-        # session 块内提取纯列值，避免关闭后访问 ORM 对象
-        codes = [it.stock_code for it in items]
-        user = await session.get(User, user_id)
-        cfg = (user.config or {}) if user else {}
-        concurrency = int(cfg.get("analysis_concurrency", 3))
-    if codes:
-        analysis_job_service.submit(user_id, codes, source="scheduled", concurrency=concurrency)
+        try:
+            wl, pos = await collect_auto_analysis_codes(session, user_id)
+            user = await session.get(User, user_id)
+            cfg = (user.config or {}) if user else {}
+            concurrency = int(cfg.get("analysis_concurrency", 3))
+        finally:
+            await session.close()
+    codes = list(dict.fromkeys(wl + pos))
+    if not codes:
+        return 0
+    modes = {c: ("position" if c in set(pos) else "watchlist") for c in codes}
+    analysis_job_service.submit(user_id, codes, source="scheduled",
+                                concurrency=concurrency, modes=modes)
     return len(codes)
 
 

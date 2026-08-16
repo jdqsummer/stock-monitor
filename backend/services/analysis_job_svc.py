@@ -8,6 +8,7 @@ from backend.agents.analysis_chain import create_analysis_chain
 from backend.db.database import async_session_factory
 from backend.llm.provider import is_llm_available
 from backend.models.user import User
+from backend.services.portfolio_svc import PortfolioService
 from backend.services.snapshot_svc import SnapshotService
 from backend.services.watchlist_svc import WatchlistService
 
@@ -60,9 +61,12 @@ class AnalysisJobService:
         return job_id
 
     def submit(self, user_id: str, codes: list[str], source: str, model: str = "",
-               concurrency: int | None = None) -> str:
+               concurrency: int | None = None,
+               mode: str = "watchlist", modes: dict | None = None) -> str:
         job_id = self.create_job(user_id, codes, source)
         self._jobs[job_id]["model"] = model       # I6：每 job 的模型（前端模型下拉 → 全批次统一）
+        self._jobs[job_id]["mode"] = mode
+        self._jobs[job_id]["modes"] = modes or {}     # code → mode（混合批）
         if concurrency is not None:
             self._jobs[job_id]["concurrency"] = max(1, min(10, concurrency))
         asyncio.create_task(self._run(job_id))
@@ -108,17 +112,22 @@ class AnalysisJobService:
         job = self._jobs[job_id]
         user_id = job["user_id"]
         codes = list(job["codes"].keys())
+        default_mode = job.get("mode", "watchlist")
         async with self._session_factory() as session:
             try:
                 items = await WatchlistService.list_items(session, user_id)
+                positions = await PortfolioService.list_positions(session, user_id)
+                positions_by_code = {p.stock_code: p for p in positions}
             finally:
                 await session.close()
         by_code = {it.stock_code: it for it in items}
         concurrency = max(1, min(10, job.get("concurrency") or 3))
         sem = asyncio.Semaphore(concurrency)
-        await asyncio.gather(
-            *(self._process_one(job_id, code, user_id, by_code.get(code), sem) for code in codes)
-        )
+        await asyncio.gather(*(
+            self._process_one(job_id, code, user_id, by_code.get(code),
+                              positions_by_code.get(code),
+                              job.get("modes", {}).get(code, default_mode), sem)
+            for code in codes))
 
     def _timeout_for(self) -> float:
         """单次分析超时：DSH 开启时用 DSH_TIMEOUT_SECONDS（P2 实测五段 >8min，120s 会误降级），
@@ -133,7 +142,8 @@ class AnalysisJobService:
                 self._code_locks[code] = asyncio.Lock()
             return self._code_locks[code]
 
-    async def _process_one(self, job_id: str, code: str, user_id: str, item, sem: asyncio.Semaphore):
+    async def _process_one(self, job_id: str, code: str, user_id: str, item, position, mode: str,
+                           sem: asyncio.Semaphore):
         job = self._jobs[job_id]
         # 两级闸，锁获取次序恒为 code lock → 进程级闸(_global_sem) → job 级闸(sem)：
         # - code lock：同 code 永不并发（I2 第二道防线），多个同 code job 撞车时锁等待者不占任何
@@ -167,9 +177,19 @@ class AnalysisJobService:
                         industry = item.industry if item else ""
                         model = job.get("model", "")          # 每 job 的模型（submit 传入，I6）
                         timeout = self._timeout_for()
+                        # position 模式注入持仓上下文（仅 shares/cost_price/purchased_at 供分析；
+                        # holding_value/holding_days 由展示层实时算，不在此注入）
+                        position_context = None
+                        if position is not None:
+                            position_context = {
+                                "shares": position.shares,
+                                "cost_price": position.cost_price,
+                                "purchased_at": position.purchased_at.isoformat() if position.purchased_at else None,
+                            }
                         report = await asyncio.wait_for(
                             chain.analyze(code, stock_name=name, industry=industry,
-                                          model=model, api_keys=api_keys),
+                                          model=model, api_keys=api_keys,
+                                          mode=mode, position_context=position_context),
                             timeout=timeout,
                         )
                         async with self._session_factory() as session:
