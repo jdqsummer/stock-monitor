@@ -1,10 +1,12 @@
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useNavigate } from 'react-router-dom';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import type { PositionInfo } from '@/types';
 
 const columns: ColumnsType<PositionInfo> = [
-  { title: '企业名', dataIndex: 'stock_name', key: 'name', width: 120 },
+  { title: '股票名称', dataIndex: 'stock_name', key: 'name', width: 120,
+    render: (text: string, record: PositionInfo) => <a href={`/portfolio/${record.id}`}>{text}</a> },
   { title: '行业', dataIndex: 'industry', key: 'industry', width: 200, ellipsis: true },
   { title: '持有天数', dataIndex: 'holding_days', key: 'holding_days', width: 90,
     render: (v: number | null) => (v == null ? '-' : `${v}天`) },
@@ -31,8 +33,14 @@ const columns: ColumnsType<PositionInfo> = [
 ];
 
 export function PortfolioPanel({ data, loading }: { data: PositionInfo[]; loading: boolean }) {
+  const navigate = useNavigate();
   return (
     <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
-      scroll={{ x: 1100 }} pagination={{ pageSize: 10 }} />
+      scroll={{ x: 1100 }}
+      onRow={(record) => ({
+        onClick: () => navigate(`/portfolio/${record.id}`),
+        style: { cursor: 'pointer' },
+      })}
+      pagination={{ pageSize: 10 }} />
   );
 }

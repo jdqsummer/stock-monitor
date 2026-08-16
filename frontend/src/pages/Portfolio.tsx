@@ -123,7 +123,9 @@ export function Portfolio() {
   const modelKeyConfigured = modelProvider ? !!configured[`${modelProvider}_api_key_configured`] : false;
 
   const columns: ColumnsType<PositionInfo> = [
-    { title: '企业名', dataIndex: 'stock_name', width: 110,
+    { title: '股票代码', dataIndex: 'stock_code', width: 100,
+      render: (v: string) => v || '-' },
+    { title: '股票名称', dataIndex: 'stock_name', width: 110,
       render: (t: string, r: PositionInfo) => <Link to={`/portfolio/${r.id}`}>{t}</Link> },
     { title: '行业', dataIndex: 'industry', width: 130, ellipsis: true,
       render: (v: string | null) => v || '-' },
