@@ -7,10 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_db
 from backend.models.portfolio import Position
-from backend.models.stock import StockSnapshot
+from backend.models.stock import AnalysisSnapshot, StockSnapshot
 from backend.models.user import User
 from backend.schemas.common import ApiResponse
 from backend.schemas.stock import DashboardPositionRow, StockQuote, WatchlistBoardRow
+from backend.services.portfolio_calc import calc_sell_signal, compute_position_row, prev_close
 from backend.services.stock_data_svc import StockDataService
 from backend.services.watchlist_svc import WatchlistService
 
@@ -72,6 +73,14 @@ async def dashboard_overview(
     total_pl = total_value - total_cost
     total_pl_pct = total_pl / total_cost * 100 if total_cost else 0.0
 
+    total_daily_pl = 0.0
+    for p in positions:
+        quote = quotes_by_code.get(p.stock_code)
+        if quote is None or not p.shares:
+            continue
+        prev = prev_close(quote.current_price, quote.change_pct)
+        total_daily_pl += (quote.current_price - prev) * p.shares
+
     return ApiResponse(data={
         "total_market_value": round(total_value, 2),
         "total_pl": round(total_pl, 2),
@@ -79,7 +88,7 @@ async def dashboard_overview(
         "position_count": len(positions),
         "profit_count": profit_count,
         "loss_count": loss_count,
-        "daily_pl": 0.0,
+        "daily_pl": round(total_daily_pl, 2),
         "daily_pl_pct": 0.0,
     })
 
@@ -117,28 +126,43 @@ async def dashboard_positions(
         values.append((price, p.shares))
     total_value = sum(price * shares for price, shares in values)
 
+    # 批量取 B 表 sell 快照
+    snapshots_by_code: dict[str, AnalysisSnapshot] = {}
+    if codes:
+        snap_rows = (await db.execute(select(AnalysisSnapshot).where(
+            AnalysisSnapshot.user_id == current_user.id,
+            AnalysisSnapshot.stock_code.in_(codes)))).scalars().all()
+        snapshots_by_code = {s.stock_code: s for s in snap_rows}
+
     items: list[DashboardPositionRow] = []
     for i, p in enumerate(positions):
         quote = quotes_by_code.get(p.stock_code)
         price = quote.current_price if quote else 0.0
-        pl = (price - p.cost_price) * p.shares
-        pl_pct = (price - p.cost_price) / p.cost_price * 100 if p.cost_price else 0.0
-        position_value = price * p.shares
+        snap = snapshots_by_code.get(p.stock_code)
+        derived = compute_position_row(
+            {"shares": p.shares, "cost_price": p.cost_price, "purchased_at": p.purchased_at},
+            quote,
+            {"sell_price_low": snap.sell_price_low if snap else None,
+             "sell_price_high": snap.sell_price_high if snap else None,
+             "sell_distance_pct": snap.sell_distance_pct if snap else None,
+             "sell_signal": snap.sell_signal if snap else None},
+        )
+        position_value = price * p.shares if p.shares else 0.0
         position_ratio = round(position_value / total_value, 4) if total_value else 0.0
         items.append(DashboardPositionRow(
-            id=p.id,
-            stock_code=p.stock_code,
-            stock_name=p.stock_name,
-            shares=p.shares,
-            cost_price=p.cost_price,
-            current_price=price,
-            profit_loss=round(pl, 2),
-            profit_loss_pct=round(pl_pct, 2),
-            daily_pl=0.0,
+            id=p.id, stock_code=p.stock_code, stock_name=p.stock_name,
+            shares=p.shares, cost_price=p.cost_price, current_price=price,
+            profit_loss=derived["profit_loss"] or 0.0,
+            profit_loss_pct=derived["profit_loss_pct"] or 0.0,
+            daily_pl=derived["daily_pl"] or 0.0,
             position_ratio=position_ratio,
-            distance_pct=None,
-            signal=None,
-            industry=None,
+            holding_days=derived["holding_days"],
+            sell_price_low=derived["sell_price_low"],
+            sell_price_high=derived["sell_price_high"],
+            sell_distance_pct=derived["sell_distance_pct"],
+            sell_signal=derived["sell_signal"],
+            distance_pct=None, signal=None,
+            industry=p.industry or snap.industry_category if snap else p.industry,
             pe_dynamic=quote.pe_dynamic if quote else None,
         ))
     return ApiResponse(data=items)

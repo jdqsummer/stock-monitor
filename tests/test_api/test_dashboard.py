@@ -1,8 +1,30 @@
 import pytest
-from datetime import date
+import pytest_asyncio
+from datetime import date, datetime
 
 from backend.models.stock import AnalysisSnapshot, StockSnapshot, WatchlistItem
 from backend.models.portfolio import Position
+
+
+def user_headers(user):
+    """直接签发当前用户 JWT（镜像 test_portfolio 的 auth 模式，免注册流程）"""
+    from backend.services.auth_svc import AuthService
+    token = AuthService.create_access_token(user.id)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def user(db_session):
+    """在测试库直接落一个已认证用户，供 get_current_user 按 id 命中"""
+    from backend.models.user import User
+    from backend.services.auth_svc import AuthService
+    u = User(email="dash-enriched@example.com",
+             password_hash=AuthService.hash_password("pass1234"),
+             email_verified=True)
+    db_session.add(u)
+    await db_session.commit()
+    await db_session.refresh(u)
+    return u
 
 
 async def _auth_user(client) -> tuple[str, str]:
@@ -84,3 +106,38 @@ class TestDashboardAPI:
         assert len(positions) == 1
         assert positions[0]["current_price"] == 1560.0
         assert positions[0]["pe_dynamic"] == 25.3
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_daily_pl_computed(client, db_session, user):
+    """overview daily_pl 不再硬编码 0：用行情 change_pct 反推昨收计算"""
+    from backend.models.portfolio import Position
+    from backend.models.stock import StockSnapshot
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="贵州茅台",
+                            shares=100, cost_price=90.0, purchased_at=None))
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=105.0,
+                                 change_pct=5.0, total_market_cap=1000.0))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/overview", headers=user_headers(user))
+    data = res.json()["data"]
+    # 昨收=100，当日盈亏=(105-100)*100=500
+    assert data["daily_pl"] == pytest.approx(500.0, abs=0.1)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_positions_sell_enriched(client, db_session, user):
+    from backend.models.portfolio import Position
+    from backend.models.stock import AnalysisSnapshot, StockSnapshot
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="贵州茅台",
+                            shares=100, cost_price=80.0, purchased_at=datetime(2026, 8, 1)))
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=105.0,
+                                 change_pct=5.0, total_market_cap=1000.0))
+    db_session.add(AnalysisSnapshot(user_id=user.id, stock_code="600519",
+                                    sell_price_low=100.0, sell_price_high=120.0,
+                                    sell_distance_pct=5.0, sell_signal="red", sell_action="sell"))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/positions", headers=user_headers(user))
+    row = res.json()["data"][0]
+    assert row["holding_days"] is not None
+    assert row["sell_distance_pct"] == 5.0
+    assert row["sell_signal"] == "red"

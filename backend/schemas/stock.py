@@ -110,6 +110,11 @@ class DashboardPositionRow(BaseModel):
     signal: Signal | None = None
     industry: str | None = None
     pe_dynamic: float | None = None       # 动态 PE（来自实时行情）
+    holding_days: int | None = None
+    sell_price_low: float | None = None
+    sell_price_high: float | None = None
+    sell_distance_pct: float | None = None
+    sell_signal: str | None = None
 
 
 class WatchlistBoardRow(BaseModel):
