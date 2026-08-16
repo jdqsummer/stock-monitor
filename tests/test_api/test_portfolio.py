@@ -92,6 +92,27 @@ async def test_patch_position_partial_update_keeps_other_fields(client, db_sessi
 
 
 @pytest.mark.asyncio
+async def test_patch_position_invalid_purchased_at_400(client, db_session, user):
+    """非法日期 → 400（与 shares/cost_price 的显式 400 校验一致，不走 422）"""
+    pos = await _mk_position(db_session, user.id, "600519")
+    res = await client.patch(f"/api/portfolio/{pos.id}", json={"purchased_at": "not-a-date"},
+                             headers=user_headers(user))
+    assert res.status_code == 400
+    assert res.json()["detail"] == "日期格式不合法"
+
+
+@pytest.mark.asyncio
+async def test_patch_position_valid_purchased_at_200(client, db_session, user):
+    """合法 ISO 日期（含 Z 尾缀）→ 200，purchased_at 落库"""
+    pos = await _mk_position(db_session, user.id, "600519")
+    res = await client.patch(f"/api/portfolio/{pos.id}",
+                             json={"purchased_at": "2026-08-01T00:00:00.000Z"},
+                             headers=user_headers(user))
+    assert res.status_code == 200
+    assert res.json()["data"]["purchased_at"] == "2026-08-01T00:00:00"
+
+
+@pytest.mark.asyncio
 async def test_delete_position_keeps_watchlist(client, db_session, user):
     pos = await _mk_position(db_session, user.id, "600519")
     db_session.add(WatchlistItem(user_id=user.id, stock_code="600519", stock_name="贵州茅台"))

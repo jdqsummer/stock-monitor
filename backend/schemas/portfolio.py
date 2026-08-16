@@ -9,10 +9,11 @@ class PositionAddRequest(BaseModel):
 
 
 class PositionUpdateRequest(BaseModel):
-    # ≥0 校验在 endpoint 内显式做（返回 400），避免 Pydantic 请求体校验返回 422
+    # shares/cost_price 的 ≥0 与 purchased_at 的日期格式均在 endpoint 内显式校验（返回 400），
+    # 避免 Pydantic 请求体校验走 422（与「非法 400」绑定约束一致）
     shares: float | None = Field(None, description="持有数量（≥0）")
     cost_price: float | None = Field(None, description="成本价（≥0）")
-    purchased_at: datetime | None = Field(None, description="持仓开始时间")
+    purchased_at: str | None = Field(None, description="持仓开始时间（ISO 日期字符串）")
 
 
 class PositionOut(BaseModel):

@@ -1,5 +1,6 @@
 # stock-monitor/backend/api/portfolio.py
 import asyncio
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -115,6 +116,13 @@ async def update_position(position_id: str, req: PositionUpdateRequest,
     # 部分更新：exclude_unset 只传请求中显式出现的字段（未出现字段落服务层 _sentinel → 保留旧值；
     # 显式传 null 会含该键 None → 正确置空）
     payload = req.model_dump(exclude_unset=True)
+    # 日期格式校验：显式返回 400（不依赖 Pydantic 请求体校验的 422）；显式传 null 跳过解析 → 置空
+    if "purchased_at" in payload and payload["purchased_at"] is not None:
+        try:
+            payload["purchased_at"] = datetime.fromisoformat(
+                payload["purchased_at"].replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="日期格式不合法")
     pos = await PortfolioService.update_position(
         db, current_user.id, position_id, **payload,
     )
