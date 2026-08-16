@@ -7,6 +7,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { Watchlist } from '@/pages/Watchlist';
 import { StockDetail } from '@/pages/StockDetail';
 import { Portfolio } from '@/pages/Portfolio';
+import { PositionDetail } from '@/pages/PositionDetail';
 import { Analysis } from '@/pages/Analysis';
 import { Chat } from '@/pages/Chat';
 import { Diary } from '@/pages/Diary';
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="watchlist" element={<Watchlist />} />
               <Route path="stock/:code" element={<StockDetail />} />
               <Route path="portfolio" element={<Portfolio />} />
+              <Route path="portfolio/:id" element={<PositionDetail />} />
               <Route path="analysis" element={<Analysis />} />
               <Route path="chat" element={<Chat />} />
               <Route path="diary" element={<Diary />} />

@@ -6,6 +6,8 @@ import { StageQualitative } from './StageQualitative';
 import { StageReverse } from './StageReverse';
 import { StageSwingZone } from './StageSwingZone';
 import { StageConclusion } from './StageConclusion';
+import { StageSellAnalysis } from './StageSellAnalysis';
+import { StageSellConclusion } from './StageSellConclusion';
 
 // 旧版快照（无 stage_results）顶层字段兜底视图
 function LegacyView({ snap }: { snap: WatchlistBoardRow }) {
@@ -55,6 +57,23 @@ export function FiveStageAnalysis({ snap }: { snap: WatchlistBoardRow }) {
       <StageReverse snap={snap} />
       <StageSwingZone snap={snap} />
       <StageConclusion snap={snap} />
+    </Space>
+  );
+}
+
+// 持仓模式五段：基本数据 → 定性 → 逆向 → 卖出分析 → 总结与建议
+export function PositionFiveStageAnalysis({ snap }: { snap: WatchlistBoardRow }) {
+  const sell = snap.stage_results_sell;
+  if (!sell || Object.keys(sell).length === 0) {
+    return <Card size="small">该持仓尚未完成卖出分析。</Card>;
+  }
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <StageData snap={snap} />
+      <StageQualitative snap={snap} />
+      <StageReverse snap={snap} />
+      <StageSellAnalysis snap={snap} />
+      <StageSellConclusion snap={snap} />
     </Space>
   );
 }

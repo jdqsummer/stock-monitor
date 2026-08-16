@@ -324,6 +324,14 @@ export interface StageResult {
   // Q1 证据 + Q2 置信度（各段 schema 顶层均带）
   evidence?: EvidenceClaim[];
   confidence?: ConfidenceLevel;
+  // 卖出分析段 sell_analysis（持仓五段第 4 段，替代安全边际段）
+  principles?: Record<string, { triggered: boolean; reason: string }>;
+  sell_action?: string;
+  sell_rationale?: string;
+  sell_pe_low?: number;
+  sell_pe_high?: number;
+  sell_pe_rationale?: string;
+  avoid_traps?: string;
 }
 
 // 逆向四类结论 + 重大风险（= stage_results.run_reverse_checklist）
