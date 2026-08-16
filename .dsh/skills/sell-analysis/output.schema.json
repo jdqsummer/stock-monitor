@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "principles": {
+      "type": "object",
+      "properties": {
+        "bought_wrong": {"type": "object", "properties": {"triggered": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["triggered"]},
+        "fundamental_change": {"type": "object", "properties": {"triggered": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["triggered"]},
+        "overvalued": {"type": "object", "properties": {"triggered": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["triggered"]},
+        "price_crazy": {"type": "object", "properties": {"triggered": {"type": "boolean"}, "reason": {"type": "string"}}, "required": ["triggered"]}
+      },
+      "required": ["bought_wrong", "fundamental_change", "overvalued", "price_crazy"]
+    },
+    "sell_pe_low": {"type": "number"},
+    "sell_pe_high": {"type": "number"},
+    "sell_pe_rationale": {"type": "string"},
+    "sell_action": {"type": "string", "enum": ["hold", "sell", "immediate_sell"]},
+    "sell_rationale": {"type": "string"},
+    "avoid_traps": {"type": "string"}
+  },
+  "required": ["principles", "sell_action"]
+}

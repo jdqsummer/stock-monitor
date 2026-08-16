@@ -49,3 +49,12 @@ def test_qualitative_blocks_exist():
             assert k in _frontmatter_keys(p), f"blocks/{block} 缺 frontmatter: {k}"
     op = (STAGES / "qualitative" / "blocks" / "operating-quality" / "SKILL.md").read_text(encoding="utf-8")
     assert "handler: dedicated_operating_quality" in op
+
+
+def test_position_sell_stages_exist():
+    for stage in ("sell-analysis", "sell-conclusion"):
+        p = STAGES / stage / "SKILL.md"
+        assert p.exists(), f"缺少 {stage}/SKILL.md"
+        assert "NO_COMPRESS_START" in p.read_text(encoding="utf-8")
+        fm = _frontmatter_keys(p)
+        assert "name" in fm and "output_field" in fm and "order" in fm

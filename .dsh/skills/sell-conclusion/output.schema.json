@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "conclusion": {"type": "string"},
+    "recommendation": {"type": "string", "enum": ["继续持有", "建议卖出", "立即卖出"]},
+    "action_items": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["conclusion", "recommendation", "action_items"]
+}
