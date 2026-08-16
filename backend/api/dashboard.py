@@ -61,6 +61,9 @@ async def dashboard_overview(
     profit_count = 0
     loss_count = 0
     for p in positions:
+        # 空 shares / 缺成本价行跳过（Position.shares/cost_price 可空，避免 None*float TypeError）
+        if not p.shares or p.cost_price is None:
+            continue
         quote = quotes_by_code.get(p.stock_code)
         price = quote.current_price if quote else 0.0
         total_value += price * p.shares
@@ -118,13 +121,13 @@ async def dashboard_positions(
                 update_time=a.update_time,
             )
 
-    # 先算总市值，再算 position_ratio
+    # 先算总市值，再算 position_ratio（空 shares 行不参与，避免 None*float TypeError）
     values: list[tuple[float, float]] = []  # [(price, shares), ...]
     for p in positions:
         quote = quotes_by_code.get(p.stock_code)
         price = quote.current_price if quote else 0.0
         values.append((price, p.shares))
-    total_value = sum(price * shares for price, shares in values)
+    total_value = sum(price * shares for price, shares in values if shares)
 
     # 批量取 B 表 sell 快照
     snapshots_by_code: dict[str, AnalysisSnapshot] = {}
@@ -135,17 +138,24 @@ async def dashboard_positions(
         snapshots_by_code = {s.stock_code: s for s in snap_rows}
 
     items: list[DashboardPositionRow] = []
-    for i, p in enumerate(positions):
+    for p in positions:
         quote = quotes_by_code.get(p.stock_code)
         price = quote.current_price if quote else 0.0
         snap = snapshots_by_code.get(p.stock_code)
+        sell_distance = snap.sell_distance_pct if snap else None
+        sell_signal_val = snap.sell_signal if snap else None
+        # 快照有卖出价但缺 distance/signal 时用 calc_sell_signal 兜底重算
+        if snap is not None and snap.sell_price_low and (
+                sell_distance is None or not sell_signal_val or sell_signal_val == "none"):
+            sell_distance, sell_signal_val = calc_sell_signal(
+                price, snap.sell_price_low, snap.annual_profit_low)
         derived = compute_position_row(
             {"shares": p.shares, "cost_price": p.cost_price, "purchased_at": p.purchased_at},
             quote,
             {"sell_price_low": snap.sell_price_low if snap else None,
              "sell_price_high": snap.sell_price_high if snap else None,
-             "sell_distance_pct": snap.sell_distance_pct if snap else None,
-             "sell_signal": snap.sell_signal if snap else None},
+             "sell_distance_pct": sell_distance,
+             "sell_signal": sell_signal_val},
         )
         position_value = price * p.shares if p.shares else 0.0
         position_ratio = round(position_value / total_value, 4) if total_value else 0.0
@@ -162,7 +172,7 @@ async def dashboard_positions(
             sell_distance_pct=derived["sell_distance_pct"],
             sell_signal=derived["sell_signal"],
             distance_pct=None, signal=None,
-            industry=p.industry or snap.industry_category if snap else p.industry,
+            industry=(p.industry or (snap.industry_category if snap else p.industry)),
             pe_dynamic=quote.pe_dynamic if quote else None,
         ))
     return ApiResponse(data=items)

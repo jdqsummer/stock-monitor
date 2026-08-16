@@ -141,3 +141,42 @@ async def test_dashboard_positions_sell_enriched(client, db_session, user):
     assert row["holding_days"] is not None
     assert row["sell_distance_pct"] == 5.0
     assert row["sell_signal"] == "red"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_positions_sell_fallback(client, db_session, user):
+    """快照仅有 sell_price_low、无 sell_distance/signal → calc_sell_signal 兜底重算"""
+    from backend.models.portfolio import Position
+    from backend.models.stock import AnalysisSnapshot, StockSnapshot
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="贵州茅台",
+                            shares=100, cost_price=80.0, purchased_at=datetime(2026, 8, 1)))
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=105.0,
+                                 change_pct=5.0, total_market_cap=1000.0))
+    db_session.add(AnalysisSnapshot(user_id=user.id, stock_code="600519",
+                                    annual_profit_low=50.0,
+                                    sell_price_low=100.0, sell_price_high=120.0))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/positions", headers=user_headers(user))
+    row = res.json()["data"][0]
+    # 兜底重算：现价 105 → 距卖出区 = (105-100)/100 = 5.0 / red
+    assert row["sell_price_low"] == 100.0
+    assert row["sell_distance_pct"] == 5.0
+    assert row["sell_signal"] == "red"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_skips_empty_shares(client, db_session, user):
+    """overview 空 shares 行不参与聚合（无 TypeError），position_count 仍计入"""
+    from backend.models.portfolio import Position
+    from backend.models.stock import StockSnapshot
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="贵州茅台",
+                            shares=None, cost_price=None, purchased_at=None))
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=105.0,
+                                 change_pct=5.0, total_market_cap=1000.0))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/overview", headers=user_headers(user))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["position_count"] == 1
+    assert data["total_market_value"] == 0.0
+    assert data["daily_pl"] == 0.0
