@@ -66,3 +66,28 @@ async def test_map_dsh_position_result_to_state():
     # watchlist 映射保持原状（无 sell 键污染）
     state2 = map_dsh_result_to_state({"anchor_industry_pe": {"pe_low": 20}}, mode="watchlist")
     assert "sell_pe_low" not in state2
+
+
+@pytest.mark.asyncio
+async def test_analyze_passes_mode_and_position_context_to_initial_state():
+    """Task 7: analyze(mode="position", position_context=...) 注入 initial_state 并经 from_state 回填报告。"""
+    chain = AnalysisChain(llm_provider=None)
+    captured = {}
+
+    class _FakeRunner:
+        async def run(self, **kwargs):
+            captured["initial_state"] = kwargs.get("initial_state", {})
+            return {
+                **kwargs.get("initial_state", {}),
+                "stock_code": kwargs.get("code", ""),
+                "stock_name": kwargs.get("stock_name", ""),
+            }
+
+    chain.workflow_runner = _FakeRunner()
+    report = await chain.analyze(
+        "600519", stock_name="茅台", mode="position",
+        position_context={"shares": 100, "cost_price": 1500.0},
+    )
+    assert captured["initial_state"]["analysis_mode"] == "position"
+    assert captured["initial_state"]["position_context"] == {"shares": 100, "cost_price": 1500.0}
+    assert report.analysis_mode == "position"          # from_state 往返：state 回填进报告

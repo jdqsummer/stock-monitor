@@ -123,3 +123,35 @@ async def test_snapshot_to_dict_pe_dynamic_none_without_quote():
     """quote 为 None（无行情）时 pe_dynamic 输出 None，前端宽容渲染 —"""
     d = StockDataService.snapshot_to_dict(_min_snapshot(), None)
     assert d["pe_dynamic"] is None
+
+
+@pytest.mark.asyncio
+async def test_snapshot_to_dict_includes_sell_group():
+    """Task 7: snapshot_to_dict 输出 sell 组格式化字符串与原始字段。"""
+    snap = AnalysisSnapshot(
+        user_id="u1", stock_code="600519",
+        annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
+        pe_low=20, pe_high=35,
+        swing_market_cap_low=13760, swing_market_cap_high=29470,
+        swing_price_low=1147, swing_price_high=2456,
+        current_market_cap=19500, current_price=1560,
+        distance_pct=-38.9, signal="green",
+        analysis_mode="position",
+        sell_pe_low=30.0, sell_pe_high=35.0, sell_pe_rationale="疯狂卖出",
+        sell_market_cap_low=960.0, sell_market_cap_high=1225.0,
+        sell_price_low=76.0, sell_price_high=98.0,
+        sell_distance_pct=38.2, sell_signal="red", sell_action="sell",
+        sell_analysis='{"principles":{"price_crazy":{"triggered":true}}}',
+        stage_results_sell='{"sell_analysis":{"sell_action":"sell"}}',
+    )
+    d = StockDataService.snapshot_to_dict(snap, None)
+    assert d["analysis_mode"] == "position"
+    assert d["sell_pe"] == "30-35倍"
+    assert d["sell_market_cap"] == "960-1225亿"
+    assert d["sell_price"] == "76-98元"
+    assert d["sell_pe_rationale"] == "疯狂卖出"
+    assert d["sell_distance_pct"] == 38.2
+    assert d["sell_signal"] == "red"
+    assert d["sell_action"] == "sell"
+    assert d["sell_analysis"] == {"principles": {"price_crazy": {"triggered": True}}}
+    assert d["stage_results_sell"] == {"sell_analysis": {"sell_action": "sell"}}

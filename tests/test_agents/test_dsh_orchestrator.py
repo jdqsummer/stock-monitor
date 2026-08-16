@@ -166,6 +166,31 @@ def test_build_context_serializes_pydantic_objects():
     assert ctx["news"][0]["title"] == "贵州茅台披露半年报"
 
 
+def test_build_context_defaults_watchlist_and_turnover_none():
+    """Task 7: 无 analysis_mode/position_context → watchlist 默认；dict quote 无 turnover_rate → None。"""
+    ctx = build_context(STATE)
+    assert ctx["analysis_mode"] == "watchlist"
+    assert "position_context" not in ctx
+    assert ctx["turnover_rate"] is None
+
+
+def test_build_context_position_mode_fields():
+    """Task 7: position 模式注入 analysis_mode/position_context；quote 有 turnover_rate 则透传。"""
+    from backend.schemas.stock import StockQuote
+
+    state = {
+        "stock_code": "600519", "stock_name": "贵州茅台",
+        "quote": StockQuote(code="600519", name="贵州茅台", current_price=1700.0,
+                            total_market_cap=21400.0, turnover_rate=0.85),
+        "analysis_mode": "position",
+        "position_context": {"shares": 100, "cost_price": 1500.0, "holding_days": 30},
+    }
+    ctx = build_context(state)
+    assert ctx["analysis_mode"] == "position"
+    assert ctx["position_context"] == {"shares": 100, "cost_price": 1500.0, "holding_days": 30}
+    assert ctx["turnover_rate"] == 0.85
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_default_construction_reads_settings(monkeypatch):
     """C1 直接回归：`DshOrchestrator()` 默认构造从 settings 取 base_url/budget/model。"""
