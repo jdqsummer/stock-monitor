@@ -59,8 +59,8 @@ export const dashboardApi = {
 // 自选股
 export const watchlistApi = {
   list: () => client.get<ApiResponse<WatchlistItem[]>>('/watchlist'),
-  add: (stockCode: string, stockName: string) =>
-    client.post<ApiResponse<WatchlistItem>>('/watchlist', { stock_code: stockCode, stock_name: stockName }),
+  add: (stockCode: string, stockName: string, skipAnalysis = false) =>
+    client.post<ApiResponse<WatchlistItem>>('/watchlist', { stock_code: stockCode, stock_name: stockName, skip_analysis: skipAnalysis }),
   remove: (id: string) => client.delete<ApiResponse>(`/watchlist/${id}`),
   autoClassify: () => client.post<ApiResponse<{ updated: number }>>('/watchlist/auto-classify'),
   search: (keyword: string) =>
@@ -75,6 +75,12 @@ export const analysisApi = {
     client.get<ApiResponse<JobStatus>>('/analysis/watchlist/status', { params: { job_id: jobId } }),
   watchlistActive: () =>
     client.get<ApiResponse<JobStatus>>('/analysis/watchlist/active'),
+  run: (code: string, name: string, model?: string) =>
+    client.post<ApiResponse<{ job_id: string | null; mode: string }>>('/analysis/run', { code, name, model }),
+  runStatus: (jobId: string) =>
+    client.get<ApiResponse<JobStatus>>('/analysis/run/status', { params: { job_id: jobId } }),
+  runActive: () =>
+    client.get<ApiResponse<JobStatus>>('/analysis/run/active'),
   getSnapshot: (code: string) =>
     client.get<ApiResponse<WatchlistBoardRow>>(`/analysis/snapshot/${code}`),
 };
