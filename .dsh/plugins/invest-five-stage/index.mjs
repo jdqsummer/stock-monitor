@@ -30,6 +30,8 @@ const dataSummary = JSON.stringify({
     net_profit_deducted: f.net_profit_deducted,
   })),
 });
+// position 模式判定：context.analysis_mode + 持仓上下文（早期声明，供 ④⑤ 门控引用）
+const isPosition = args.mode === "position" && args.position_context;
 // ② qualitative：blocks 子块 LLM 定性（host 已扫描子块注入 args.blocks，按 order 升序）
 const qualitative = await agent(
   '按 analyze-qualitative 方法论对注入数据做三维度定性（商业模式/护城河/经营质量）。' +
@@ -47,21 +49,24 @@ const reverse = await agent(
   { schema: args.schemas.reverse, label: 'reverse', phase: '③逆向' }
 );
 // ④ anchor-industry-pe：LLM 只定 PE 区间，确定性结果 host 已算好注入 args.calc
-const anchor = await agent(
-  '综合前序定性/逆向结论给定击球 PE 区间与理由（行业锚点仅参考，非法 PE 自动回退锚点）。' +
-  '注入只读数据（勿自行读盘/探索环境）：' + dataSummary + '。' +
-  '价值定性结论（② qualitative）：' + JSON.stringify(qualitative) + '。' +
-  '逆向定性结论（③ reverse）：' + JSON.stringify(reverse) + '。' +
-  '行业锚点（host 已解析）：' + JSON.stringify(args.calc.pe_anchor) + '。' +
-  '注入已算好的年化/击球区/安全边际确定性结果：' + JSON.stringify({
-    annual_profit_low: args.calc.annual_profit_low,
-    annual_profit_high: args.calc.annual_profit_high,
-    profit_method: args.calc.profit_method,
-  }) + '（仅供校准，不可改写）。',
-  { schema: args.schemas.anchor, label: 'anchor', phase: '④估值' }
-);
-// ④b 合并：anchor 三字段 + calc 确定性字段（契约钉死 #4 定稿形状）
-const merged = { ...anchor, ...args.calc };
+// （position 模式由 sell 替代，anchor/merged 均不执行）
+const anchor = !isPosition
+  ? await agent(
+      '综合前序定性/逆向结论给定击球 PE 区间与理由（行业锚点仅参考，非法 PE 自动回退锚点）。' +
+      '注入只读数据（勿自行读盘/探索环境）：' + dataSummary + '。' +
+      '价值定性结论（② qualitative）：' + JSON.stringify(qualitative) + '。' +
+      '逆向定性结论（③ reverse）：' + JSON.stringify(reverse) + '。' +
+      '行业锚点（host 已解析）：' + JSON.stringify(args.calc.pe_anchor) + '。' +
+      '注入已算好的年化/击球区/安全边际确定性结果：' + JSON.stringify({
+        annual_profit_low: args.calc.annual_profit_low,
+        annual_profit_high: args.calc.annual_profit_high,
+        profit_method: args.calc.profit_method,
+      }) + '（仅供校准，不可改写）。',
+      { schema: args.schemas.anchor, label: 'anchor', phase: '④估值' }
+    )
+  : undefined;
+// ④b 合并：anchor 三字段 + calc 确定性字段（契约钉死 #4 定稿形状；position 模式跳过）
+const merged = !isPosition ? { ...anchor, ...args.calc } : undefined;
 // ④ position 模式：卖出分析（LLM 判断 4 原则 + 定卖出PE区间；确定性卖出区 host 兜底）。
 // ⑤ position 模式：sell-conclusion 先结论后建议。
 // ⚠️ 脚本 realm（vm.createContext）仅注入 agent/parallel/pipeline/phase/log/args 全局，
@@ -124,7 +129,7 @@ function calcSellZone(input) {
   return { sell_market_cap_low, sell_market_cap_high, sell_price_low, sell_price_high,
            sell_distance_pct, sell_signal };
 }
-const isPosition = args.mode === "position" && args.position_context;
+// ⚠️ 内联 calcSellZone 与 prepare.ts 导出版本逐字同步（脚本 realm 无模块作用域，不能复用导出）。
 const sell = isPosition
   ? await agent(
       '按 sell-analysis 方法论对持仓执行卖出分析（逐条判断 4 卖出原则 + 规避 2 陷阱，' +
@@ -640,6 +645,36 @@ function computeCalc(input) {
 		pe_high: input.pe_high,
 		pe_anchor: anchor
 	};
+}
+/** position 模式确定性卖出区计算（与 FIXED_SCRIPT 内联副本逐字同步——脚本 realm 无模块
+* 作用域，只能内联；改此函数须同步 script.ts / index.mjs 的内联版）。
+*
+* 年化×卖出PE → 市值区间 → 市值÷总股本 → 股价区间 → 距卖出区与信号灯
+* （≥0% red / -20%~0% yellow / ≤-20% green；亏损或卖出PE无效不量化 → 0/none）。
+*/
+function calcSellZone(input) {
+	const profit_low = input.annual_profit_low, profit_high = input.annual_profit_high;
+	const sell_pe_low = input.sell_pe_low || 0, sell_pe_high = input.sell_pe_high || 0;
+	const total_shares = input.total_shares || 0;
+	const current_price = input.current_price || 0;
+	let sell_market_cap_low = 0, sell_market_cap_high = 0, sell_price_low = 0, sell_price_high = 0;
+	if (sell_pe_low > 0 && sell_pe_high >= sell_pe_low) {
+		sell_market_cap_low = roundHalfEven(profit_low * sell_pe_low, 2);
+		sell_market_cap_high = roundHalfEven(profit_high * sell_pe_high, 2);
+		if (total_shares > 0) {
+			sell_price_low = roundHalfEven(sell_market_cap_low / total_shares, 2);
+			sell_price_high = roundHalfEven(sell_market_cap_high / total_shares, 2);
+		}
+	}
+	let sell_distance_pct = null, sell_signal = "none";
+	if (profit_low > 0 && sell_price_low > 0) {
+		sell_distance_pct = roundHalfEven((current_price - sell_price_low) / sell_price_low * 100, 1);
+		if (sell_distance_pct >= 0) sell_signal = "red";
+		else if (sell_distance_pct > -20) sell_signal = "yellow";
+		else sell_signal = "green";
+	}
+	return { sell_market_cap_low, sell_market_cap_high, sell_price_low, sell_price_high,
+	         sell_distance_pct, sell_signal };
 }
 /**
 * prepareArgs：组装脚本只读上下文（P2 真实现，替代 P1 mock 桩）。

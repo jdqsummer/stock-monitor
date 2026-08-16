@@ -21,6 +21,7 @@ import {
   resolvePeAnchor,
   type FinancialReport,
 } from '../invest-calc/index'
+import { roundHalfEven } from '../invest-calc/util'
 
 export interface BlockMeta {
   name: string
@@ -192,6 +193,56 @@ export function computeCalc(input: CalcInput): Record<string, unknown> {
     pe_high: input.pe_high,
     pe_anchor: anchor,
   }
+}
+
+export interface CalcSellZoneInput {
+  annual_profit_low: number
+  annual_profit_high: number
+  sell_pe_low?: number | null
+  sell_pe_high?: number | null
+  total_shares?: number | null
+  current_price?: number | null
+}
+
+export interface CalcSellZoneResult {
+  sell_market_cap_low: number
+  sell_market_cap_high: number
+  sell_price_low: number
+  sell_price_high: number
+  sell_distance_pct: number | null
+  sell_signal: string
+}
+
+/**
+ * position 模式确定性卖出区计算（与 FIXED_SCRIPT 内联副本逐字同步——脚本 realm 无模块
+ * 作用域，只能内联；改此函数须同步 script.ts / index.mjs 的内联版）。
+ *
+ * 年化×卖出PE → 市值区间 → 市值÷总股本 → 股价区间 → 距卖出区与信号灯
+ * （≥0% red / -20%~0% yellow / ≤-20% green；亏损或卖出PE无效不量化 → 0/none）。
+ */
+export function calcSellZone(input: CalcSellZoneInput): CalcSellZoneResult {
+  const profit_low = input.annual_profit_low, profit_high = input.annual_profit_high
+  const sell_pe_low = input.sell_pe_low || 0, sell_pe_high = input.sell_pe_high || 0
+  const total_shares = input.total_shares || 0
+  const current_price = input.current_price || 0
+  let sell_market_cap_low = 0, sell_market_cap_high = 0, sell_price_low = 0, sell_price_high = 0
+  if (sell_pe_low > 0 && sell_pe_high >= sell_pe_low) {
+    sell_market_cap_low = roundHalfEven(profit_low * sell_pe_low, 2)
+    sell_market_cap_high = roundHalfEven(profit_high * sell_pe_high, 2)
+    if (total_shares > 0) {
+      sell_price_low = roundHalfEven(sell_market_cap_low / total_shares, 2)
+      sell_price_high = roundHalfEven(sell_market_cap_high / total_shares, 2)
+    }
+  }
+  let sell_distance_pct = null, sell_signal = 'none'
+  if (profit_low > 0 && sell_price_low > 0) {
+    sell_distance_pct = roundHalfEven((current_price - sell_price_low) / sell_price_low * 100, 1)
+    if (sell_distance_pct >= 0) sell_signal = 'red'
+    else if (sell_distance_pct > -20) sell_signal = 'yellow'
+    else sell_signal = 'green'
+  }
+  return { sell_market_cap_low, sell_market_cap_high, sell_price_low, sell_price_high,
+           sell_distance_pct, sell_signal }
 }
 
 /**
