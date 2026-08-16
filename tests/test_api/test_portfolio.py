@@ -130,6 +130,96 @@ async def test_portfolio_analyze_and_snapshot(client, db_session, user):
 
 
 @pytest.mark.asyncio
+async def test_portfolio_analyze_missing_position_404(client, user):
+    """position_ids 含不存在的持仓 → 404（提交前先校验归属）"""
+    res = await client.post("/api/portfolio/analyze",
+                            json={"position_ids": ["no-such-id"]},
+                            headers=user_headers(user))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_portfolio_active_returns_running_job(client, user, monkeypatch):
+    """GET /active 接线：get_active_job(source=portfolio) → 200 + job_id"""
+    from backend.api import portfolio as portfolio_api
+
+    calls = []
+
+    def fake_get_active_job(user_id, source=None):
+        calls.append((user_id, source))
+        return {
+            "job_id": "job_pf", "source": "portfolio", "total": 1,
+            "done": 0, "failed": 0, "skipped": 0, "running": 1,
+            "results": {"600519": "running"},
+        }
+
+    monkeypatch.setattr(portfolio_api.analysis_job_service, "get_active_job", fake_get_active_job)
+    res = await client.get("/api/portfolio/active", headers=user_headers(user))
+    assert res.status_code == 200
+    assert res.json()["data"]["job_id"] == "job_pf"
+    # source 作用域传递到服务层
+    assert calls and calls[0][1] == "portfolio"
+
+
+@pytest.mark.asyncio
+async def test_portfolio_active_404_when_source_mismatch(client, user):
+    """仅存在 source≠portfolio 的进行中 job → active 404（source 作用域过滤）"""
+    from backend.api import portfolio as portfolio_api
+    from backend.services.analysis_job_svc import STATUS_RUNNING
+
+    svc = portfolio_api.analysis_job_service
+    svc._jobs["job_manual_active"] = {
+        "job_id": "job_manual_active", "user_id": user.id, "source": "manual",
+        "created_at": "2026-08-16T10:00:00",
+        "codes": {"600519": STATUS_RUNNING},
+    }
+    res = await client.get("/api/portfolio/active", headers=user_headers(user))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_portfolio_snapshot_returns_position_and_sell(client, db_session, user):
+    """GET /{id}/snapshot 有分析快照 → 200，含 position 与 snapshot（sell 组）两键"""
+    from datetime import date
+
+    from backend.models.stock import AnalysisSnapshot, StockSnapshot
+
+    pos = await _mk_position(db_session, user.id, "600519")
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=1800.0,
+                                 change_pct=1.5, total_market_cap=22000.0, pe_dynamic=32.0))
+    db_session.add(AnalysisSnapshot(
+        user_id=user.id, stock_code="600519",
+        annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
+        pe_low=20, pe_high=35,
+        swing_market_cap_low=13760, swing_market_cap_high=29470,
+        swing_price_low=1147, swing_price_high=2456,
+        current_market_cap=22000, current_price=1800,
+        distance_pct=-26.7, signal="green", signal_label="击球区",
+        rating="🟢", data_date=date(2026, 8, 12),
+        industry_category="白酒", moat_assessment="品牌护城河",
+        risk_factors='["宏观风险"]', recommendation="可分批建仓",
+        conclusion="护城河深但需确认估值", unassessable_risk=False,
+        analysis_mode="position", analysis_source="dsh-llm",
+        sell_pe_low=40, sell_pe_high=50,
+        sell_market_cap_low=27520, sell_market_cap_high=42100,
+        sell_price_low=2294, sell_price_high=2869,
+        sell_distance_pct=-21.5, sell_signal="green",
+        sell_action="hold",
+    ))
+    await db_session.commit()
+
+    res = await client.get(f"/api/portfolio/{pos.id}/snapshot", headers=user_headers(user))
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    assert set(data) == {"position", "snapshot"}
+    assert data["position"]["stock_code"] == "600519"
+    assert data["snapshot"]["sell_pe"] == "40-50倍"
+    assert data["snapshot"]["sell_price"] == "2294-2869元"
+    assert data["snapshot"]["sell_signal"] == "green"
+    assert data["snapshot"]["analysis_source"] == "dsh-llm"
+
+
+@pytest.mark.asyncio
 async def test_delete_position_keeps_watchlist(client, db_session, user):
     pos = await _mk_position(db_session, user.id, "600519")
     db_session.add(WatchlistItem(user_id=user.id, stock_code="600519", stock_name="贵州茅台"))
