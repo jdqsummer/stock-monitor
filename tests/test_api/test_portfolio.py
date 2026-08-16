@@ -75,6 +75,23 @@ async def test_patch_position_validates_and_updates(client, db_session, user):
 
 
 @pytest.mark.asyncio
+async def test_patch_position_partial_update_keeps_other_fields(client, db_session, user):
+    """单字段 PATCH 不覆盖其他字段：先改 shares，再改 cost_price，两次后两者都保留"""
+    pos = await _mk_position(db_session, user.id, "600519")
+    res = await client.patch(f"/api/portfolio/{pos.id}", json={"shares": 100}, headers=user_headers(user))
+    assert res.status_code == 200
+    assert res.json()["data"]["shares"] == 100
+    # 此时 cost_price 仍为 None（未被空默认值覆盖）
+    assert res.json()["data"]["cost_price"] is None
+
+    res = await client.patch(f"/api/portfolio/{pos.id}", json={"cost_price": 80}, headers=user_headers(user))
+    assert res.status_code == 200
+    assert res.json()["data"]["cost_price"] == 80
+    # 关键断言：上一笔 shares 未被本次 cost_price 更新覆盖
+    assert res.json()["data"]["shares"] == 100
+
+
+@pytest.mark.asyncio
 async def test_delete_position_keeps_watchlist(client, db_session, user):
     pos = await _mk_position(db_session, user.id, "600519")
     db_session.add(WatchlistItem(user_id=user.id, stock_code="600519", stock_name="贵州茅台"))

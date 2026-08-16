@@ -16,6 +16,11 @@ class DuplicatePositionError(Exception):
     pass
 
 
+# 部分更新哨兵：字段默认落在 _UNSET 表示「本次未传，保留旧值」；
+# 显式传 None 表示「置空」（与未传严格区分）
+_UNSET = object()
+
+
 class PortfolioService:
     @staticmethod
     async def list_positions(db: AsyncSession, user_id: str) -> list[Position]:
@@ -52,19 +57,18 @@ class PortfolioService:
     @staticmethod
     async def update_position(
         db: AsyncSession, user_id: str, position_id: str,
-        shares: float | None = None, cost_price: float | None = None,
-        purchased_at: datetime | None = None, *,
-        _sentinel=object(),
+        shares: float | None = _UNSET, cost_price: float | None = _UNSET,
+        purchased_at: datetime | None = _UNSET,
     ) -> Position | None:
-        """部分更新：只更新显式传入的字段（None 表示跳过，用 _sentinel 区分显式置 None）。"""
+        """部分更新：只更新显式传入的字段（未传字段落在 _UNSET → 保留旧值；显式传 None → 置空）。"""
         pos = await PortfolioService.get_position(db, user_id, position_id)
         if pos is None:
             return None
-        if shares is not _sentinel:
+        if shares is not _UNSET:
             pos.shares = shares
-        if cost_price is not _sentinel:
+        if cost_price is not _UNSET:
             pos.cost_price = cost_price
-        if purchased_at is not _sentinel:
+        if purchased_at is not _UNSET:
             pos.purchased_at = purchased_at
         await db.commit()
         await db.refresh(pos)

@@ -112,9 +112,11 @@ async def update_position(position_id: str, req: PositionUpdateRequest,
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="数量/成本价须 ≥0，日期须合法")
     if req.cost_price is not None and req.cost_price < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="数量/成本价须 ≥0，日期须合法")
+    # 部分更新：exclude_unset 只传请求中显式出现的字段（未出现字段落服务层 _sentinel → 保留旧值；
+    # 显式传 null 会含该键 None → 正确置空）
+    payload = req.model_dump(exclude_unset=True)
     pos = await PortfolioService.update_position(
-        db, current_user.id, position_id,
-        shares=req.shares, cost_price=req.cost_price, purchased_at=req.purchased_at,
+        db, current_user.id, position_id, **payload,
     )
     if pos is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="持仓不存在")
