@@ -84,6 +84,19 @@ def test_build_prompt_no_ralph_hint_by_default():
     assert "Ralph 自审" not in prompt
 
 
+def test_build_prompt_includes_position_hint_when_position_mode():
+    """position 模式：context.analysis_mode == "position" 时引导模型按持仓模式执行。"""
+    req = sdk_host.TriggerRequest(code="600519", context={"analysis_mode": "position"})
+    prompt = sdk_host._build_prompt(req)
+    assert "持仓卖出分析" in prompt and "持仓模式" in prompt
+
+
+def test_build_prompt_no_position_hint_by_default():
+    req = sdk_host.TriggerRequest(code="600519")
+    prompt = sdk_host._build_prompt(req)
+    assert "持仓卖出分析" not in prompt
+
+
 def test_trigger_missing_five_stage_returns_degraded(monkeypatch):
     async def fake_run(config, input, session_id):
         return _Result([{"type": "assistant/message", "data": {"message": {"role": "assistant"}}}])

@@ -89,6 +89,11 @@ def _build_prompt(req: TriggerRequest) -> str:
     if req.ralph_enabled:
         ralph_hint = ("\n深度模式：请将 invest-five-stage 工具的 ralph_enabled 置为 true，"
                       "在五段结论后执行 Ralph 自审。")
+    position_hint = ""
+    if (req.context or {}).get("analysis_mode") == "position":
+        position_hint = ("\n这是持仓卖出分析：请让 invest-five-stage 工具按持仓模式执行，"
+                         "第 4 段给出卖出分析（4 条卖出原则判断 + 卖出PE区间），第 5 段给出"
+                         "总结与建议（继续持有/建议卖出/立即卖出 + 行动建议）。")
     # context 以 JSON 字符串呈现（ensure_ascii=False），模型原样透传给工具的 context 参数
     #（工具参数已改为必填；Python dict repr 不是合法 JSON，模型无法可靠转发）。
     import json as _json
@@ -98,7 +103,7 @@ def _build_prompt(req: TriggerRequest) -> str:
         f"请调用 invest-five-stage 工具（stock_code={req.code}, stock_name={req.name or ''}），"
         f"必须把下面的只读上下文原样作为该工具的 context 参数传入（JSON 字符串，勿改字段）。\n"
         f"注入的只读上下文（由 Python collect_data 预聚合，勿自行读盘）：\n"
-        f"{context_json}\n{pe_hint}{ralph_hint}"
+        f"{context_json}\n{pe_hint}{ralph_hint}{position_hint}"
     )
 
 

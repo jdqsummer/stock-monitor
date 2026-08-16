@@ -62,19 +62,114 @@ const anchor = await agent(
 );
 // ④b 合并：anchor 三字段 + calc 确定性字段（契约钉死 #4 定稿形状）
 const merged = { ...anchor, ...args.calc };
-// ⑤ conclusion：综合 1-4 全部输出
-const conclusion = await agent(
-  '按 output-conclusion 方法论综合 1-4 段全部结论给出最终判断（证伪思维 + 三档建议 + 否决硬约束）。' +
-  '输入汇总：定性=' + JSON.stringify(qualitative) + '；逆向=' + JSON.stringify(reverse) +
-  '；安全边际=' + JSON.stringify(merged) + '。' +
-  '否决规则：checklist_veto 或 unassessable_risk 为 true 时 final_rating 必须为 🔴 且建议坚决放弃。',
-  { schema: args.schemas.conclusion, label: 'conclusion', phase: '⑤结论' }
-);
+// ④ position 模式：卖出分析（LLM 判断 4 原则 + 定卖出PE区间；确定性卖出区 host 兜底）。
+// ⑤ position 模式：sell-conclusion 先结论后建议。
+// ⚠️ 脚本 realm（vm.createContext）仅注入 agent/parallel/pipeline/phase/log/args 全局，
+//    无 index.mjs 模块作用域——module-level 的 roundHalfEven 在脚本内不可见（实测 tool-ralph
+//    范式：helper 一律内联进 String.raw）。故此处内联 round-half-to-even（复刻 invest-calc/util）。
+function roundHalfEven(value, digits) {
+  if (!Number.isFinite(value)) return value;
+  if (value === 0) return 0;
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value);
+  const bits = view.getBigUint64(0);
+  const sign = bits >> 63n === 0n ? 1n : -1n;
+  const exponentBits = Number(bits >> 52n & 2047n);
+  const fraction = bits & 4503599627370495n;
+  let mantissa;
+  let exp2;
+  if (exponentBits === 0) { mantissa = fraction; exp2 = -1074n; }
+  else { mantissa = (1n << 52n) + fraction; exp2 = BigInt(exponentBits) - 1023n - 52n; }
+  if (sign === -1n) mantissa = -mantissa;
+  const d = BigInt(digits);
+  const fivePow = 5n ** d;
+  const tenPow = 10n ** d;
+  let num = mantissa * fivePow;
+  let den = 1n;
+  const e = exp2 + d;
+  if (e >= 0n) num = num << e;
+  else den = 1n << -e;
+  const q = num / den;
+  const absNum = num < 0n ? -num : num;
+  const absR = absNum % den;
+  const signOf = num < 0n ? -1n : 1n;
+  let rounded;
+  const twice = absR * 2n;
+  if (twice > den) rounded = q + signOf;
+  else if (twice < den) rounded = q;
+  else rounded = absNum / den % 2n === 0n ? q : q + signOf;
+  return Number(rounded) / Number(tenPow);
+}
+function calcSellZone(input) {
+  const profit_low = input.annual_profit_low, profit_high = input.annual_profit_high;
+  const sell_pe_low = input.sell_pe_low || 0, sell_pe_high = input.sell_pe_high || 0;
+  const total_shares = input.total_shares || 0;
+  const current_price = input.current_price || 0;
+  let sell_market_cap_low = 0, sell_market_cap_high = 0, sell_price_low = 0, sell_price_high = 0;
+  if (sell_pe_low > 0 && sell_pe_high >= sell_pe_low) {
+    sell_market_cap_low = roundHalfEven(profit_low * sell_pe_low, 2);
+    sell_market_cap_high = roundHalfEven(profit_high * sell_pe_high, 2);
+    if (total_shares > 0) {
+      sell_price_low = roundHalfEven(sell_market_cap_low / total_shares, 2);
+      sell_price_high = roundHalfEven(sell_market_cap_high / total_shares, 2);
+    }
+  }
+  let sell_distance_pct = null, sell_signal = "none";
+  if (profit_low > 0 && sell_price_low > 0) {
+    sell_distance_pct = roundHalfEven((current_price - sell_price_low) / sell_price_low * 100, 1);
+    if (sell_distance_pct >= 0) sell_signal = "red";
+    else if (sell_distance_pct > -20) sell_signal = "yellow";
+    else sell_signal = "green";
+  }
+  return { sell_market_cap_low, sell_market_cap_high, sell_price_low, sell_price_high,
+           sell_distance_pct, sell_signal };
+}
+const isPosition = args.mode === "position" && args.position_context;
+const sell = isPosition
+  ? await agent(
+      '按 sell-analysis 方法论对持仓执行卖出分析（逐条判断 4 卖出原则 + 规避 2 陷阱，' +
+      '若高估/疯狂则定卖出PE区间）。注入只读数据（勿自行读盘）：' + dataSummary + '。' +
+      '持仓上下文：' + JSON.stringify(args.position_context) + '。' +
+      '价值定性（② qualitative）：' + JSON.stringify(qualitative) + '。' +
+      '逆向结论（③ reverse）：' + JSON.stringify(reverse) + '。' +
+      '确定性（年化/利润质量/行业锚点）：' + JSON.stringify({
+        annual_profit_low: args.calc.annual_profit_low, annual_profit_high: args.calc.annual_profit_high,
+        profit_method: args.calc.profit_method, pe_anchor: args.calc.pe_anchor,
+      }) + '。' +
+      '请按 sell-analysis 输出格式返回 JSON。',
+      { schema: args.schemas.sell, label: 'sell', phase: '④卖出' }
+    )
+  : undefined;
+const sellMerged = isPosition
+  ? { ...sell, ...calcSellZone({
+      annual_profit_low: args.calc.annual_profit_low, annual_profit_high: args.calc.annual_profit_high,
+      sell_pe_low: sell?.sell_pe_low, sell_pe_high: sell?.sell_pe_high,
+      total_shares: context.total_shares, current_price: context.current_price,
+    }) }
+  : undefined;
+const sellConclusion = isPosition
+  ? await agent(
+      '按 sell-conclusion 方法论给出持仓总结与建议（先给结论后给行动建议）。' +
+      '卖出分析：' + JSON.stringify(sellMerged) + '。' +
+      '请按 sell-conclusion 输出格式返回 JSON。',
+      { schema: args.schemas.sellConclusion, label: 'sell-conclusion', phase: '⑤总结' }
+    )
+  : undefined;
+// ⑤ conclusion：综合 1-4 全部输出（position 模式由 sell-conclusion 替代，不跑）
+const conclusion = !isPosition
+  ? await agent(
+      '按 output-conclusion 方法论综合 1-4 段全部结论给出最终判断（证伪思维 + 三档建议 + 否决硬约束）。' +
+      '输入汇总：定性=' + JSON.stringify(qualitative) + '；逆向=' + JSON.stringify(reverse) +
+      '；安全边际=' + JSON.stringify(merged) + '。' +
+      '否决规则：checklist_veto 或 unassessable_risk 为 true 时 final_rating 必须为 🔴 且建议坚决放弃。',
+      { schema: args.schemas.conclusion, label: 'conclusion', phase: '⑤结论' }
+    )
+  : undefined;
 // ⑤b ralph-review（Q3，可选：深度模式 ralph_enabled=true 开启）。
 // ⚠️ 脚本 realm 无直接工具调用语法——经 agent() 子代理触发：该子代理 scope 已注册 ralph
 //    工具（headless base preset，P0-1 T4 实测工具名 ralph，非 ralph-loop）。
 //    ralph(objective, maxRounds?)：每轮全新子 Agent 执行同一 objective 直到达成。
-const ralphReview = args.ralph_enabled
+const ralphReview = (!isPosition && args.ralph_enabled)
   ? await agent(
       '扮演独立审稿人：审查下方五段结论的一致性（结论与定性矛盾？评级与距离一致？' +
       'veto 是否正确执行？证据引用是否充分？）。可调用 ralph 工具对 objective ' +
@@ -83,13 +178,20 @@ const ralphReview = args.ralph_enabled
       { schema: args.schemas.ralph, label: 'ralph-review', phase: '⑤b自审' }
     )
   : undefined;
-return {
-  analyze_qualitative: qualitative,
-  run_reverse_checklist: reverse,
-  anchor_industry_pe: merged,
-  output_conclusion: conclusion,
-  ...(args.ralph_enabled ? { ralph_review: ralphReview } : {}),
-};
+return isPosition
+  ? {
+      analyze_qualitative: qualitative,
+      run_reverse_checklist: reverse,
+      sell_analysis: sellMerged,
+      sell_conclusion: sellConclusion,
+    }
+  : {
+      analyze_qualitative: qualitative,
+      run_reverse_checklist: reverse,
+      anchor_industry_pe: merged,
+      output_conclusion: conclusion,
+      ...(args.ralph_enabled ? { ralph_review: ralphReview } : {}),
+    };
 `;
 //#endregion
 //#region ../invest-calc/util.ts
@@ -489,6 +591,8 @@ function loadStageSchemas(dshRoot) {
 		reverse: readSchema("run-reverse-checklist"),
 		anchor: readSchema("anchor-industry-pe"),
 		conclusion: readSchema("output-conclusion"),
+		sell: readSchema("sell-analysis"),
+		sellConclusion: readSchema("sell-conclusion"),
 		ralph: {
 			type: "object",
 			properties: {
@@ -552,12 +656,15 @@ function prepareArgs(stockCode, stockName, opts) {
 	const net_profit_deducted = Number(context.net_profit_deducted ?? financials[0]?.net_profit_deducted ?? 0);
 	const peLow = (opts.peLow ?? Number(context.pe_low ?? 0)) || 15;
 	const peHigh = (opts.peHigh ?? Number(context.pe_high ?? 0)) || 25;
+	const mode = String(context.analysis_mode ?? "watchlist");
 	return {
 		stock_code: stockCode,
 		stock_name: stockName,
 		context,
 		blocks: scanBlocks(opts.dshRoot),
 		schemas: loadStageSchemas(opts.dshRoot),
+		mode,
+		position_context: context.position_context,
 		calc: computeCalc({
 			financials,
 			net_profit_parent,

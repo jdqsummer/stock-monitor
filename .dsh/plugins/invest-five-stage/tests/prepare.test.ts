@@ -56,7 +56,7 @@ describe('scanBlocks（② 步 blocks 目录扫描）', () => {
 describe('loadStageSchemas（E2 输出 schema 读取）', () => {
   it('读 4 个 stage output.schema.json 注入 schemas', () => {
     const schemas = loadStageSchemas(dshRoot)
-    expect(Object.keys(schemas)).toEqual(['qualitative', 'reverse', 'anchor', 'conclusion', 'ralph'])
+    expect(Object.keys(schemas)).toEqual(['qualitative', 'reverse', 'anchor', 'conclusion', 'sell', 'sellConclusion', 'ralph'])
     // qualitative schema 是 analyze-qualitative 的 output.schema.json（P3 激活：Q1/Q2 producer 字段 evidence/confidence 已入 required）
     expect(schemas.qualitative).toMatchObject({
       type: 'object',

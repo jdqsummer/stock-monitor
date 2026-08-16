@@ -38,6 +38,10 @@ export interface StageSchemas {
   conclusion: Record<string, unknown>
   /** ⑤b Ralph 自审输出 schema（P4 新增，无独立 skill 目录时给宽松 object schema）。 */
   ralph: Record<string, unknown>
+  /** position 模式第 4 段：卖出分析（4 卖出原则 + 卖出PE区间 + 规避陷阱）。 */
+  sell: Record<string, unknown>
+  /** position 模式第 5 段：卖出总结（先结论后行动建议）。 */
+  sellConclusion: Record<string, unknown>
 }
 
 export interface CalcInput {
@@ -60,6 +64,10 @@ export interface PreparedArgs {
   calc: Record<string, unknown>
   /** Q3 深度自审开关（V4-Pro 深度模式开启，P4）。 */
   ralph_enabled: boolean
+  /** 分析模式：watchlist（默认，swing/conclusion）/ position（sell/sell-conclusion）。 */
+  mode: string
+  /** position 模式持仓上下文：{ shares, cost_price, position_value, purchased_at, holding_days }。 */
+  position_context?: Record<string, unknown>
 }
 
 export interface PrepareOptions {
@@ -138,6 +146,8 @@ export function loadStageSchemas(dshRoot: string): StageSchemas {
     reverse: readSchema('run-reverse-checklist'),
     anchor: readSchema('anchor-industry-pe'),
     conclusion: readSchema('output-conclusion'),
+    sell: readSchema('sell-analysis'),
+    sellConclusion: readSchema('sell-conclusion'),
     // ⑤b ralph-review：无独立 skill 目录（.dsh/skills/ 下无 ralph 目录），给宽松 object schema。
     // （brief 原文 `readSchema('output-conclusion')` 会把结论 schema 的 properties 展开覆盖
     //  ralph 的 passed/issues/revision，故此处直接给宽松 schema，不再读结论目录。）
@@ -203,6 +213,7 @@ export function prepareArgs(
   const net_profit_deducted = Number(context.net_profit_deducted ?? financials[0]?.net_profit_deducted ?? 0)
   const peLow = (opts.peLow ?? Number(context.pe_low ?? 0)) || 15
   const peHigh = (opts.peHigh ?? Number(context.pe_high ?? 0)) || 25
+  const mode = String(context.analysis_mode ?? 'watchlist')
 
   return {
     stock_code: stockCode,
@@ -210,6 +221,8 @@ export function prepareArgs(
     context,
     blocks: scanBlocks(opts.dshRoot),
     schemas: loadStageSchemas(opts.dshRoot),
+    mode,
+    position_context: context.position_context as Record<string, unknown> | undefined,
     calc: computeCalc({
       financials,
       net_profit_parent,
