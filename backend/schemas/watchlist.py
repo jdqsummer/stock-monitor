@@ -21,3 +21,4 @@ class WatchlistItemOut(BaseModel):
     distance_pct: float | None = None        # 距击球区（%）
     signal: str | None = None                # green/yellow/red/none/unquantifiable
     unassessable_risk: bool | None = None    # 风险否决标记
+    analysis_source: str | None = None       # dsh-llm | rule-based | mock | manual

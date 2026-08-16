@@ -132,6 +132,7 @@ class TestWatchlistAPI:
         assert item["swing_price"] is None
         assert item["distance_pct"] is None
         assert item["signal"] is None
+        assert item["analysis_source"] is None
 
     @pytest.mark.asyncio
     async def test_list_enriched_with_analysis(self, client, mock_redis, db_session):
@@ -147,6 +148,7 @@ class TestWatchlistAPI:
             swing_price_low=1147, swing_price_high=2456,
             current_market_cap=19500, current_price=1560,
             distance_pct=-38.9, signal="green", data_date=date(2026, 8, 11),
+            analysis_source="dsh-llm",
         ))
         await db_session.commit()
 
@@ -159,6 +161,7 @@ class TestWatchlistAPI:
         # 实时价 1560 vs 击球区上沿 2456 → 距击球区 -36.5%，信号绿
         assert item["distance_pct"] == -36.5
         assert item["signal"] == "green"
+        assert item["analysis_source"] == "dsh-llm"
 
     @pytest.mark.asyncio
     async def test_list_quote_failure_degrades(self, client, mock_redis):

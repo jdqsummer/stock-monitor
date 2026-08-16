@@ -74,6 +74,8 @@ async def list_watchlist(
     for item, quote in zip(items, quotes):
         out = _to_out(item, quote)
         snap = snapshots_by_code.get(item.stock_code)
+        if snap is not None:
+            out.analysis_source = snap.analysis_source
         if snap is not None and quote is not None:
             out.swing_market_cap = f"{snap.swing_market_cap_low:.0f}-{snap.swing_market_cap_high:.0f}亿"
             out.swing_price = f"{snap.swing_price_low:.0f}-{snap.swing_price_high:.0f}元"
