@@ -104,6 +104,20 @@ class AnalysisSnapshot(Base):
     unassessable_risk: Mapped[bool] = mapped_column(Boolean, default=False)      # 安全边际无法评估
     stage_results: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON：五段结构化结果
     financials_8p: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON：近8期明细
+    # ── 持仓卖出分析（sell 组，与 swing 组并列，position 模式写入）──
+    analysis_mode: Mapped[str] = mapped_column(String(20), default="watchlist")
+    sell_pe_low: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_pe_high: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_pe_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sell_market_cap_low: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_market_cap_high: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_price_low: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_price_high: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_distance_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sell_signal: Mapped[str] = mapped_column(String(20), default="none")
+    sell_action: Mapped[str | None] = mapped_column(String(20), nullable=True)  # hold/sell/immediate_sell
+    sell_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)      # JSON：4 原则判断 + 规避陷阱
+    stage_results_sell: Mapped[str | None] = mapped_column(Text, nullable=True) # JSON：持仓模式五段
     analysis_source: Mapped[str] = mapped_column(String(20), default="manual")
     analysis_model: Mapped[str | None] = mapped_column(String(50), nullable=True)   # 实际路由模型（dsh-llm 路径）；降级 none
     analysis_degraded: Mapped[bool] = mapped_column(Boolean, default=False)         # rule-based/mock 时为 True

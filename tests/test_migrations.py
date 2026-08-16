@@ -145,3 +145,34 @@ def test_migration_from_prev_head_adds_reminders(tmp_path):
     assert _reminder_cols(db_path) == set()   # 无 reminders 表
     _run_alembic(db_path, "head")
     assert "message" in _reminder_cols(db_path)
+
+
+# ── Task 1：持仓分析 — Position 可空三字段 + industry + 唯一约束；AnalysisSnapshot sell 组 ──
+
+def _position_cols(db_path: str) -> set[str]:
+    conn = sqlite3.connect(db_path)
+    try:
+        return {r[1] for r in conn.execute("PRAGMA table_info(positions)")}
+    finally:
+        conn.close()
+
+
+def test_migrations_add_position_and_sell_columns(tmp_path):
+    db = str(tmp_path / "mig.db")
+    _run_alembic(db, "head")
+    cols = _position_cols(db)
+    assert {"shares", "cost_price", "purchased_at", "industry"} <= cols
+    # shares/cost_price 可为空（空持仓行数据基础）
+    # PRAGMA table_info 第 4 列是 notnull：1=NOT NULL，0=可空
+    conn = sqlite3.connect(db)
+    try:
+        shares_notnull = [r[3] for r in conn.execute(
+            "PRAGMA table_info(positions)") if r[1] == "shares"][0]
+        assert shares_notnull == 0
+    finally:
+        conn.close()
+    snap = _snapshot_cols(db)
+    assert {"analysis_mode", "sell_pe_low", "sell_pe_high", "sell_pe_rationale",
+            "sell_market_cap_low", "sell_market_cap_high", "sell_price_low",
+            "sell_price_high", "sell_distance_pct", "sell_signal", "sell_action",
+            "sell_analysis", "stage_results_sell"} <= snap
