@@ -6,6 +6,7 @@ from backend.api.auth import router as auth_router
 from backend.api.chat import router as chat_router
 from backend.api.config import router as config_router
 from backend.api.dashboard import router as dashboard_router
+from backend.api.portfolio import router as portfolio_router
 from backend.api.reminders import router as reminders_router
 from backend.api.watchlist import router as watchlist_router
 
@@ -15,5 +16,6 @@ api_router.include_router(config_router)
 api_router.include_router(analysis_router)
 api_router.include_router(chat_router)
 api_router.include_router(dashboard_router)
+api_router.include_router(portfolio_router)
 api_router.include_router(watchlist_router)
 api_router.include_router(reminders_router)
