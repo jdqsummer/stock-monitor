@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 from typing import Protocol, TypedDict
+from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel
@@ -315,8 +316,14 @@ class DshOrchestrator:
         return bool(settings.DSH_ENABLED and settings.DSH_ENGINE_URL)
 
     def _session_id(self, code: str) -> str:
-        """session_id = code-date（跨分析可续，I2 天然去重键）。"""
-        return f"{code}-{date.today().isoformat()}"
+        """session_id = code-date-uuid8：每次分析唯一，永不复用旧会话。
+
+        原 code-date 复用（I2 天然去重键）在生产触发 rc.6 会话恢复缺陷：同一股票同一天
+        第二次分析起，harness 恢复旧会话（持久化只留 header、无消息内容）→ turn 立即
+        结束 → 「未找到 invest-five-stage 工具输出（五段未完成）」→ 降级规则链。
+        实测（2026-08-17）：新会话五段 FOUND，复用空会话 0.8s NONE。唯一化根治。
+        """
+        return f"{code}-{date.today().isoformat()}-{uuid4().hex[:8]}"
 
     async def analyze(self, state: dict, model: str = "", api_keys: dict | None = None) -> dict:
         """执行 DSH 五段分析，返回 AnalysisState 兼容更新字典。

@@ -297,14 +297,21 @@ async def test_orchestrator_analyze_main_path():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_analyze_uses_code_date_session_id():
+async def test_orchestrator_analyze_uses_unique_session_id():
+    """会话 ID 每次唯一（code-date-uuid）：杜绝 rc.6 复用旧会话 → turn 立即结束 → 五段未完成。
+
+    生产实测（2026-08-17）：原 code-date 复用导致同股同日第二次分析起必然快败，
+    diag1 新会话五段 FOUND、diag2 复用空会话 0.8s NONE。改为每次唯一，永不复用。
+    """
     orch = DshOrchestrator(runner=FakeRunner())
     await orch.analyze(STATE, model="")
-    call = orch._runner.calls[0]
-    assert call["session_id"].startswith("600519-")
-    assert call["context"]["code"] == "600519"
+    await orch.analyze(STATE, model="")
+    calls = orch._runner.calls
+    assert calls[0]["session_id"].startswith("600519-")
+    assert calls[0]["session_id"] != calls[1]["session_id"]   # 每次唯一，不跨次复用
+    assert calls[0]["context"]["code"] == "600519"
     # 未指定 model → 默认 flash
-    assert call["model"] == "deepseek-v4-flash"
+    assert calls[0]["model"] == "deepseek-v4-flash"
 
 
 def test_budget_tracker_check_record():
