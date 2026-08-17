@@ -110,7 +110,10 @@ export function Watchlist() {
     setAnalyzing(true);
     setProgress('提交任务...');
     try {
-      const res = await analysisApi.analyzeWatchlist(selectedKeys.map(String), model);
+      // 勾选行 key 是自选记录 id(UUID)，后端要的是 stock_code —— 先映射再提交，
+      // 否则后端拿 UUID 当股票代码采集 → 标的解析失败
+      const selectedCodes = data.filter(d => selectedKeys.includes(d.id)).map(d => d.stock_code);
+      const res = await analysisApi.analyzeWatchlist(selectedCodes, model);
       startPolling(res.data.data.job_id);
     } catch {
       if (pollTimer.current) {

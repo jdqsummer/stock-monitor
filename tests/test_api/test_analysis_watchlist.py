@@ -25,8 +25,9 @@ class TestWatchlistAnalyzeAPI:
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_analyze_watchlist_returns_job_id(self, client, monkeypatch):
+    async def test_analyze_watchlist_returns_job_id(self, client, db_session, monkeypatch):
         from backend.api import analysis as analysis_api
+        from backend.models.stock import WatchlistItem
 
         calls = []
         def fake_submit(user_id, codes, source, model=""):
@@ -35,6 +36,12 @@ class TestWatchlistAnalyzeAPI:
         monkeypatch.setattr(analysis_api.analysis_job_service, "submit", fake_submit)
 
         token = await _auth_token(client)
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+        for code, name in (("600519", "贵州茅台"), ("000858", "五粮液")):
+            db_session.add(WatchlistItem(user_id=user_id, stock_code=code, stock_name=name))
+        await db_session.commit()
+
         resp = await client.post(
             "/api/analysis/watchlist/analyze", json={"codes": ["600519", "000858"]},
             headers={"Authorization": f"Bearer {token}"},
@@ -45,9 +52,38 @@ class TestWatchlistAnalyzeAPI:
         assert calls[0][2] == "manual"
 
     @pytest.mark.asyncio
-    async def test_watchlist_analyze_accepts_model(self, client, monkeypatch):
+    async def test_analyze_rejects_codes_not_in_watchlist(self, client, db_session, monkeypatch):
+        """防御：提交不在用户自选列表的 code（如前端误传自选记录 UUID 当股票代码）→ 400，不进分析链"""
+        from backend.api import analysis as analysis_api
+        from backend.models.stock import WatchlistItem
+
+        called = []
+        def fake_submit(user_id, codes, source, model=""):
+            called.append(codes)
+            return "job_guard"
+        monkeypatch.setattr(analysis_api.analysis_job_service, "submit", fake_submit)
+
+        token = await _auth_token(client)
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+
+        db_session.add(WatchlistItem(user_id=user_id, stock_code="600519", stock_name="贵州茅台"))
+        await db_session.commit()
+
+        resp = await client.post(
+            "/api/analysis/watchlist/analyze",
+            json={"codes": ["600519", "0d55f8fe-883a-4c1b-b3a5-faf04f136fa4"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 400
+        assert "0d55f8fe" in resp.json()["detail"]
+        assert called == []  # 无效代码不触发 submit
+
+    @pytest.mark.asyncio
+    async def test_watchlist_analyze_accepts_model(self, client, db_session, monkeypatch):
         """I6：批量分析统一模型透传 → submit(model=...)（Task 11 前端模型下拉消费）"""
         from backend.api import analysis as analysis_api
+        from backend.models.stock import WatchlistItem
 
         calls = []
         def fake_submit(user_id, codes, source, model=""):
@@ -56,6 +92,11 @@ class TestWatchlistAnalyzeAPI:
         monkeypatch.setattr(analysis_api.analysis_job_service, "submit", fake_submit)
 
         token = await _auth_token(client)
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me.json()["data"]["id"]
+        db_session.add(WatchlistItem(user_id=user_id, stock_code="600519", stock_name="贵州茅台"))
+        await db_session.commit()
+
         resp = await client.post(
             "/api/analysis/watchlist/analyze",
             json={"codes": ["600519"], "model": "deepseek-v4-pro"},

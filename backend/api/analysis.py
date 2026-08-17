@@ -17,6 +17,7 @@ from backend.models.user import User
 from backend.services.analysis_job_svc import analysis_job_service
 from backend.services.snapshot_svc import SnapshotService
 from backend.services.stock_data_svc import StockDataService
+from backend.services.watchlist_svc import WatchlistService
 
 logger = logging.getLogger(__name__)
 
@@ -254,8 +255,20 @@ async def agent_health():
 async def analyze_watchlist(
     req: WatchlistAnalyzeRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """手动批量分析自选股（多选/全选）→ 异步 job"""
+    # 防御：codes 必须是当前用户自选股代码。前端勾选行曾把自选记录 id(UUID) 误当
+    # stock_code 发送，导致数据采集拿 UUID 查行情 → 标的解析失败（静默失败）。
+    # 与持仓端 position_ids→stock_code 映射对齐，无效代码直接 400 拦截，不进分析链。
+    items = await WatchlistService.list_items(db, current_user.id)
+    valid = {it.stock_code for it in items}
+    unknown = [c for c in req.codes if c not in valid]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"无效的股票代码（不在自选列表）: {', '.join(unknown)}",
+        )
     job_id = analysis_job_service.submit(current_user.id, req.codes, source="manual", model=req.model)
     return {"code": 0, "data": {"job_id": job_id}, "message": "分析任务已提交"}
 
