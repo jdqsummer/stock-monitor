@@ -187,3 +187,104 @@ async def test_save_snapshot_writes_sell_group(db_session):
     assert snap.sell_signal == "red"
     assert snap.sell_action == "sell"
     assert "price_crazy" in snap.sell_analysis
+
+
+def _position_report() -> AnalysisReport:
+    """持仓(position)模式报告：sell 组有值，watchlist 组为空（与 DSH position 结果一致）。"""
+    return AnalysisReport(
+        code="600519", name="贵州茅台", data_date="2026-08-16",
+        analysis_mode="position",
+        sell_pe_low=30.0, sell_pe_high=35.0, sell_pe_rationale="疯狂卖出",
+        sell_market_cap_low=960.0, sell_market_cap_high=1225.0,
+        sell_price_low=76.0, sell_price_high=98.0,
+        sell_distance_pct=38.2, sell_signal="red", sell_action="sell",
+        sell_analysis={"principles": {"price_crazy": {"triggered": True}}},
+        stage_results_sell={"sell_analysis": {"sell_action": "sell"}},
+    )
+
+
+def _watchlist_report() -> AnalysisReport:
+    """自选(watchlist)模式报告：watchlist 组有值，sell 组为空。"""
+    return AnalysisReport(
+        code="600519", name="贵州茅台", data_date="2026-08-11",
+        annual_profit_low=688, annual_profit_high=842, profit_method="H1×2",
+        pe_low=20, pe_high=35,
+        swing_market_cap_low=13760, swing_market_cap_high=29470,
+        swing_price_low=1147, swing_price_high=2456,
+        current_market_cap=19500, current_price=1560,
+        distance_pct=-38.9, signal="green", signal_label="击球区",
+        final_rating="🟢", recommendation="可分批建仓", conclusion="买入逻辑成立",
+        stage_results={"anchor_industry_pe": {"pe_low": 20, "pe_high": 35},
+                       "analyze_qualitative": {"qualitative_analysis": "质地优良"}},
+        analysis_mode="watchlist",
+    )
+
+
+@pytest.mark.asyncio
+async def test_position_analysis_does_not_overwrite_watchlist_fields(db_session):
+    """持仓(position)分析不得覆盖自选(watchlist)分析结果 — 同一 (user, code) 行双组独立保存。"""
+    # 先做自选分析（watchlist 组有值）
+    await SnapshotService.save_snapshot(db_session, "u1", _watchlist_report())
+    # 再做持仓分析（position 组有值，watchlist 组为空）
+    snap = await SnapshotService.save_snapshot(db_session, "u1", _position_report())
+
+    # watchlist 组保留自选分析结果，不被 position 清空
+    assert snap.swing_price_high == 2456
+    assert snap.signal == "green"
+    assert snap.signal_label == "击球区"
+    assert snap.recommendation == "可分批建仓"
+    assert snap.conclusion == "买入逻辑成立"
+    assert snap.distance_pct == -38.9
+    assert json.loads(snap.stage_results)["anchor_industry_pe"]["pe_low"] == 20
+    # sell 组为持仓分析结果
+    assert snap.sell_signal == "red"
+    assert snap.sell_action == "sell"
+    assert snap.sell_pe_high == 35.0
+    # analysis_mode 记录最近一次模式
+    assert snap.analysis_mode == "position"
+
+
+@pytest.mark.asyncio
+async def test_watchlist_analysis_does_not_overwrite_sell_fields(db_session):
+    """自选(watchlist)分析不得覆盖持仓(position)卖出分析结果。"""
+    # 先做持仓分析（sell 组有值）
+    await SnapshotService.save_snapshot(db_session, "u1", _position_report())
+    # 再做自选分析（watchlist 组有值，sell 组为空）
+    snap = await SnapshotService.save_snapshot(db_session, "u1", _watchlist_report())
+
+    # sell 组保留持仓分析结果，不被 watchlist 清空
+    assert snap.sell_signal == "red"
+    assert snap.sell_action == "sell"
+    assert snap.sell_pe_high == 35.0
+    assert snap.sell_pe_rationale == "疯狂卖出"
+    assert "price_crazy" in snap.sell_analysis
+    # watchlist 组为自选分析结果
+    assert snap.swing_price_high == 2456
+    assert snap.signal == "green"
+    assert snap.conclusion == "买入逻辑成立"
+    assert snap.analysis_mode == "watchlist"
+
+
+@pytest.mark.asyncio
+async def test_position_degraded_without_sell_data_writes_watchlist_group(db_session):
+    """position 降级（无 sell 数据，仅 rule-based 算出的 watchlist 确定性字段）→
+    按 watchlist 组写入，并保留既有 sell 组不被清空。"""
+    await SnapshotService.save_snapshot(db_session, "u1", _position_report())
+    degraded = AnalysisReport(
+        code="600519", name="贵州茅台", data_date="2026-08-17",
+        analysis_mode="position",            # mode 仍是 position
+        annual_profit_low=688, annual_profit_high=842,
+        pe_low=20, pe_high=35, swing_price_high=2456,
+        distance_pct=-38.9, signal="green",
+        stage_results={"anchor_industry_pe": {"pe_low": 20}},
+        analysis_source="rule-based", analysis_degraded=True,
+    )
+    snap = await SnapshotService.save_snapshot(db_session, "u1", degraded)
+
+    # 降级算出的 watchlist 字段写入
+    assert snap.swing_price_high == 2456
+    assert snap.signal == "green"
+    assert snap.analysis_degraded is True
+    # 既有 sell 组保留
+    assert snap.sell_signal == "red"
+    assert snap.sell_action == "sell"

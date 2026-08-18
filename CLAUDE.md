@@ -69,6 +69,7 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 5. **`/trigger` 超时须覆盖整次五段分析**（5 个 agent() 串行 ~10min）→ `DSH_TIMEOUT_SECONDS=1800`，`DSH_ENGINE_URL` 默认 `http://dsh-engine:8001`
 6. **DSH 插件 bundle（`.dsh/plugins/invest-*/index.mjs`）是手工维护产物**，不能 rolldown 重建，须按 P3 文档手工同步单行
 7. **compose 网络别名 `backend`**：DSH invest-data-mcp 连 `http://backend:8000/mcp/investdata`，service 名是 `app`，缺别名则 MCP 通道建立失败
+8. **`save_snapshot` 按模式隔离写字段组**：`analysis_snapshots` 每 `(user_id, stock_code)` 一行，watchlist/sell 双组共存。position 保存只写 sell 组、watchlist 保存只写 watchlist 组，**互不覆盖**（否则持仓分析会清空自选安全边际结果）。`analysis_mode` 记最近一次模式；前端 `FiveStageAnalysis` 按 `stage_results` 是否含 `anchor_industry_pe` 段判定安全边际视图，不依赖单值 `analysis_mode`
 
 ## 设计原则
 

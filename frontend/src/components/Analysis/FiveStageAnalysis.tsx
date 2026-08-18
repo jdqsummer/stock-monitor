@@ -41,8 +41,22 @@ function LegacyView({ snap }: { snap: WatchlistBoardRow }) {
 }
 
 export function FiveStageAnalysis({ snap }: { snap: WatchlistBoardRow }) {
-  // 持仓模式快照（stage_results 无 anchor_industry_pe 段）→ 切持仓视图（卖出分析替代安全边际段），
-  // 避免 watchlist 安全边际视图强解 position 结果：安全边际卡全"—"、结论卡却显示卖出分析结论。
+  // 视图按内容而非单值 analysis_mode 判定：自选(安全边际)五段以 stage_results 含 anchor_industry_pe
+  // 段为标志。后端 save_snapshot 按模式隔离写，自选分析结果不会被之后的持仓分析覆盖，故自选详情页
+  // 只要 stage_results 里有 watchlist 五段，无论 analysis_mode 当前为何值都显示安全边际视图。
+  const hasWatchStages = !!snap.stage_results?.anchor_industry_pe;
+  if (hasWatchStages) {
+    return (
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <StageData snap={snap} />
+        <StageQualitative snap={snap} />
+        <StageReverse snap={snap} />
+        <StageSwingZone snap={snap} />
+        <StageConclusion snap={snap} />
+      </Space>
+    );
+  }
+  // 无 watchlist 五段 → 持仓模式快照（卖出分析替代安全边际段）或旧版兜底。
   if (snap.analysis_mode === 'position') {
     return <PositionFiveStageAnalysis snap={snap} />;
   }
