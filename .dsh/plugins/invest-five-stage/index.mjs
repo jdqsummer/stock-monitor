@@ -65,8 +65,25 @@ const anchor = !isPosition
       { schema: args.schemas.anchor, label: 'anchor', phase: '④估值' }
     )
   : undefined;
-// ④b 合并：anchor 三字段 + calc 确定性字段（契约钉死 #4 定稿形状；position 模式跳过）
-const merged = !isPosition ? { ...anchor, ...args.calc } : undefined;
+// ④b 合并：anchor 三字段 + calc 确定性字段，但击球区/距击球区/信号灯必须用 LLM 在 anchor 段
+// 定的 PE 重算（calc 预算是默认 15-25，LLM 定的 PE 才是权威；否则 ④ 确定性信号与 ⑤ 结论段
+// 因 PE 不一致而冲突，如 2026-08-18 东阿阿胶 13-16 vs 15-25 → ④🟢 vs ⑤🟡）。position 模式跳过。
+// PE 非法（≤0 或 high<low）或缺失时回退行业锚点（calc.pe_anchor.anchor），无锚点回退 15/25。
+const merged = !isPosition
+  ? {
+      ...anchor,
+      ...args.calc,
+      ...recalcSwingZone({
+        annual_profit_low: args.calc.annual_profit_low,
+        annual_profit_high: args.calc.annual_profit_high,
+        llm_pe_low: anchor?.pe_low,
+        llm_pe_high: anchor?.pe_high,
+        anchor_pe: args.calc.pe_anchor?.anchor || null,
+        total_shares: Number(context.total_shares ?? 0),
+        current_price: Number(context.current_price ?? 0),
+      }),
+    }
+  : undefined;
 // ④ position 模式：卖出分析（LLM 判断 4 原则 + 定卖出PE区间；确定性卖出区 host 兜底）。
 // ⑤ position 模式：sell-conclusion 先结论后建议。
 // ⚠️ 脚本 realm（vm.createContext）仅注入 agent/parallel/pipeline/phase/log/args 全局，
@@ -129,6 +146,40 @@ function calcSellZone(input) {
   return { sell_market_cap_low, sell_market_cap_high, sell_price_low, sell_price_high,
            sell_distance_pct, sell_signal };
 }
+function recalcSwingZone(input) {
+  const { annual_profit_low, annual_profit_high, anchor_pe, total_shares, current_price } = input;
+  const anchorFallback = anchor_pe || [15, 25];
+  let pe_low = Number(input.llm_pe_low);
+  let pe_high = Number(input.llm_pe_high);
+  if (!Number.isFinite(pe_low) || !Number.isFinite(pe_high) || pe_low <= 0 || pe_high < pe_low) {
+    pe_low = anchorFallback[0];
+    pe_high = anchorFallback[1];
+  }
+  const swing_market_cap_low = roundHalfEven(annual_profit_low * pe_low, 2);
+  const swing_market_cap_high = roundHalfEven(annual_profit_high * pe_high, 2);
+  let swing_price_low = 0;
+  let swing_price_high = 0;
+  if (total_shares > 0) {
+    swing_price_low = roundHalfEven(swing_market_cap_low / total_shares, 2);
+    swing_price_high = roundHalfEven(swing_market_cap_high / total_shares, 2);
+  }
+  const distance_pct = swing_price_high > 0
+    ? roundHalfEven((current_price - swing_price_high) / swing_price_high * 100, 1)
+    : 999.9;
+  let signal, signal_label;
+  if (annual_profit_low <= 0) {
+    signal = "unquantifiable"; signal_label = "无法量化";
+  } else if (distance_pct <= 0) {
+    signal = "green"; signal_label = "击球区";
+  } else if (distance_pct <= 50) {
+    signal = "yellow"; signal_label = "观察区";
+  } else {
+    signal = "red"; signal_label = "高估区";
+  }
+  return { pe_low, pe_high, swing_market_cap_low, swing_market_cap_high,
+           swing_price_low, swing_price_high, distance_pct, signal, signal_label };
+}
+// ⚠️ 内联 recalcSwingZone 与 prepare.ts 导出版本逐字同步（脚本 realm 无模块作用域，不能复用导出）。
 // ⚠️ 内联 calcSellZone 与 prepare.ts 导出版本逐字同步（脚本 realm 无模块作用域，不能复用导出）。
 const sell = isPosition
   ? await agent(
@@ -675,6 +726,50 @@ function calcSellZone(input) {
 	}
 	return { sell_market_cap_low, sell_market_cap_high, sell_price_low, sell_price_high,
 	         sell_distance_pct, sell_signal };
+}
+/**
+* ④b 段：用 LLM 在 anchor 段定的 PE 重算击球区 + 安全边际 + 信号灯（回归 2026-08-18）。
+*
+* 背景：computeCalc 在 prepareArgs 里用默认 PE 15-25 预算（后端 context 不含 pe_low/pe_high），
+* 而 anchor 段 LLM 独立定击球 PE（如东阿阿胶 13-16）——若 merged 直接 { ...anchor, ...calc }，
+* calc 的默认 15-25 会覆盖 LLM 的 PE，④ 段确定性信号与 ⑤ 段 LLM 结论因 PE 不一致而冲突
+* （④ 🟢 vs ⑤ 🟡）。本函数以 LLM 定的 PE 为准重算，LLM PE 非法（≤0 或 high<low）或缺失时
+* 回退行业锚点（anchor_pe），无锚点回退默认 15/25（同锚定方法论）。
+*
+* 脚本 realm 无模块作用域，与 FIXED_SCRIPT 内联副本逐字同步——改此函数须同步 script.ts / index.mjs。
+*/
+function recalcSwingZone(input) {
+	const { annual_profit_low, annual_profit_high, anchor_pe, total_shares, current_price } = input;
+	const anchorFallback = anchor_pe || [15, 25];
+	let pe_low = Number(input.llm_pe_low);
+	let pe_high = Number(input.llm_pe_high);
+	if (!Number.isFinite(pe_low) || !Number.isFinite(pe_high) || pe_low <= 0 || pe_high < pe_low) {
+		pe_low = anchorFallback[0];
+		pe_high = anchorFallback[1];
+	}
+	const swing_market_cap_low = roundHalfEven(annual_profit_low * pe_low, 2);
+	const swing_market_cap_high = roundHalfEven(annual_profit_high * pe_high, 2);
+	let swing_price_low = 0;
+	let swing_price_high = 0;
+	if (total_shares > 0) {
+		swing_price_low = roundHalfEven(swing_market_cap_low / total_shares, 2);
+		swing_price_high = roundHalfEven(swing_market_cap_high / total_shares, 2);
+	}
+	const distance_pct = swing_price_high > 0
+		? roundHalfEven((current_price - swing_price_high) / swing_price_high * 100, 1)
+		: 999.9;
+	let signal, signal_label;
+	if (annual_profit_low <= 0) {
+		signal = "unquantifiable"; signal_label = "无法量化";
+	} else if (distance_pct <= 0) {
+		signal = "green"; signal_label = "击球区";
+	} else if (distance_pct <= 50) {
+		signal = "yellow"; signal_label = "观察区";
+	} else {
+		signal = "red"; signal_label = "高估区";
+	}
+	return { pe_low, pe_high, swing_market_cap_low, swing_market_cap_high,
+	         swing_price_low, swing_price_high, distance_pct, signal, signal_label };
 }
 /**
 * prepareArgs：组装脚本只读上下文（P2 真实现，替代 P1 mock 桩）。

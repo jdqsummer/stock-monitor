@@ -245,6 +245,81 @@ export function calcSellZone(input: CalcSellZoneInput): CalcSellZoneResult {
            sell_distance_pct, sell_signal }
 }
 
+export interface RecalcSwingZoneInput {
+  annual_profit_low: number
+  annual_profit_high: number
+  /** LLM 在 anchor 段定的击球 PE 下限（缺失/非法时回退行业锚点）。 */
+  llm_pe_low?: number
+  /** LLM 在 anchor 段定的击球 PE 上限（缺失/非法时回退行业锚点）。 */
+  llm_pe_high?: number
+  /** 行业锚点 PE 区间（回退用；缺失 → 默认 15/25，与 computeCalc 缺省一致）。 */
+  anchor_pe?: [number, number] | null
+  total_shares: number
+  current_price: number
+}
+
+export interface RecalcSwingZoneResult {
+  pe_low: number
+  pe_high: number
+  swing_market_cap_low: number
+  swing_market_cap_high: number
+  swing_price_low: number
+  swing_price_high: number
+  distance_pct: number
+  signal: string
+  signal_label: string
+}
+
+/**
+ * ④b 段：用 LLM 在 anchor 段定的 PE 重算击球区 + 安全边际 + 信号灯（回归 2026-08-18）。
+ *
+ * 背景：computeCalc 在 prepareArgs 里用默认 PE 15-25 预算（后端 context 不含 pe_low/pe_high），
+ * 而 anchor 段 LLM 独立定击球 PE（如东阿阿胶 13-16）——若 merged 直接 { ...anchor, ...calc }，
+ * calc 的默认 15-25 会覆盖 LLM 的 PE，④ 段确定性信号与 ⑤ 段 LLM 结论因 PE 不一致而冲突
+ * （④ 🟢 vs ⑤ 🟡）。本函数以 LLM 定的 PE 为准重算，LLM PE 非法（≤0 或 high<low）或缺失时
+ * 回退行业锚点（anchor_pe），无锚点回退默认 15/25（同锚定方法论）。
+ *
+ * 脚本 realm 无模块作用域，与 FIXED_SCRIPT 内联副本逐字同步——改此函数须同步 script.ts / index.mjs。
+ */
+export function recalcSwingZone(input: RecalcSwingZoneInput): RecalcSwingZoneResult {
+  const { annual_profit_low, annual_profit_high, anchor_pe, total_shares, current_price } = input
+  const anchorFallback = anchor_pe || [15, 25]
+  let pe_low = Number(input.llm_pe_low)
+  let pe_high = Number(input.llm_pe_high)
+  if (!Number.isFinite(pe_low) || !Number.isFinite(pe_high) || pe_low <= 0 || pe_high < pe_low) {
+    pe_low = anchorFallback[0]
+    pe_high = anchorFallback[1]
+  }
+  const swing_market_cap_low = roundHalfEven(annual_profit_low * pe_low, 2)
+  const swing_market_cap_high = roundHalfEven(annual_profit_high * pe_high, 2)
+  let swing_price_low = 0
+  let swing_price_high = 0
+  if (total_shares > 0) {
+    swing_price_low = roundHalfEven(swing_market_cap_low / total_shares, 2)
+    swing_price_high = roundHalfEven(swing_market_cap_high / total_shares, 2)
+  }
+  const distance_pct = swing_price_high > 0
+    ? roundHalfEven((current_price - swing_price_high) / swing_price_high * 100, 1)
+    : 999.9
+  let signal: string
+  let signal_label: string
+  if (annual_profit_low <= 0) {
+    signal = 'unquantifiable'
+    signal_label = '无法量化'
+  } else if (distance_pct <= 0) {
+    signal = 'green'
+    signal_label = '击球区'
+  } else if (distance_pct <= 50) {
+    signal = 'yellow'
+    signal_label = '观察区'
+  } else {
+    signal = 'red'
+    signal_label = '高估区'
+  }
+  return { pe_low, pe_high, swing_market_cap_low, swing_market_cap_high,
+           swing_price_low, swing_price_high, distance_pct, signal, signal_label }
+}
+
 /**
  * prepareArgs：组装脚本只读上下文（P2 真实现，替代 P1 mock 桩）。
  * opts.context 为外部注入的基础数据（P3 Orchestrator 从 Python collect_data 注入；
