@@ -210,6 +210,8 @@ export interface Reminder {
   name: string;
   message: string;
   signal: string;
+  category: string;
+  title: string | null;
   reminder_date: string;
   created_at: string;
   read_at: string | null;
