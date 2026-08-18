@@ -4,6 +4,8 @@ import { Layout, Button, Dropdown } from 'antd';
 import { UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { Sidebar } from './Sidebar';
 import { ReminderBell } from './ReminderBell';
+import { HeaderTicker } from './HeaderTicker';
+import { useUnreadMessages } from '@/hooks/useUnreadMessages';
 import { useAppStore } from '@/store';
 import { authApi } from '@/api/client';
 
@@ -12,6 +14,7 @@ const { Header, Sider, Content } = Layout;
 export function AppLayout() {
   const navigate = useNavigate();
   const { user, setUser } = useAppStore();
+  const { items, enabled, markAllRead } = useUnreadMessages();
 
   useEffect(() => {
     authApi.getMe().then((res) => {
@@ -37,11 +40,12 @@ export function AppLayout() {
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0 24px', gap: 12 }}>
-          <ReminderBell />
+          <ReminderBell items={items} enabled={enabled} markAllRead={markAllRead} />
           <Dropdown menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: handleLogout }] }}>
             <Button icon={<UserOutlined />}>{user?.email || user?.username || '用户'}</Button>
           </Dropdown>
         </Header>
+        <HeaderTicker items={items} enabled={enabled} />
         <Content style={{ margin: 16, padding: 24, background: '#fff', borderRadius: 8 }}>
           <Outlet />
         </Content>

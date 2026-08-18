@@ -27,3 +27,21 @@ body {
 .editable-cell-empty {
   color: #888;
 }
+
+.header-ticker {
+  background: #141414;
+  color: #ffd666;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.header-ticker-track {
+  display: inline-block;
+  padding-left: 100%;
+  animation: header-ticker-scroll 30s linear infinite;
+}
+@keyframes header-ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
