@@ -460,3 +460,122 @@ async def test_global_semaphore_caps_total_concurrency(db_session, test_session_
     assert probe.max_active <= 2          # 全局闸钳制：两 job 各 3 并发，总并发仍 ≤2
     assert svc.get_status(job_a)["done"] == 3
     assert svc.get_status(job_b)["done"] == 3
+
+
+@pytest.mark.asyncio
+async def test_failed_analysis_writes_system_message(db_session, test_session_factory):
+    """chain 抛异常 → 写 dsh_error 系统消息"""
+    from sqlalchemy import select
+    from backend.models.reminder import Reminder
+    from backend.models.stock import WatchlistItem
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="贵州茅台"))
+    await db_session.commit()
+
+    class BoomChain:
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None, mode="watchlist", position_context=None):
+            raise RuntimeError("connection refused")
+
+    svc = AnalysisJobService(chain=BoomChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "manual")
+    await svc._run(job_id)
+
+    assert svc.get_status(job_id)["results"]["600519"] == STATUS_FAILED
+    rows = (await db_session.execute(select(Reminder))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].category == "dsh_error"
+    assert "connection refused" in rows[0].message
+
+
+@pytest.mark.asyncio
+async def test_402_error_writes_llm_error_message(db_session, test_session_factory):
+    """LLM 402 余额不足 → llm_error 系统消息（错误文本分类）"""
+    from sqlalchemy import select
+    from backend.models.reminder import Reminder
+    from backend.models.stock import WatchlistItem
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="贵州茅台"))
+    await db_session.commit()
+
+    class BoomChain:
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None, mode="watchlist", position_context=None):
+            raise RuntimeError("DSH 宿主错误: 402 Insufficient Balance")
+
+    svc = AnalysisJobService(chain=BoomChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "manual")
+    await svc._run(job_id)
+
+    rows = (await db_session.execute(select(Reminder))).scalars().all()
+    assert rows[0].category == "llm_error"
+    assert rows[0].title == "LLM API 错误：余额不足"
+
+
+@pytest.mark.asyncio
+async def test_degraded_report_writes_system_message(db_session, test_session_factory):
+    """报告 analysis_degraded → 写分类错误消息"""
+    from sqlalchemy import select
+    from backend.models.reminder import Reminder
+    from backend.models.stock import WatchlistItem
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="贵州茅台"))
+    await db_session.commit()
+
+    class DegradedChain:
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None, mode="watchlist", position_context=None):
+            report = _report(code, name=stock_name or "测试股", industry=industry or "")
+            report.analysis_degraded = True
+            report.errors = ["DSH 分析降级: 402 Insufficient Balance"]
+            return report
+
+    svc = AnalysisJobService(chain=DegradedChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "manual")
+    await svc._run(job_id)
+
+    assert svc.get_status(job_id)["results"]["600519"] == STATUS_DONE
+    rows = (await db_session.execute(select(Reminder))).scalars().all()
+    assert rows[0].category == "llm_error"
+
+
+@pytest.mark.asyncio
+async def test_budget_warning_writes_llm_error_message(db_session, test_session_factory):
+    """成本预算超限 warning → llm_error 系统消息"""
+    from sqlalchemy import select
+    from backend.models.reminder import Reminder
+    from backend.models.stock import WatchlistItem
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="贵州茅台"))
+    await db_session.commit()
+
+    class BudgetChain:
+        async def analyze(self, code, stock_name="", industry="", model="", api_keys=None, mode="watchlist", position_context=None):
+            report = _report(code, name=stock_name or "测试股", industry=industry or "")
+            report.warnings_list = ["[成本监控] 单次分析 token 预算超限 1000 > 500"]
+            return report
+
+    svc = AnalysisJobService(chain=BudgetChain(), llm_available=lambda: True,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "manual")
+    await svc._run(job_id)
+
+    rows = (await db_session.execute(select(Reminder))).scalars().all()
+    assert rows[0].category == "llm_error"
+
+
+@pytest.mark.asyncio
+async def test_llm_unavailable_writes_api_config_message(db_session, test_session_factory):
+    """LLM 未配置被跳过 → api_config 系统消息，状态仍为 SKIPPED"""
+    from sqlalchemy import select
+    from backend.models.reminder import Reminder
+
+    svc = AnalysisJobService(chain=FakeChain(), llm_available=lambda: False,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519"], "scheduled")
+    await svc._run(job_id)
+
+    assert svc.get_status(job_id)["results"]["600519"] == STATUS_SKIPPED
+    rows = (await db_session.execute(select(Reminder))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].category == "api_config"

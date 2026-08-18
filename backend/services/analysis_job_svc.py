@@ -9,6 +9,7 @@ from backend.db.database import async_session_factory
 from backend.llm.provider import is_llm_available
 from backend.models.user import User
 from backend.services.portfolio_svc import PortfolioService
+from backend.services.reminder_svc import ReminderService
 from backend.services.snapshot_svc import SnapshotService
 from backend.services.watchlist_svc import WatchlistService
 
@@ -144,6 +145,17 @@ class AnalysisJobService:
                 self._code_locks[code] = asyncio.Lock()
             return self._code_locks[code]
 
+    async def _safe_notify(self, user_id: str, fn, *args) -> None:
+        """写系统消息（尽力而为）：失败只记日志，绝不改变分析状态流转。"""
+        try:
+            async with self._session_factory() as session:
+                try:
+                    await fn(session, user_id, *args)
+                finally:
+                    await session.close()
+        except Exception as e:
+            logger.warning(f"系统消息写入失败 user={user_id}: {e}")
+
     async def _process_one(self, job_id: str, code: str, user_id: str, item, position, mode: str,
                            sem: asyncio.Semaphore):
         job = self._jobs[job_id]
@@ -161,6 +173,9 @@ class AnalysisJobService:
                     try:
                         if not self._llm_available():
                             job["codes"][code] = STATUS_SKIPPED
+                            name = item.stock_name if item else ""
+                            await self._safe_notify(
+                                user_id, ReminderService.notify_llm_unavailable, code, name)
                             return
                         api_keys = {}
                         async with self._session_factory() as session:
@@ -199,10 +214,13 @@ class AnalysisJobService:
                                 await SnapshotService.save_snapshot(session, user_id, report, source=job["source"])
                             finally:
                                 await session.close()
+                        await self._safe_notify(user_id, ReminderService.notify_analysis_outcome, report)
                         job["codes"][code] = STATUS_DONE
                     except Exception as e:
                         logger.error(f"分析失败 {code}: {e}")
                         job["codes"][code] = STATUS_FAILED
+                        name = item.stock_name if item else ""
+                        await self._safe_notify(user_id, ReminderService.notify_analysis_error, code, name, e)
 
 
 analysis_job_service = AnalysisJobService()
