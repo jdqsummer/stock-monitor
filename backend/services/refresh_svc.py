@@ -259,6 +259,7 @@ async def run_reminder_checks() -> int:
             if not cfg.get("notification_enabled"):
                 continue
             rows = await ReminderService.generate_for_user(session, u.id)
+            rows += await ReminderService.generate_sell_reminders(session, u.id)
             if not rows:
                 continue
             if cfg.get("reminder_email_enabled"):
