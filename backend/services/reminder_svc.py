@@ -3,6 +3,7 @@ import logging
 from datetime import date, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.reminder import Reminder
@@ -130,7 +131,11 @@ class ReminderService:
         db: AsyncSession, user_id: str, category: str, code: str, name: str,
         title: str | None, message: str, reminder_date: date | None = None,
     ) -> Reminder:
-        """写一条系统消息；同 (user_id, category, code, date) 覆盖旧值并重置未读。"""
+        """写一条系统消息；同 (user_id, category, code, date) 覆盖旧值并重置未读。
+
+        并发安全：SELECT→INSERT 的窗口若被另一协程抢先插入，唯一索引会抛 IntegrityError；
+        此时回滚并重查该键取 existing 覆盖更新，最终一致、不丢消息。
+        """
         d = reminder_date or date.today()
         existing = (await db.execute(select(Reminder).where(
             Reminder.user_id == user_id,
@@ -148,7 +153,25 @@ class ReminderService:
         existing.signal = category
         existing.created_at = datetime.now()
         existing.read_at = None
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            existing = (await db.execute(select(Reminder).where(
+                Reminder.user_id == user_id,
+                Reminder.category == category,
+                Reminder.code == code,
+                Reminder.reminder_date == d,
+            ))).scalar_one_or_none()
+            if existing is None:
+                raise
+            existing.name = name
+            existing.title = title
+            existing.message = message
+            existing.signal = category
+            existing.created_at = datetime.now()
+            existing.read_at = None
+            await db.commit()
         await db.refresh(existing)
         return existing
 

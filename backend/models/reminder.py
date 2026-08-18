@@ -11,7 +11,11 @@ from backend.db.base import Base
 class Reminder(Base):
     """系统消息：击球区/卖出区/API配置/DSH/LLM 错误提醒"""
     __tablename__ = "reminders"
-    __table_args__ = (Index("ix_reminders_user_date", "user_id", "reminder_date"),)
+    __table_args__ = (
+        Index("ix_reminders_user_date", "user_id", "reminder_date"),
+        Index("ix_reminders_user_cat_code_date", "user_id", "category", "code",
+              "reminder_date", unique=True),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)

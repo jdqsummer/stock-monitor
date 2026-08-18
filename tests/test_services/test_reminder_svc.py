@@ -172,6 +172,25 @@ async def test_add_system_message_resets_read(db_session):
     assert len(rows) == 1 and rows[0].message == "msg2"
 
 
+@pytest.mark.asyncio
+async def test_reminder_unique_index_enforced(db_session):
+    """唯一索引 (user_id, category, code, reminder_date) 在 DB 层强制去重"""
+    from sqlalchemy.exc import IntegrityError
+
+    db_session.add(User(id="u1", email="r@x.com", password_hash="x"))
+    await db_session.commit()
+
+    d = date.today()
+    db_session.add(Reminder(user_id="u1", code="", name="", category="api_config",
+                            title="LLM 未配置", message="m1", signal="api_config",
+                            reminder_date=d))
+    db_session.add(Reminder(user_id="u1", code="", name="", category="api_config",
+                            title="LLM 未配置", message="m2", signal="api_config",
+                            reminder_date=d))
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+
+
 def test_classify_error():
     """错误文本 → 类别：402/余额不足 → llm_error；其余 → dsh_error"""
     assert ReminderService.classify_error("402 Insufficient Balance") == \

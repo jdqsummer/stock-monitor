@@ -34,7 +34,7 @@ export function ReminderBell({ items, enabled, markAllRead }: Props) {
           renderItem={r => (
             <List.Item>
               <List.Item.Meta
-                title={<Tag color={categoryMeta(r.category).color}>{categoryMeta(r.category).label}</Tag>}
+                title={<>{r.title || categoryMeta(r.category).label} <Tag color={categoryMeta(r.category).color}>{categoryMeta(r.category).label}</Tag></>}
                 description={r.message}
               />
             </List.Item>

@@ -173,9 +173,10 @@ class AnalysisJobService:
                     try:
                         if not self._llm_available():
                             job["codes"][code] = STATUS_SKIPPED
-                            name = item.stock_name if item else ""
+                            # 全局性错误：code/name 置空 → 同一天只写一条 api_config 消息，
+                            # 避免 N 只股票各写一条刷屏（唯一索引按 user+category+code+date 去重）
                             await self._safe_notify(
-                                user_id, ReminderService.notify_llm_unavailable, code, name)
+                                user_id, ReminderService.notify_llm_unavailable, "", "")
                             return
                         api_keys = {}
                         async with self._session_factory() as session:

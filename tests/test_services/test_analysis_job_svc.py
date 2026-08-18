@@ -579,3 +579,29 @@ async def test_llm_unavailable_writes_api_config_message(db_session, test_sessio
     rows = (await db_session.execute(select(Reminder))).scalars().all()
     assert len(rows) == 1
     assert rows[0].category == "api_config"
+
+
+@pytest.mark.asyncio
+async def test_llm_unavailable_writes_single_global_api_config_message(db_session, test_session_factory):
+    """LLM 未配置跳过 N 只股票 → 只写 1 条全局 api_config 消息（code/name 为空）"""
+    from sqlalchemy import select
+    from backend.models.reminder import Reminder
+    from backend.models.stock import WatchlistItem
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="贵州茅台"))
+    db_session.add(WatchlistItem(user_id="u1", stock_code="000858", stock_name="五粮液"))
+    await db_session.commit()
+
+    svc = AnalysisJobService(chain=FakeChain(), llm_available=lambda: False,
+                             session_factory=test_session_factory)
+    job_id = svc.create_job("u1", ["600519", "000858"], "scheduled")
+    svc._jobs[job_id]["concurrency"] = 1   # 串行处理，避免内存 SQLite 单连接并发写竞态
+    await svc._run(job_id)
+
+    status = svc.get_status(job_id)
+    assert status["skipped"] == 2
+    rows = (await db_session.execute(select(Reminder))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].category == "api_config"
+    assert rows[0].code == ""
+    assert rows[0].name == ""
