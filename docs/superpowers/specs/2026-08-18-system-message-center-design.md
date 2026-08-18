@@ -36,13 +36,13 @@
 | `category` | String(20)，server_default `"strike"` | `strike` 击球区 / `sell` 卖出区 / `api_config` API未配置 / `dsh_error` DSH错误(降级) / `llm_error` LLM API错误 |
 | `title` | String(200)，可空 | 消息标题（前端类别标签与列表标题用） |
 
-- 去重键 `(user_id, category, code, reminder_date)`：写入时先查该键，命中则更新 message/title/created_at，不新增行。
-- 全局性错误（无具体股票）`code=""`，`name=""`。
+- 去重键 `(user_id, category, code, reminder_date)`：写入时先查该键，命中则更新 message/title/created_at，不新增行。唯一索引 `ix_reminders_user_cat_code_date` 在 DB 层强制去重；并发下 SELECT→INSERT 窗口冲突经 `IntegrityError` 回滚重查覆盖，最终一致。
+- 全局性错误（无具体股票）`code=""`，`name=""`（如 LLM 未配置，N 只股只写一条）。
 - 存量数据 `category="strike"`、`title=NULL`（前端回退类别默认标题）。
 
 ### 迁移
 
-`alembic/versions/` 新增一个 revision（上游 `a4b6c8d0e2f4`），`upgrade` 加两列 + 可选索引 `ix_reminders_user_cat_date(user_id, category, reminder_date)`，`downgrade` 删列。
+`alembic/versions/` 新增两个 revision：`b7d9e1f2a3c4`（上游 `a5c7e9f1b3d5`）加两列 + 非唯一索引 `ix_reminders_user_cat_date`；`c1d2e3f4a5b6`（上游 `b7d9e1f2a3c4`）将其替换为唯一索引 `ix_reminders_user_cat_code_date(user_id, category, code, reminder_date)`，`downgrade` 反向删列/换回。
 
 ## 消息生成
 
@@ -59,8 +59,8 @@
 
 | 触发点 | 类别 | 标题 | 消息内容 |
 |:--|:--|:--|:--|
-| LLM 未配置被跳过（`STATUS_SKIPPED`） | `api_config` | LLM 未配置 | 未配置 LLM API Key，分析已跳过，请在系统设置中配置 |
-| `report.analysis_degraded` | `dsh_error` | 分析已降级 | `report.errors` 中的降级原因（如 DSH 熔断/DSH 分析降级文本） |
+| LLM 未配置被跳过（`STATUS_SKIPPED`） | `api_config` | LLM 未配置 | 未配置 LLM API Key，分析已跳过，请在系统设置中配置（全局消息 `code=""`，N 只股只写一条） |
+| `report.analysis_degraded` | 按 `classify_error` 分类（`dsh_error`/`llm_error`） | 分析已降级 / LLM API 错误：余额不足 | `report.errors` 中的降级原因，经 `classify_error` 按文本分类（如 402 余额不足 → `llm_error`） |
 | `chain.analyze` 抛异常 | 见「错误分类」 | — | 异常文本 |
 | `report.warnings` 含 `[成本监控]` | `llm_error` | LLM token 用量异常 | 预算超限内容（对应需求「LLM token 用量异常」） |
 
