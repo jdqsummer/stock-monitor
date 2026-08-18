@@ -47,3 +47,19 @@ async def test_list_unread_and_mark_read(db_session):
 
     # 用户隔离
     assert await ReminderService.mark_read(db_session, rows[0].id, "u_other") is None
+
+
+@pytest.mark.asyncio
+async def test_reminder_model_category_defaults():
+    """Reminder 泛化为系统消息：category 默认 strike，title 可空，可显式指定"""
+    from backend.models.reminder import Reminder
+
+    r = Reminder(user_id="u", code="c", name="n", message="m", signal="green",
+                 reminder_date=date.today())
+    assert r.category == "strike"
+    assert r.title is None
+
+    r2 = Reminder(user_id="u", code="c", name="n", category="sell", title="建议卖出",
+                  message="m", signal="red", reminder_date=date.today())
+    assert r2.category == "sell"
+    assert r2.title == "建议卖出"
