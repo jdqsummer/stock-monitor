@@ -11,7 +11,7 @@ interface Props {
 // 涨红跌绿
 const changeColor = (v: number) => (v > 0 ? '#f5222d' : v < 0 ? '#389e0d' : '#888');
 
-const formatCap = (v: number) => (v >= 10000 ? `${(v / 10000).toFixed(2)} 万亿` : `${v.toFixed(0)} 亿`);
+const formatCap = (v: number) => (v >= 10000 ? `${(v / 10000).toFixed(2)} 万亿` : `${v.toFixed(2)} 亿`);
 
 const formatChangeAmount = (v: number | null) => {
   if (v == null) return '—';
@@ -88,7 +88,7 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <span>{o.code} {o.name}</span>
               <span style={{ color: changeColor(o.change_pct) }}>
-                {o.current_price.toFixed(2)} {o.change_pct > 0 ? '+' : ''}{o.change_pct}%
+                {o.current_price.toFixed(2)} {o.change_pct > 0 ? '+' : ''}{o.change_pct.toFixed(2)}%
               </span>
             </div>
           ),
@@ -104,7 +104,7 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
             <Descriptions.Item label="现价">{selected.current_price.toFixed(2)}</Descriptions.Item>
             <Descriptions.Item label="涨跌幅">
               <span style={{ color: changeColor(selected.change_pct) }}>
-                {selected.change_pct > 0 ? '+' : ''}{selected.change_pct}%
+                {selected.change_pct > 0 ? '+' : ''}{selected.change_pct.toFixed(2)}%
               </span>
             </Descriptions.Item>
             <Descriptions.Item label="涨跌值">
@@ -116,7 +116,7 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
               {selected.turnover_rate != null ? `${selected.turnover_rate.toFixed(2)}%` : '—'}
             </Descriptions.Item>
             <Descriptions.Item label="总市值">{formatCap(selected.total_market_cap)}</Descriptions.Item>
-            <Descriptions.Item label="动态PE">{selected.pe_dynamic ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="动态PE">{selected.pe_dynamic != null ? selected.pe_dynamic.toFixed(2) : '—'}</Descriptions.Item>
           </Descriptions>
         </Card>
       )}

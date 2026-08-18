@@ -19,8 +19,8 @@ export function StageData({ snap }: { snap: WatchlistBoardRow }) {
     <Card title="1. 基本数据">
       <Descriptions column={4} size="small" style={{ marginBottom: 16 }}>
         <Descriptions.Item label="现价">{snap.current_price != null ? `¥${snap.current_price.toFixed(2)}` : '—'}</Descriptions.Item>
-        <Descriptions.Item label="总市值">{snap.current_market_cap != null ? `${snap.current_market_cap.toFixed(0)} 亿` : '—'}</Descriptions.Item>
-        <Descriptions.Item label="动态PE">{snap.pe_dynamic != null ? snap.pe_dynamic.toFixed(1) : '—'}</Descriptions.Item>
+        <Descriptions.Item label="总市值">{snap.current_market_cap != null ? `${snap.current_market_cap.toFixed(2)} 亿` : '—'}</Descriptions.Item>
+        <Descriptions.Item label="动态PE">{snap.pe_dynamic != null ? snap.pe_dynamic.toFixed(2) : '—'}</Descriptions.Item>
         <Descriptions.Item label="行业">{snap.industry_category || snap.industry || '—'}</Descriptions.Item>
       </Descriptions>
       {rows.length ? (

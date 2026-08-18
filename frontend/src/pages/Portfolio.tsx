@@ -161,7 +161,7 @@ export function Portfolio() {
         <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>{v.toFixed(2)}%</span>
       ) },
     { title: '持仓比例', dataIndex: 'position_ratio', width: 90,
-      render: (v: number | null) => v == null ? '-' : `${(v * 100).toFixed(1)}%` },
+      render: (v: number | null) => v == null ? '-' : `${(v * 100).toFixed(2)}%` },
     { title: '持有天数', dataIndex: 'holding_days', width: 90,
       render: (v: number | null) => v == null ? '-' : `${v}天` },
     { title: '距卖出区', dataIndex: 'sell_distance_pct', width: 150,

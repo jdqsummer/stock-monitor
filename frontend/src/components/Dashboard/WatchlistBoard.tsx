@@ -14,11 +14,11 @@ const columns: ColumnsType<WatchlistBoardRow> = [
   { title: '击球股价', dataIndex: 'swing_price', key: 'swing_price', width: 120,
     render: (v: string | null) => v || '-' },
   { title: '总市值', dataIndex: 'current_market_cap', key: 'current_market_cap', width: 100,
-    render: (v: number) => `${v.toFixed(0)}亿` },
+    render: (v: number) => `${v.toFixed(2)}亿` },
   { title: '现价', dataIndex: 'current_price', key: 'current_price', width: 90,
     render: (v: number) => `¥${v.toFixed(2)}` },
   { title: '动态PE', dataIndex: 'pe_dynamic', key: 'pe_dynamic', width: 80,
-    render: (v: number | null) => (v == null ? '—' : v.toFixed(1)) },
+    render: (v: number | null) => (v == null ? '—' : v.toFixed(2)) },
   { title: '距击球区', dataIndex: 'distance_pct', key: 'distance_pct', width: 180,
     render: (v: number | null, record: WatchlistBoardRow) => (
       <Space size={4}>

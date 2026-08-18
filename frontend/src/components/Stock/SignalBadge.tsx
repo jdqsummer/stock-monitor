@@ -26,7 +26,7 @@ export function SignalBadge({ signal, distancePct, sell }: {
   return (
     <Tag color={config.color}>
       {config.icon} {config.text}
-      {showDistance && ` (${distancePct > 0 ? '+' : ''}${distancePct.toFixed(1)}%)`}
+      {showDistance && ` (${distancePct > 0 ? '+' : ''}${distancePct.toFixed(2)}%)`}
     </Tag>
   );
 }
