@@ -71,8 +71,15 @@ export function apply(ctx: any): void {
       unassessable_risk: Boolean(conclusion?.unassessable_risk ?? value?.unassessable_risk),
     })
     if (veto.forced) {
-      // block：feedback 为 ContentBlock[]（非 reason 字符串），否决理由透传给模型
-      return { kind: 'block', feedback: [{ type: 'text', text: veto.reason ?? '否决' }] }
+      // 方案 A（2026-08-18 兆易创新回归）：不再 block 作废五段输出——否决应让五段完整
+      // 落库、结论被强制 🔴；最终否决由后端 apply_veto() 兜底（不依赖模型自觉）。此处只
+      // 放行 + notice 提示模型结论必须 🔴 + 坚决放弃（软约束）。next() 委托下游后合并 notice。
+      const notice = buildNotice(
+        `[invest-guard] ${veto.reason}。五段结果保留完整；请确保最终结论/评级为 🔴 + 坚决放弃，后端兜底校验会强制执行该否决。`,
+        `invest-five-stage 否决（${veto.reason}）`,
+      )
+      const downstream = await next()
+      return { ...downstream, additionalContexts: [notice, ...(downstream?.additionalContexts ?? [])] }
     }
 
     // 约束警告（评级一致性 / 纪律红线 / PE 极端）

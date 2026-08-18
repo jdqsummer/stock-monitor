@@ -473,3 +473,39 @@ async def test_analyze_success_clears_circuit_failures(reset_circuit, monkeypatc
 
     assert result is sentinel
     assert aa._circuit_state["consecutive_failures"] == 0   # 成功清零
+
+
+@pytest.mark.asyncio
+async def test_analyze_dsh_success_applies_veto_override(monkeypatch):
+    """DSH 成功路径也走 apply_veto 兜底：checklist_veto=true → 强制 🔴 坚决放弃（方案 A）。
+
+    回归背景（2026-08-18 兆易创新 603986）：invest-guard 原把 veto 作 block 作废五段 →
+    降级规则链。方案 A 改软约束放行五段，最终否决由后端 apply_veto 兜底强制（不依赖 LLM 自觉）。
+    """
+    from backend.agents import analysis_agent as aa
+    from backend.agents.dsh_orchestrator import DshOrchestrator
+    from backend.llm.provider import LLMConfig, ProviderType
+
+    async def _fake_analyze(self, state, model="", api_keys=None):
+        return {
+            "analysis_source": "dsh-llm",
+            "analysis_model": "deepseek-v4-flash",
+            "analysis_degraded": False,
+            "checklist_veto": True,        # 逆向清单否决（五段已完整返回）
+            "unassessable_risk": False,
+            "final_rating": "🟡",          # LLM 未遵守否决规则（须被后端强制覆盖）
+            "recommendation": "可关注",
+            "conclusion": "观察",
+        }
+
+    monkeypatch.setattr(DshOrchestrator, "is_available", lambda: True)
+    monkeypatch.setattr(DshOrchestrator, "analyze", _fake_analyze)
+
+    agent = aa.AnalysisAgent(llm_provider=SimpleNamespace())
+    agent.llm.config = LLMConfig(provider=ProviderType.DEEPSEEK, model_id="x")
+    result = await agent.analyze(make_state())
+
+    assert result["analysis_source"] == "dsh-llm"     # DSH 成功，不降级
+    assert result["analysis_degraded"] is False
+    assert result["final_rating"] == "🔴"              # 否决兜底强制 🔴
+    assert "坚决放弃" in result["recommendation"]

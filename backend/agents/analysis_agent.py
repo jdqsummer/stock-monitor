@@ -197,6 +197,9 @@ class AnalysisAgent:
                     updates = await orch.analyze(state, model=state.get("llm_model", ""),
                                                  api_keys=state.get("api_keys", {}))
                     _circuit_state["consecutive_failures"] = 0   # S6：成功清零熔断计数
+                    # 否决兜底（方案 A，2026-08-18）：DSH 成功路径同样强制 🔴 坚决放弃，
+                    # 不依赖 LLM 自觉（invest-guard 已改软约束放行五段，最终否决落此处）。
+                    updates.update(apply_veto({**state, **updates}))
                     updates.setdefault("analysis_source", "dsh-llm")
                     return updates
                 except Exception as exc:
