@@ -24,7 +24,7 @@ const columns: ColumnsType<PositionInfo> = [
   { title: '当日盈亏', dataIndex: 'daily_pl', key: 'daily_pl', width: 90,
     render: (v: number | null) => (v == null ? '-' : <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>¥{v.toFixed(2)}</span>) },
   { title: '持仓比例', dataIndex: 'position_ratio', key: 'position_ratio', width: 90,
-    render: (v: number | null) => (v == null ? '-' : `${v.toFixed(1)}%`) },
+    render: (v: number | null) => (v == null ? '-' : `${(v * 100).toFixed(1)}%`) },
   { title: '距卖出区', dataIndex: 'sell_distance_pct', key: 'sell_distance_pct', width: 150,
     render: (v: number | null, record: PositionInfo) =>
       v !== null && record.sell_signal

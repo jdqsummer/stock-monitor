@@ -220,6 +220,43 @@ async def test_portfolio_snapshot_returns_position_and_sell(client, db_session, 
 
 
 @pytest.mark.asyncio
+async def test_portfolio_snapshot_position_ratio_computed(client, db_session, user):
+    """snapshot 详情 position_ratio 不再恒 null：有 shares + 全持仓市值 → 返回正确小数"""
+    from datetime import date
+
+    from backend.models.portfolio import Position
+    from backend.models.stock import AnalysisSnapshot, StockSnapshot
+
+    pos = Position(user_id=user.id, stock_code="300750", stock_name="宁德时代",
+                   shares=100, cost_price=180.0)
+    db_session.add(pos)
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="贵州茅台",
+                            shares=100, cost_price=1400.0))
+    db_session.add(StockSnapshot(code="300750", name="宁德时代", current_price=200.0,
+                                 change_pct=1.0, total_market_cap=8000.0))
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=1500.0,
+                                 change_pct=1.0, total_market_cap=18000.0))
+    db_session.add(AnalysisSnapshot(
+        user_id=user.id, stock_code="300750",
+        annual_profit_low=300, annual_profit_high=400, profit_method="H1×2",
+        pe_low=20, pe_high=30,
+        swing_market_cap_low=6000, swing_market_cap_high=12000,
+        swing_price_low=150, swing_price_high=300,
+        current_market_cap=8000, current_price=200,
+        distance_pct=-20.0, signal="green", data_date=date(2026, 8, 12),
+        industry_category="动力电池", analysis_mode="position",
+    ))
+    await db_session.commit()
+
+    res = await client.get(f"/api/portfolio/{pos.id}/snapshot", headers=user_headers(user))
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    # 300750 市值 200*100=20000；600519 市值 1500*100=150000；total=170000
+    # → 300750 占比 = 20000/170000 ≈ 0.1176（小数，前端渲染 ×100 → 11.8%）
+    assert data["position"]["position_ratio"] == pytest.approx(0.1176, abs=0.001)
+
+
+@pytest.mark.asyncio
 async def test_delete_position_keeps_watchlist(client, db_session, user):
     pos = await _mk_position(db_session, user.id, "600519")
     db_session.add(WatchlistItem(user_id=user.id, stock_code="600519", stock_name="贵州茅台"))

@@ -165,6 +165,31 @@ async def test_dashboard_positions_sell_fallback(client, db_session, user):
 
 
 @pytest.mark.asyncio
+async def test_dashboard_positions_ratio_is_fraction(client, db_session, user):
+    """position_ratio 返回小数（0-1）：多持仓占比求和 ≈1，市值越大占比越高（前端渲染时 ×100）"""
+    from backend.models.portfolio import Position
+    from backend.models.stock import StockSnapshot
+    db_session.add(Position(user_id=user.id, stock_code="600519", stock_name="贵州茅台",
+                            shares=100, cost_price=1400.0))
+    db_session.add(Position(user_id=user.id, stock_code="000001", stock_name="平安银行",
+                            shares=100, cost_price=10.0))
+    db_session.add(StockSnapshot(code="600519", name="贵州茅台", current_price=1500.0,
+                                 change_pct=1.0, total_market_cap=18000.0))
+    db_session.add(StockSnapshot(code="000001", name="平安银行", current_price=10.0,
+                                 change_pct=0.5, total_market_cap=1900.0))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/positions", headers=user_headers(user))
+    assert res.status_code == 200
+    rows = {r["stock_code"]: r for r in res.json()["data"]}
+    total = sum(r["position_ratio"] for r in rows.values())
+    # 语义锁定：占比是小数值（和 ≈1.0），若误存成百分数则和会到 ~100
+    assert total == pytest.approx(1.0, abs=0.01)
+    assert rows["600519"]["position_ratio"] > rows["000001"]["position_ratio"]
+    # 1500*100=150000，10*100=1000，total=151000 → 600519 占比 = 150000/151000
+    assert rows["600519"]["position_ratio"] == pytest.approx(150000 / 151000, abs=0.001)
+
+
+@pytest.mark.asyncio
 async def test_dashboard_overview_skips_empty_shares(client, db_session, user):
     """overview 空 shares 行不参与聚合（无 TypeError），position_count 仍计入"""
     from backend.models.portfolio import Position

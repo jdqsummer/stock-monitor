@@ -196,8 +196,17 @@ async def position_snapshot(position_id: str, current_user: User = Depends(get_c
     snap = await SnapshotService.get_latest_snapshot(db, current_user.id, pos.stock_code)
     if snap is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该持仓尚未分析")
-    quote = await StockDataService.get_quote_for_code(db, pos.stock_code)
-    position_out = await _to_out(db, current_user.id, pos, quote, None, {})
+    # 全持仓总市值（position_ratio 需要；与列表页同口径：只计 shares>0 且有行情行，A 表优先实时兜底）
+    all_positions = await PortfolioService.list_positions(db, current_user.id)
+    total_value = 0.0
+    quote = None
+    for p in all_positions:
+        q = await StockDataService.get_quote_for_code(db, p.stock_code)
+        if p.id == pos.id:
+            quote = q
+        if p.shares and q:
+            total_value += q.current_price * p.shares
+    position_out = await _to_out(db, current_user.id, pos, quote, total_value, {})
     return ApiResponse(data={
         "position": position_out.model_dump(),
         "snapshot": StockDataService.snapshot_to_dict(snap, quote),
