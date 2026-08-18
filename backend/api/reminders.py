@@ -17,6 +17,8 @@ class ReminderItem(BaseModel):
     name: str
     message: str
     signal: str
+    category: str
+    title: str | None = None
     reminder_date: str
     created_at: str
     read_at: str | None = None
@@ -25,6 +27,7 @@ class ReminderItem(BaseModel):
 def _to_item(r) -> ReminderItem:
     return ReminderItem(
         id=r.id, code=r.code, name=r.name, message=r.message, signal=r.signal,
+        category=r.category, title=r.title,
         reminder_date=r.reminder_date.isoformat(),
         created_at=r.created_at.isoformat() if r.created_at else "",
         read_at=r.read_at.isoformat() if r.read_at else None,

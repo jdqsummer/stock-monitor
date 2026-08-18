@@ -22,12 +22,16 @@ async def test_reminders_read_flow(client, db_session):
     result = await db_session.execute(select(User).where(User.email == email))
     uid = result.scalar_one().id
     db_session.add(Reminder(user_id=uid, code="600519", name="贵州茅台", message="m",
-                            signal="green", reminder_date=date.today()))
+                            signal="red", category="sell", title="建议卖出",
+                            reminder_date=date.today()))
     await db_session.commit()
 
     resp = await client.get("/api/reminders/unread", headers={"Authorization": f"Bearer {token}"})
-    assert len(resp.json()["data"]) == 1
-    rid = resp.json()["data"][0]["id"]
+    data = resp.json()["data"]
+    assert len(data) == 1
+    assert data[0]["category"] == "sell"
+    assert data[0]["title"] == "建议卖出"
+    rid = data[0]["id"]
 
     resp = await client.post(f"/api/reminders/{rid}/read",
                              headers={"Authorization": f"Bearer {token}"})
