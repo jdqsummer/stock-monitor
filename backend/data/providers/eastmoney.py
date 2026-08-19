@@ -4,7 +4,9 @@ import logging
 
 import httpx
 
-from backend.data.providers.base import ProviderError, StockDataProvider, normalize_code
+from backend.data.providers.base import (
+    ProviderError, StockDataProvider, is_hk, market_of, normalize_code,
+)
 from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 
 logger = logging.getLogger(__name__)
@@ -13,6 +15,8 @@ _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 # push2 无 fltt 时价格类字段为 ×100 整数（f2=133888 即 1338.88），解析时统一 ÷100
 _QUOTE_FIELDS = "f2,f3,f4,f8,f12,f13,f14,f20,f21,f115,f167,f168"
+# 搜索白名单：A 股各类别 + 港股
+_ASHARE_TYPE_NAMES = ("A股", "沪A", "深A", "创业板", "科创板")
 
 
 class EastMoneyProvider(StockDataProvider):
@@ -77,7 +81,15 @@ class EastMoneyProvider(StockDataProvider):
             turnover_rate=turnover_rate or None,
             pe_dynamic=(_f("f115") / 100) or None,
             total_shares=shares,
+            market=market_of(code),
         )
+
+    @staticmethod
+    def _secucode(code: str) -> str:
+        """东财 F10 SECUCODE：港股直接是 code（00700.HK），A 股按前缀拼 .SH/.SZ。"""
+        if is_hk(code):
+            return code
+        return f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
 
     async def search_stock(self, keyword: str) -> list[StockQuote]:
         kw = keyword.strip()
@@ -96,11 +108,18 @@ class EastMoneyProvider(StockDataProvider):
             rows = (table or {}).get("Data") or []
             out: list[StockQuote] = []
             for r in rows:
-                if (r.get("SecurityTypeName") or "") not in ("A股", "沪A", "深A", "创业板", "科创板"):
+                type_name = r.get("SecurityTypeName") or ""
+                if type_name in _ASHARE_TYPE_NAMES:
+                    code = str(r.get("Code") or "")
+                    market = "A"
+                elif type_name == "港股":
+                    code = f"{r.get('Code')}.HK"
+                    market = "HK"
+                else:
                     continue
                 out.append(StockQuote(
-                    code=str(r.get("Code") or ""), name=r.get("Name") or "",
-                    current_price=0.0, total_market_cap=0.0,
+                    code=code, name=r.get("Name") or "",
+                    current_price=0.0, total_market_cap=0.0, market=market,
                 ))
             return out
         except (httpx.HTTPError, ValueError) as e:
@@ -111,7 +130,7 @@ class EastMoneyProvider(StockDataProvider):
         return []
 
     async def fetch_financials(self, code: str) -> list[FinancialReport]:
-        secucode = f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
+        secucode = self._secucode(code)
         client = await self._get_client()
         try:
             resp = await client.get(
@@ -142,7 +161,7 @@ class EastMoneyProvider(StockDataProvider):
 
         返回完整链而非仅一级，供细粒度 PE 锚定（resolve_pe_anchor 从最细段开始匹配）。
         """
-        secucode = f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
+        secucode = self._secucode(code)
         client = await self._get_client()
         try:
             resp = await client.get(

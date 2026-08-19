@@ -113,3 +113,85 @@ async def test_eastmoney_industry_missing_em2016():
         _handler_factory({"result": {"data": [{"SECUCODE": "300750.SZ"}]}})))
     with pytest.raises(ProviderError):
         await provider.fetch_industry("300750")
+
+
+# ── 港股 ──
+
+def _hk_search_fixture() -> dict:
+    # AH 股工商银行：同一条响应同时含 A 与 H 两行（MktNum 116 = 港股）
+    return {"QuotationCodeTable": {"Data": [
+        {"Code": "601398", "Name": "工商银行", "MktNum": "1", "SecurityTypeName": "A股"},
+        {"Code": "01398", "Name": "工商银行", "MktNum": "116", "SecurityTypeName": "港股"},
+    ]}}
+
+
+def _hk_quote_fixture() -> dict:
+    return {"rc": 0, "data": {"total": 1, "diff": [
+        {"f2": 5320, "f3": 15, "f4": 80, "f8": 20,
+         "f12": "01398", "f13": 116, "f14": "工商银行",
+         "f20": 1.8e12, "f21": 1.75e12, "f115": 550, "f167": 850, "f168": 20},
+    ]}}
+
+
+def _hk_financial_fixture() -> dict:
+    return {"result": {"data": [
+        {"SECUCODE": "01398.HK", "SECURITY_NAME_ABBR": "工商银行", "REPORT_DATE": "2026-06-30",
+         "TOTALOPERATEREVE": 4.0e11, "PARENTNETPROFIT": 1.7e11,
+         "KCFJCXSYJLR": 1.68e11, "ROEJQ": 11.5},
+    ], "pages": 1}}
+
+
+def _hk_basicinfo_fixture() -> dict:
+    return {"result": {"data": [
+        {"SECUCODE": "01398.HK", "SECURITY_NAME_ABBR": "工商银行", "EM2016": "银行"},
+    ], "pages": 1}}
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_search_includes_hk():
+    """AH 股搜索同时返回 A 与 H 两条，代码/市场区分"""
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_hk_search_fixture())))
+    results = await provider.search_stock("工商银行")
+    assert {r.code for r in results} == {"601398", "01398.HK"}
+    by_code = {r.code: r for r in results}
+    assert by_code["601398"].market == "A"
+    assert by_code["01398.HK"].market == "HK"
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_quote_hk():
+    provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_hk_quote_fixture())))
+    quote = await provider.fetch_quote("01398.HK")
+    assert quote.code == "01398.HK"
+    assert quote.market == "HK"
+    assert quote.current_price == 53.20
+    assert quote.total_market_cap == pytest.approx(1.8e12 / 1e8)
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_financials_hk_secucode():
+    """港股财报 secucode 直接用 01398.HK（不拼 .SH/.SZ）"""
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json=_hk_financial_fixture())
+
+    provider = EastMoneyProvider(transport=httpx.MockTransport(handler))
+    reports = await provider.fetch_financials("01398.HK")
+    assert len(reports) == 1
+    assert reports[0].report_period == "2026H1"
+    assert "01398.HK" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_eastmoney_industry_hk_secucode():
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json=_hk_basicinfo_fixture())
+
+    provider = EastMoneyProvider(transport=httpx.MockTransport(handler))
+    assert await provider.fetch_industry("01398.HK") == "银行"
+    assert "01398.HK" in captured["url"]

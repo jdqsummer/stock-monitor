@@ -18,8 +18,9 @@ class Signal(str, Enum):
 # ── 行情数据 ──
 
 class StockQuote(BaseModel):
-    code: str                              # 股票代码，如 "600519"
+    code: str                              # 股票代码，如 "600519" / "01398.HK"
     name: str                              # 股票名称
+    market: str = "A"                      # 市场：'A' 或 'HK'（默认 A 保证既有构造不破）
     current_price: float                   # 当前股价
     change_pct: float = 0.0                # 涨跌幅 %
     change_amount: float | None = None     # 涨跌值（元），与 change_pct 对应
