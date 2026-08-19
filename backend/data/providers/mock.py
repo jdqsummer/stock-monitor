@@ -1,6 +1,6 @@
 # stock-monitor/backend/data/providers/mock.py
 """Mock 数据源：未配置真实渠道时的降级兜底（开发/离线可用）"""
-from backend.data.providers.base import ProviderError, StockDataProvider
+from backend.data.providers.base import ProviderError, StockDataProvider, market_of
 from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 
 
@@ -19,6 +19,11 @@ _MOCK_STOCK_DB: list[tuple] = [
     ("000651", "格力电器", 40.5, -0.6, 2280.0, 8.5, 56.3),
     ("600276", "恒瑞医药", 45.2, 0.9, 2880.0, 32.0, 63.7),
     ("601857", "中国石油", 8.9, 0.2, 16280.0, 10.5, 1830.0),
+    ("601398", "工商银行", 5.5, 0.4, 19600.0, 5.6, 3564.0),
+    # 港股样例（market 由 market_of 判定为 HK）
+    ("00700.HK", "腾讯控股", 380.0, 1.5, 36000.0, 22.5, 93.0),
+    ("01398.HK", "工商银行", 5.2, 0.6, 18000.0, 5.5, 3500.0),
+    ("09988.HK", "阿里巴巴", 82.0, -0.8, 16000.0, 15.0, 195.0),
 ]
 
 
@@ -30,6 +35,8 @@ _MOCK_INDUSTRY_MAP: dict[str, str] = {
     "601899": "有色金属", "600030": "非银金融",
     "601012": "光伏", "002594": "汽车",
     "600276": "医药生物", "601857": "石油石化",
+    "601398": "银行",
+    "00700.HK": "互联网服务", "01398.HK": "银行", "09988.HK": "互联网服务",
 }
 
 
@@ -63,14 +70,18 @@ class MockProvider(StockDataProvider):
         name_matches = [s for s in _MOCK_STOCK_DB if kw in s[1] and s not in code_matches]
         return [
             StockQuote(code=s[0], name=s[1], current_price=s[2], change_pct=s[3],
-                       total_market_cap=s[4], pe_dynamic=s[5], total_shares=s[6])
+                       total_market_cap=s[4], pe_dynamic=s[5], total_shares=s[6],
+                       market=market_of(s[0]))
             for s in code_matches + name_matches
         ]
 
     def _mock_quote(self, code: str) -> StockQuote:
+        # 库内代码返回真实名称（行情数值保持通用兜底，与既有 mock 行为一致）
+        name = next((s[1] for s in _MOCK_STOCK_DB if s[0] == code), f"模拟股票{code}")
         return StockQuote(
-            code=code, name=f"模拟股票{code}", current_price=50.0,
+            code=code, name=name, current_price=50.0,
             change_pct=1.5, total_market_cap=800.0, pe_dynamic=25.0, total_shares=16.0,
+            market=market_of(code),
         )
 
     def _mock_financials(self, code: str) -> list[FinancialReport]:

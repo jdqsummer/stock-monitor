@@ -60,3 +60,22 @@ async def test_mock_industry():
     assert await provider.fetch_industry("000333") == "家电"
     with pytest.raises(ProviderError):
         await provider.fetch_industry("999999")  # 非 mock 库代码 → 无行业
+
+
+@pytest.mark.asyncio
+async def test_mock_search_hk_ah_dual():
+    """AH 股工商银行：mock 库同时含 A(601398) 与 H(01398.HK)，搜索按名称命中两条"""
+    provider = MockProvider()
+    results = await provider.search_stock("工商银行")
+    by_code = {r.code: r for r in results}
+    assert "601398" in by_code
+    assert "01398.HK" in by_code
+    assert by_code["01398.HK"].market == "HK"
+
+
+@pytest.mark.asyncio
+async def test_mock_quote_hk():
+    provider = MockProvider()
+    quote = await provider.fetch_quote("00700.HK")
+    assert quote.market == "HK"
+    assert quote.name == "腾讯控股"
