@@ -134,8 +134,10 @@ async def test_tencent_search_includes_hk():
 
 @pytest.mark.asyncio
 async def test_tencent_quote_hk():
+    """港股行情 layout 未验证：腾讯直接抛 ProviderError，由链切东财（plan 文档化兜底）。
+
+    原测试假定港股可用 A 股镜像布局解析，该假设未实测，已废弃。
+    """
     provider = TencentProvider(transport=httpx.MockTransport(_handler_factory(_hk_quote_fixture())))
-    quote = await provider.fetch_quote("00700.HK")
-    assert quote.code == "00700.HK"
-    assert quote.market == "HK"
-    assert quote.current_price == 380.00
+    with pytest.raises(ProviderError):
+        await provider.fetch_quote("00700.HK")

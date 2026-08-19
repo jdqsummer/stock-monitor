@@ -7,7 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from backend.data.providers.base import ProviderError, StockDataProvider, market_of, normalize_code
+from backend.data.providers.base import ProviderError, StockDataProvider, is_hk, market_of, normalize_code
 from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,13 @@ class TencentProvider(StockDataProvider):
             self._client = None
 
     async def fetch_quote(self, code: str) -> StockQuote:
+        # 港股行情 field layout 未实测：腾讯 qt.gtimg.cn 港股与 A 股字段下标不同，
+        # 静默复用 A 股下标（price=parts[3] 等）会产出错误数据。plan 文档化兜底：
+        # 无法可靠解析时直接抛 ProviderError，由 WesstockClient 链自动切到东财
+        # （东财 116.xxxx 港股格式已验证）。
+        if is_hk(code):
+            _, em_code = normalize_code(code)
+            raise ProviderError(f"腾讯港股行情 field layout 未验证，由链切东财 {em_code}")
         tcode, _ = normalize_code(code)
         client = await self._get_client()
         try:

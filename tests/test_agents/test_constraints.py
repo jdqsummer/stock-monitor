@@ -184,6 +184,20 @@ class TestIndustryPEAnchorConstraint:
         # 偏离白酒参考 (20, 35) → 应 warning
         assert "偏离" in result["message"] or result["severity"] == "warning"
 
+    def test_check_routes_hk_industry_to_hk_table(self):
+        """港股标的：check() 经 market_of(stock_code) 派生 market=HK，行业走港股 PE 表"""
+        c = IndustryPEAnchorConstraint()
+        result = run_check(c,
+            stock_code="00700.HK",
+            pe_low=50, pe_high=100,
+            industry_category="互联网服务",
+        )
+        # 「互联网服务」仅存在于港股表 (15,30)；若仍走 A 股表则 resolve 返回 (None,None)，
+        # 不触发偏离警告。pe_high=100 > 30*1.5=45 → 应偏离 warning，且命中港股表类别。
+        assert result["severity"] == "warning"
+        assert "偏离" in result["message"]
+        assert "互联网服务" in result["message"]
+
 
 # ── resolve_pe_anchor：细粒度行业 PE 锚定解析器 ──
 

@@ -28,6 +28,7 @@ from datetime import date
 from typing import Optional
 
 from backend.agents.state import AnalysisState, ConstraintResult
+from backend.data.providers.base import market_of
 from backend.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -313,9 +314,10 @@ class IndustryPEAnchorConstraint(Constraint):
                 auto_fixable=False,
             )
 
-        # 行业 PE 参考一致性检查（细粒度解析）
+        # 行业 PE 参考一致性检查（细粒度解析；港股走独立 PE 表）
         if industry:
-            ref_cat, ref = resolve_pe_anchor(industry)
+            market = market_of(state.get("stock_code", ""))
+            ref_cat, ref = resolve_pe_anchor(industry, market)
             if ref:
                 ref_low, ref_high = ref
                 if pe_low < ref_low * 0.5 or pe_high > ref_high * 1.5:

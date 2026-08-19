@@ -15,5 +15,5 @@ export function marketLabel(code: string): string {
   return 'A';
 }
 
-/** 货币前缀：港股 HK$，A 股无前缀（保持现状）。 */
-export const currencyOf = (code: string): string => (isHK(code) ? 'HK$ ' : '');
+/** 货币前缀：港股 HK$，A 股 ¥。 */
+export const currencyOf = (code: string): string => (isHK(code) ? 'HK$ ' : '¥');
