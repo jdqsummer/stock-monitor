@@ -7,7 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from backend.data.providers.base import ProviderError, StockDataProvider, normalize_code
+from backend.data.providers.base import ProviderError, StockDataProvider, market_of, normalize_code
 from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,7 @@ class TencentProvider(StockDataProvider):
             pe_dynamic=_f(39) or None,
             total_shares=shares,
             update_time=update_time,
+            market=market_of(code),
         )
 
     async def fetch_financials(self, code: str) -> list[FinancialReport]:
@@ -122,7 +123,15 @@ class TencentProvider(StockDataProvider):
             if len(parts) < 2 or not parts[1]:
                 continue
             typ = parts[2] if len(parts) > 2 else "1"
-            if typ != "1":  # 仅股票
-                continue
-            out.append(StockQuote(code=parts[0], name=parts[1], current_price=0.0, total_market_cap=0.0))
+            raw_code = parts[0] or ""
+            if typ == "1":
+                # A 股：保持既有格式（可能带 sh/sz 前缀），原样透传
+                code, market = raw_code, "A"
+            elif typ == "3" and raw_code[:2].lower() == "hk":
+                # 港股：smartbox 返回 hk00700，统一归一到 00700.HK
+                code, market = raw_code[2:] + ".HK", "HK"
+            else:
+                continue  # 指数/基金/期货等非个股
+            out.append(StockQuote(code=code, name=parts[1], current_price=0.0,
+                                  total_market_cap=0.0, market=market))
         return out

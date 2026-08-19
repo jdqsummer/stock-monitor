@@ -93,3 +93,49 @@ async def test_tencent_industry_raises():
     provider = TencentProvider(transport=httpx.MockTransport(_handler_factory(_quote_fixture())))
     with pytest.raises(ProviderError):
         await provider.fetch_industry("600519")
+
+
+# ── 港股 ──
+
+def _hk_search_fixture() -> str:
+    # smartbox v 字段：parts[0]=带市场前缀 code，parts[1]=名称，parts[2]=类型（港股为 3）
+    return (
+        'var cb_=({q:"腾讯",v:"sh600519~贵州茅台~1~gt_贵州茅台;'
+        'hk00700~腾讯控股~3~gt_腾讯控股;sh000001~上证指数~7~gt_上证指数"});'
+    )
+
+
+def _hk_quote_fixture() -> str:
+    fields = [""] * 60
+    fields[1] = "腾讯控股"
+    fields[2] = "00700"
+    fields[3] = "380.00"
+    fields[4] = "378.50"
+    fields[5] = "375.00"
+    fields[30] = "20260811150000"
+    fields[31] = "5.60"
+    fields[32] = "1.50"
+    fields[38] = "0.30"
+    fields[39] = "22.50"
+    fields[44] = "35500.00"
+    fields[45] = "36000.00"
+    return ('v_hk00700="' + "~".join(fields) + '";')
+
+
+@pytest.mark.asyncio
+async def test_tencent_search_includes_hk():
+    provider = TencentProvider(transport=httpx.MockTransport(_handler_factory(_hk_search_fixture())))
+    results = await provider.search_stock("腾讯")
+    by_code = {r.code: r for r in results}
+    assert by_code["00700.HK"].market == "HK"
+    assert by_code["sh600519"].market == "A"
+    assert "sh000001" not in by_code  # 指数排除
+
+
+@pytest.mark.asyncio
+async def test_tencent_quote_hk():
+    provider = TencentProvider(transport=httpx.MockTransport(_handler_factory(_hk_quote_fixture())))
+    quote = await provider.fetch_quote("00700.HK")
+    assert quote.code == "00700.HK"
+    assert quote.market == "HK"
+    assert quote.current_price == 380.00
