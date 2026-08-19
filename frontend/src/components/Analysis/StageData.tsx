@@ -1,5 +1,6 @@
 import { Card, Descriptions, Empty, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { currencyOf } from '@/utils/market';
 import type { FinancialRow, WatchlistBoardRow } from '@/types';
 
 // 数字列：等宽字体、千分位、2 位小数
@@ -18,7 +19,7 @@ export function StageData({ snap }: { snap: WatchlistBoardRow }) {
   return (
     <Card title="1. 基本数据">
       <Descriptions column={4} size="small" style={{ marginBottom: 16 }}>
-        <Descriptions.Item label="现价">{snap.current_price != null ? `¥${snap.current_price.toFixed(2)}` : '—'}</Descriptions.Item>
+        <Descriptions.Item label="现价">{snap.current_price != null ? `${currencyOf(snap.code)}${snap.current_price.toFixed(2)}` : '—'}</Descriptions.Item>
         <Descriptions.Item label="总市值">{snap.current_market_cap != null ? `${snap.current_market_cap.toFixed(2)} 亿` : '—'}</Descriptions.Item>
         <Descriptions.Item label="动态PE">{snap.pe_dynamic != null ? snap.pe_dynamic.toFixed(2) : '—'}</Descriptions.Item>
         <Descriptions.Item label="行业">{snap.industry_category || snap.industry || '—'}</Descriptions.Item>

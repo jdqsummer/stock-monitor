@@ -1,5 +1,6 @@
 import { Card, Descriptions } from 'antd';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
+import { currencyOf } from '@/utils/market';
 import type { WatchlistBoardRow } from '@/types';
 import { EvidencePanel } from './EvidencePanel';
 
@@ -32,7 +33,7 @@ export function StageSwingZone({ snap }: { snap: WatchlistBoardRow }) {
         </Descriptions.Item>
         <Descriptions.Item label="对应股价">
           {stage?.swing_price_low != null && stage?.swing_price_high != null
-            ? `${stage.swing_price_low.toFixed(2)}-${stage.swing_price_high.toFixed(2)} 元`
+            ? `${currencyOf(snap.code)}${stage.swing_price_low.toFixed(2)}-${stage.swing_price_high.toFixed(2)} 元`
             : snap.swing_price || '—'}
         </Descriptions.Item>
         <Descriptions.Item label="距击球区">

@@ -2,6 +2,7 @@ import { Space, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
+import { currencyOf } from '@/utils/market';
 import type { WatchlistBoardRow } from '@/types';
 
 const columns: ColumnsType<WatchlistBoardRow> = [
@@ -16,7 +17,7 @@ const columns: ColumnsType<WatchlistBoardRow> = [
   { title: '总市值', dataIndex: 'current_market_cap', key: 'current_market_cap', width: 100,
     render: (v: number) => `${v.toFixed(2)}亿` },
   { title: '现价', dataIndex: 'current_price', key: 'current_price', width: 90,
-    render: (v: number) => `¥${v.toFixed(2)}` },
+    render: (v: number, record: WatchlistBoardRow) => `${currencyOf(record.code)}${v.toFixed(2)}` },
   { title: '动态PE', dataIndex: 'pe_dynamic', key: 'pe_dynamic', width: 80,
     render: (v: number | null) => (v == null ? '—' : v.toFixed(2)) },
   { title: '距击球区', dataIndex: 'distance_pct', key: 'distance_pct', width: 180,

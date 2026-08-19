@@ -8,6 +8,7 @@ import { analysisApi, configApi, watchlistApi } from '@/api/client';
 import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
+import { currencyOf } from '@/utils/market';
 import type { LLMModelInfo, StockQuote, UserConfig, WatchlistItem } from '@/types';
 
 const SOURCE_TAG: Record<string, { color: string; text: string }> = {
@@ -178,7 +179,7 @@ export function Watchlist() {
     { title: '总市值', dataIndex: 'total_market_cap', width: 110,
       render: (v: number) => (v ? `${v.toFixed(2)}亿` : '-') },
     { title: '现价', dataIndex: 'current_price', width: 100,
-      render: (v: number) => (v ? `¥${v.toFixed(2)}` : '-') },
+      render: (v: number, record: WatchlistItem) => (v ? `${currencyOf(record.stock_code)}${v.toFixed(2)}` : '-') },
     { title: '动态PE', dataIndex: 'pe_dynamic', width: 100,
       render: (v: number | null) => (v != null ? v.toFixed(2) : '-') },
     { title: '距击球区', dataIndex: 'distance_pct', width: 180,

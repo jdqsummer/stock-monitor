@@ -9,6 +9,7 @@ import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
 import { EditableCell } from '@/components/Portfolio/EditableCell';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
+import { currencyOf } from '@/utils/market';
 import type { LLMModelInfo, PositionInfo, StockQuote, UserConfig } from '@/types';
 
 export function Portfolio() {
@@ -145,16 +146,16 @@ export function Portfolio() {
           onSave={(val) => handleCellSave(r.id, { purchased_at: val == null ? null : String(val) })} />
       ) },
     { title: '现价', dataIndex: 'current_price', width: 80,
-      render: (v: number) => (v ? `¥${v.toFixed(2)}` : '-') },
+      render: (v: number, r: PositionInfo) => (v ? `${currencyOf(r.stock_code)}${v.toFixed(2)}` : '-') },
     { title: '持有市值', dataIndex: 'holding_value', width: 100,
-      render: (v: number | null) => v == null ? '-' : `¥${v.toFixed(2)}` },
+      render: (v: number | null, r: PositionInfo) => v == null ? '-' : `${currencyOf(r.stock_code)}${v.toFixed(2)}` },
     { title: '当日盈亏', dataIndex: 'daily_pl', width: 100,
-      render: (v: number | null) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>¥{v.toFixed(2)}</span>
+      render: (v: number | null, r: PositionInfo) => v == null ? '-' : (
+        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>{currencyOf(r.stock_code)}{v.toFixed(2)}</span>
       ) },
     { title: '盈亏金额', dataIndex: 'profit_loss', width: 100,
-      render: (v: number | null) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>¥{v.toFixed(2)}</span>
+      render: (v: number | null, r: PositionInfo) => v == null ? '-' : (
+        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>{currencyOf(r.stock_code)}{v.toFixed(2)}</span>
       ) },
     { title: '盈亏比例', dataIndex: 'profit_loss_pct', width: 90,
       render: (v: number | null) => v == null ? '-' : (
