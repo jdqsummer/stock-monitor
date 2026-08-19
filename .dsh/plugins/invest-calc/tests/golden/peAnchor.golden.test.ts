@@ -51,3 +51,22 @@ describe('golden/peAnchor（类 5：锚点解析 + 未命中回退）', () => {
     expect(resolvePeAnchor(undefined)).toEqual({ category: null, anchor: null })
   })
 })
+
+describe('resolvePeAnchor HK market', () => {
+  it('uses HK table when market=HK', () => {
+    const r = resolvePeAnchor('银行', 'HK')
+    expect(r.category).toBe('银行')
+    expect(r.anchor![0]).toBeLessThan(r.anchor![1])
+  })
+
+  it('maps HK industry chain via HK aliases', () => {
+    const r = resolvePeAnchor('电子商贸及互联网服务-互联网服务', 'HK')
+    expect(r.category).toBe('互联网服务')
+  })
+
+  it('defaults to A table when market omitted', () => {
+    const r = resolvePeAnchor('白酒')
+    expect(r.category).toBe('白酒')
+    expect(r.anchor).toEqual([20, 35])
+  })
+})

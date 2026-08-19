@@ -36,8 +36,12 @@ if (!fn) {
   process.exit(1)
 }
 
-const arg: any = op === 'growth' ? input.financials
-  : op === 'pe_anchor' ? input.industry
-  : input
-
-console.log(JSON.stringify(fn(arg)))
+let out: unknown
+if (op === 'growth') {
+  out = computeGrowthMetrics(input.financials)
+} else if (op === 'pe_anchor') {
+  out = resolvePeAnchor(input.industry, input.market)
+} else {
+  out = fn(input)
+}
+console.log(JSON.stringify(out))

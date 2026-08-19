@@ -15,6 +15,7 @@
 //       2. 段名命中 aliases 且别名目标命中 industries → 用映射类别锚点
 //       3. 全部未命中 → { category: null, anchor: null }（调用方走默认区间）
 import peReferenceData from '../../invest-data/pe-reference.json'
+import peReferenceHkData from '../../invest-data/pe-reference-hk.json'
 
 export interface PeReferenceData {
   industries: Record<string, [number, number]>
@@ -27,11 +28,14 @@ export interface PeAnchorResult {
 }
 
 const data = peReferenceData as PeReferenceData
+const hkData = peReferenceHkData as PeReferenceData
 
-export function resolvePeAnchor(industry: string | null | undefined): PeAnchorResult {
+export function resolvePeAnchor(industry: string | null | undefined, market?: string): PeAnchorResult {
   if (!industry) {
     return { category: null, anchor: null }
   }
+
+  const ref = market === 'HK' ? hkData : data
 
   const segments = industry
     .replace(/\//g, '-')
@@ -41,12 +45,12 @@ export function resolvePeAnchor(industry: string | null | undefined): PeAnchorRe
 
   for (let i = segments.length - 1; i >= 0; i--) {
     const seg = segments[i]
-    if (Object.hasOwn(data.industries, seg)) {
-      return { category: seg, anchor: data.industries[seg] }
+    if (Object.hasOwn(ref.industries, seg)) {
+      return { category: seg, anchor: ref.industries[seg] }
     }
-    const alias = data.aliases[seg]
-    if (alias && Object.hasOwn(data.industries, alias)) {
-      return { category: alias, anchor: data.industries[alias] }
+    const alias = ref.aliases[seg]
+    if (alias && Object.hasOwn(ref.industries, alias)) {
+      return { category: alias, anchor: ref.industries[alias] }
     }
   }
 
