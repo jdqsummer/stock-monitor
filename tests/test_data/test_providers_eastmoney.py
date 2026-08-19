@@ -175,13 +175,16 @@ async def test_eastmoney_financials_hk_secucode():
 
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
+        captured["filter"] = request.url.params["filter"]
         return httpx.Response(200, json=_hk_financial_fixture())
 
     provider = EastMoneyProvider(transport=httpx.MockTransport(handler))
     reports = await provider.fetch_financials("01398.HK")
     assert len(reports) == 1
     assert reports[0].report_period == "2026H1"
-    assert "01398.HK" in captured["url"]
+    # 精确断言 filter 用港股原 code，而非错误拼成 01398.HK.SZ
+    assert captured["filter"] == '(SECUCODE="01398.HK")'
+    assert "01398.HK.SZ" not in captured["url"]
 
 
 @pytest.mark.asyncio
@@ -190,8 +193,11 @@ async def test_eastmoney_industry_hk_secucode():
 
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
+        captured["filter"] = request.url.params["filter"]
         return httpx.Response(200, json=_hk_basicinfo_fixture())
 
     provider = EastMoneyProvider(transport=httpx.MockTransport(handler))
     assert await provider.fetch_industry("01398.HK") == "银行"
-    assert "01398.HK" in captured["url"]
+    # 精确断言 filter 用港股原 code，而非错误拼成 01398.HK.SZ
+    assert captured["filter"] == '(SECUCODE="01398.HK")'
+    assert "01398.HK.SZ" not in captured["url"]

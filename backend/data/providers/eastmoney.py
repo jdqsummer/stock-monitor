@@ -113,7 +113,7 @@ class EastMoneyProvider(StockDataProvider):
                     code = str(r.get("Code") or "")
                     market = "A"
                 elif type_name == "港股":
-                    code = f"{r.get('Code')}.HK"
+                    code = f"{str(r.get('Code') or '')}.HK"
                     market = "HK"
                 else:
                     continue
