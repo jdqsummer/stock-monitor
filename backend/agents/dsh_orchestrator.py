@@ -15,6 +15,8 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
+from backend.data.providers.base import market_of
+
 logger = logging.getLogger(__name__)
 
 
@@ -233,6 +235,7 @@ def build_context(state: dict) -> dict:
         "turnover_rate": (state.get("quote") or {}).turnover_rate
                         if hasattr(state.get("quote"), "turnover_rate") else None,
         "analysis_mode": state.get("analysis_mode", "watchlist"),
+        "market": market_of(state.get("stock_code", "")),
     }
     if state.get("position_context"):
         context["position_context"] = state["position_context"]

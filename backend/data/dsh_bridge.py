@@ -49,7 +49,7 @@ async def fetch_quote(code: str):
 
 @mcp.tool()
 async def get_stock_snapshot(code: str) -> dict:
-    """返回某只 A 股的只读快照（现价/总市值/动态PE），code 为 6 位股票代码。"""
+    """返回某只股票（A 股/港股）的只读快照（现价/总市值/动态PE），code 为股票代码。"""
     quote = await fetch_quote(code)
     if quote is None:
         return {"code": code, "error": "no quote"}
@@ -64,7 +64,7 @@ async def get_stock_snapshot(code: str) -> dict:
 
 @mcp.tool()
 async def get_financials(code: str, periods: int = 8) -> list[dict]:
-    """返回某只 A 股最近 N 期财报摘要（report_period/营收/归母/扣非）。"""
+    """返回某只股票（A 股/港股）最近 N 期财报摘要（report_period/营收/归母/扣非）。"""
     rows = await _client().fetch_financials(code)   # WestockClient.fetch_financials（已查证）
     rows = rows or []
     return [
@@ -76,7 +76,7 @@ async def get_financials(code: str, periods: int = 8) -> list[dict]:
 
 @mcp.tool()
 async def search_stock(keyword: str) -> list[dict]:
-    """按代码/名称模糊搜索 A 股。"""
+    """按代码/名称模糊搜索股票（A 股/港股）。"""
     results = await _client().search_stock(keyword)
     return [
         {"code": r.code, "name": r.name, "current_price": r.current_price,
@@ -86,9 +86,9 @@ async def search_stock(keyword: str) -> list[dict]:
 
 
 @mcp.tool()
-async def get_industry_pe(industry: str) -> dict:
-    """行业 PE 参考锚点（仅参考/兜底，非取值来源；PE 锚定规则见 spec 4.3）。"""
-    category, anchor = resolve_pe_anchor(industry)
+async def get_industry_pe(industry: str, market: str = "A") -> dict:
+    """行业 PE 参考锚点（仅参考/兜底；PE 锚定规则见 spec 4.3）。market: A 股 "A" / 港股 "HK"。"""
+    category, anchor = resolve_pe_anchor(industry, market=market)
     return {"industry": industry, "matched_category": category,
             "pe_low": anchor[0] if anchor else None, "pe_high": anchor[1] if anchor else None}
 

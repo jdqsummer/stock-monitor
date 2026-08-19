@@ -484,3 +484,26 @@ async def test_orchestrator_analyze_passes_api_keys_from_state():
     state["api_keys"] = {"deepseek": "sk-d"}
     await orch.analyze(state, model="")
     assert orch._runner.calls[0]["api_keys"] == {"deepseek": "sk-d"}
+
+
+# --- Task 8: build_context 注入 market（market_of 推导）---
+
+
+def test_build_context_injects_market_hk():
+    state = {"stock_code": "00700.HK", "stock_name": "腾讯控股",
+             "quote": None, "financials": [], "news": [],
+             "industry_category": "互联网服务", "current_price": 380.0,
+             "total_market_cap": 36000.0, "total_shares": 93.0,
+             "net_profit_parent": 0.0, "net_profit_deducted": 0.0}
+    ctx = build_context(state)
+    assert ctx["market"] == "HK"
+
+
+def test_build_context_injects_market_a_default():
+    state = {"stock_code": "600519", "stock_name": "贵州茅台",
+             "quote": None, "financials": [], "news": [],
+             "industry_category": "白酒", "current_price": 1720.0,
+             "total_market_cap": 19500.0, "total_shares": 12.6,
+             "net_profit_parent": 0.0, "net_profit_deducted": 0.0}
+    ctx = build_context(state)
+    assert ctx["market"] == "A"
