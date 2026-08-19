@@ -381,30 +381,51 @@ EM2016_PE_ALIAS: dict[str, str] = {
 }
 
 
-def resolve_pe_anchor(industry: str | None) -> tuple[str | None, tuple[float, float] | None]:
+# 港股行业 PE 参考（.dsh/invest-data/pe-reference-hk.json 的 Python 侧内联副本；
+# 单独维护——港股估值（含 AH 溢价）与 A 股不同，不能混用 A 股表）
+HK_INDUSTRY_PE_REFERENCE: dict[str, tuple[float, float]] = {
+    "互联网服务": (15, 30), "电子商贸": (15, 30), "软件服务": (20, 40),
+    "半导体": (20, 40), "电讯服务": (10, 18), "公用事业": (10, 18),
+    "银行": (5, 10), "保险": (8, 15), "地产": (6, 12),
+    "石油天然气": (8, 15), "煤炭": (8, 15), "汽车": (10, 20),
+    "医药": (20, 35), "消费": (18, 30), "工业制品": (12, 22), "金融": (8, 15),
+}
+
+HK_EM2016_PE_ALIAS: dict[str, str] = {
+    "电子商贸及互联网服务": "互联网服务", "软件服务": "软件服务",
+    "资讯科技器材": "电子商贸", "半导体": "半导体", "电讯": "电讯服务",
+    "公用事业": "公用事业", "内银": "银行", "银行": "银行", "保险": "保险",
+    "内房": "地产", "石油及天然气": "石油天然气", "煤炭": "煤炭", "汽车": "汽车",
+    "药品及生物科技": "医药", "食物饮品": "消费", "工业制品": "工业制品", "金融": "金融",
+}
+
+
+def resolve_pe_anchor(industry: str | None, market: str = "A") -> tuple[str | None, tuple[float, float] | None]:
     """把行业字符串解析为最匹配的 PE 锚定类别。
 
     industry 可能是：
       - 东财 EM2016 完整链（如 "电子设备-半导体-集成电路"）
-      - 单段行业名（如 "白酒" / "电子设备"）
+      - 单段行业名（如 "白酒" / "银行"）
+    market="HK" 查港股 PE 表（pe-reference-hk.json），否则查 A 股表。
 
     从最细粒度（三级）向最粗粒度（一级）依次尝试：
       1. 段名直接命中参考表键 → 用该锚点
-      2. 段名命中 EM2016 别名 → 用映射类别的锚点
+      2. 段名命中别名 → 用映射类别的锚点
       3. 全部未命中 → (None, None)，由调用方走默认区间
-
-    Returns:
-        (锚定类别名, (pe_low, pe_high))；未命中返回 (None, None)
     """
     if not industry:
         return None, None
+    if market == "HK":
+        reference, alias = HK_INDUSTRY_PE_REFERENCE, HK_EM2016_PE_ALIAS
+    else:
+        reference, alias = IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE, EM2016_PE_ALIAS
     segments = [s.strip() for s in industry.replace("/", "-").split("-") if s.strip()]
     for seg in reversed(segments):  # 最细 → 最粗
-        if seg in IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE:
-            return seg, IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE[seg]
-        alias = EM2016_PE_ALIAS.get(seg)
-        if alias and alias in IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE:
-            return alias, IndustryPEAnchorConstraint.INDUSTRY_PE_REFERENCE[alias]
+        if seg in reference:
+            return seg, reference[seg]
+        a = alias.get(seg)
+        if a and a in reference:
+            return a, reference[a]
     return None, None
 
 

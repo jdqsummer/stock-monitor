@@ -240,6 +240,27 @@ class TestResolvePeAnchor:
         assert resolve_pe_anchor(None) == (None, None)
 
 
+# ── resolve_pe_anchor：港股市场分表 ──
+
+def test_resolve_pe_anchor_hk_table():
+    cat, (lo, hi) = resolve_pe_anchor("银行", market="HK")
+    assert cat == "银行"
+    assert lo < hi
+
+
+def test_resolve_pe_anchor_hk_alias():
+    # 港股行业链措辞（东财 F10 港股口径）经别名映射到港股表类别
+    cat, _ = resolve_pe_anchor("电子商贸及互联网服务-互联网服务", market="HK")
+    assert cat == "互联网服务"
+
+
+def test_resolve_pe_anchor_market_defaults_to_a():
+    # 既有 A 股行为不回归
+    cat, (lo, hi) = resolve_pe_anchor("白酒")
+    assert cat == "白酒"
+    assert (lo, hi) == (20, 35)
+
+
 # ── FalsificationPriorityConstraint ──
 
 class TestFalsificationPriorityConstraint:
