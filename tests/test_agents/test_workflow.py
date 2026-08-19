@@ -316,6 +316,34 @@ class TestNodeFunctions:
         assert result["pe_high"] == 50.0
         assert "半导体设计" in result["pe_rationale"]
 
+    @pytest.mark.asyncio
+    async def test_determine_pe_range_hk_uses_hk_table(self):
+        """港股 .HK 代码 → 规则降级路径按 market=HK 命中独立港股 PE 表（互联网服务 15-30）"""
+        state = make_state(
+            stock_code="00700.HK",
+            industry_category="互联网服务",
+            pe_dynamic=22.0,
+        )
+        result = await determine_pe_range_node(state)
+
+        assert result["pe_low"] == 15.0
+        assert result["pe_high"] == 30.0
+        assert "互联网服务" in result["pe_rationale"]
+
+    @pytest.mark.asyncio
+    async def test_determine_pe_range_a_share_unchanged(self):
+        """A 股回归：600519/白酒 → 仍走 A 股表 20-35，不因 market 参数回归"""
+        state = make_state(
+            stock_code="600519",
+            industry_category="白酒",
+            pe_dynamic=22.0,
+        )
+        result = await determine_pe_range_node(state)
+
+        assert result["pe_low"] == 20.0
+        assert result["pe_high"] == 35.0
+        assert "白酒" in result["pe_rationale"]
+
     # Step 6: 击球区
 
     @pytest.mark.asyncio

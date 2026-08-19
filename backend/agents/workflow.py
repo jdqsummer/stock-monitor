@@ -38,6 +38,7 @@ from backend.agents.constraints import (
 from backend.agents.data_agent import DataAgent, data_to_state
 from backend.agents.growth import compute_growth_metrics
 from backend.agents.state import AnalysisState, DataCollectionState
+from backend.data.providers.base import market_of
 from backend.data.westock_client import WestockClient
 from backend.llm.provider import LLMProvider
 
@@ -310,7 +311,8 @@ async def determine_pe_range_node(state: AnalysisState) -> dict:
     pe_dynamic = state.get("pe_dynamic")
 
     pe_low, pe_high = 15.0, 25.0  # 默认范围
-    category, anchor = resolve_pe_anchor(industry)
+    market = market_of(state.get("stock_code", ""))
+    category, anchor = resolve_pe_anchor(industry, market)
     if anchor:
         pe_low, pe_high = anchor
         if category == industry:
