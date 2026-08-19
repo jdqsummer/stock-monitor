@@ -249,3 +249,55 @@ describe('prepareArgs ralph 开关（Q3 深度自审，P4）', () => {
     expect(args.schemas.ralph).toBeDefined()
   })
 })
+
+describe('computeCalc HK market', () => {
+  interface PeAnchorAssert {
+    pe_anchor: { category: string | null; anchor: [number, number] | null }
+  }
+  const asPeAnchor = (c: ReturnType<typeof computeCalc>) => c as unknown as PeAnchorAssert
+
+  it('resolves HK PE anchor for HK market', () => {
+    const out = asPeAnchor(computeCalc({
+      financials: [],
+      net_profit_parent: 0,
+      net_profit_deducted: 0,
+      current_price: 50,
+      total_shares: 100,
+      pe_low: 0,
+      pe_high: 0,
+      industry_category: '银行',
+      market: 'HK',
+    }))
+    // 默认 PE 15/25 兜底不影响 pe_anchor 解析
+    expect(out.pe_anchor.category).toBe('银行')
+    expect(out.pe_anchor.anchor).toEqual([5, 10])
+  })
+
+  it('HK-only industry routes to HK table; A-share fallback has no match', () => {
+    const hk = asPeAnchor(computeCalc({
+      financials: [],
+      net_profit_parent: 0,
+      net_profit_deducted: 0,
+      current_price: 50,
+      total_shares: 100,
+      pe_low: 0,
+      pe_high: 0,
+      industry_category: '地产',
+      market: 'HK',
+    }))
+    expect(hk.pe_anchor.category).toBe('地产')
+    expect(hk.pe_anchor.anchor).toEqual([6, 12])
+
+    const aShare = asPeAnchor(computeCalc({
+      financials: [],
+      net_profit_parent: 0,
+      net_profit_deducted: 0,
+      current_price: 50,
+      total_shares: 100,
+      pe_low: 0,
+      pe_high: 0,
+      industry_category: '地产',
+    }))
+    expect(aShare.pe_anchor.category).toBeNull()
+  })
+})

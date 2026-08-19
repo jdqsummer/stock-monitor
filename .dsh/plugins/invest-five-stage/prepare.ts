@@ -54,6 +54,8 @@ export interface CalcInput {
   pe_low: number
   pe_high: number
   industry_category: string
+  /** 市场：A 股 "A" / 港股 "HK"（影响 PE 锚定表选择）。 */
+  market?: string
 }
 
 export interface PreparedArgs {
@@ -182,7 +184,7 @@ export function computeCalc(input: CalcInput): Record<string, unknown> {
     swing_price_high: swing.swing_price_high,
     annual_profit_low: annual.annual_profit_low,
   })
-  const anchor = resolvePeAnchor(input.industry_category)
+  const anchor = resolvePeAnchor(input.industry_category, input.market)
   return {
     ...annual,
     ...quality,
@@ -335,6 +337,7 @@ export function prepareArgs(
   const current_price = Number(context.current_price ?? 0)
   const total_shares = Number(context.total_shares ?? 0)
   const industry_category = String(context.industry_category ?? '')
+  const market = String(context.market ?? 'A')
   const net_profit_parent = Number(context.net_profit_parent ?? financials[0]?.net_profit_parent ?? 0)
   const net_profit_deducted = Number(context.net_profit_deducted ?? financials[0]?.net_profit_deducted ?? 0)
   const peLow = (opts.peLow ?? Number(context.pe_low ?? 0)) || 15
@@ -358,6 +361,7 @@ export function prepareArgs(
       pe_low: peLow,
       pe_high: peHigh,
       industry_category,
+      market,
     }),
     ralph_enabled: opts.ralphEnabled === true,
   }

@@ -563,22 +563,62 @@ const data = {
 		"医疗服务": "医疗健康"
 	}
 };
-function resolvePeAnchor(industry) {
+const hkData = {
+	industries: {
+		"互联网服务": [15, 30],
+		"电子商贸": [15, 30],
+		"软件服务": [20, 40],
+		"半导体": [20, 40],
+		"电讯服务": [10, 18],
+		"公用事业": [10, 18],
+		"银行": [5, 10],
+		"保险": [8, 15],
+		"地产": [6, 12],
+		"石油天然气": [8, 15],
+		"煤炭": [8, 15],
+		"汽车": [10, 20],
+		"医药": [20, 35],
+		"消费": [18, 30],
+		"工业制品": [12, 22],
+		"金融": [8, 15]
+	},
+	aliases: {
+		"电子商贸及互联网服务": "互联网服务",
+		"软件服务": "软件服务",
+		"资讯科技器材": "电子商贸",
+		"半导体": "半导体",
+		"电讯": "电讯服务",
+		"公用事业": "公用事业",
+		"内银": "银行",
+		"银行": "银行",
+		"保险": "保险",
+		"内房": "地产",
+		"石油及天然气": "石油天然气",
+		"煤炭": "煤炭",
+		"汽车": "汽车",
+		"药品及生物科技": "医药",
+		"食物饮品": "消费",
+		"工业制品": "工业制品",
+		"金融": "金融"
+	}
+};
+function resolvePeAnchor(industry, market) {
 	if (!industry) return {
 		category: null,
 		anchor: null
 	};
+	const ref = market === "HK" ? hkData : data;
 	const segments = industry.replace(/\//g, "-").split("-").map((s) => s.trim()).filter((s) => s.length > 0);
 	for (let i = segments.length - 1; i >= 0; i--) {
 		const seg = segments[i];
-		if (Object.hasOwn(data.industries, seg)) return {
+		if (Object.hasOwn(ref.industries, seg)) return {
 			category: seg,
-			anchor: data.industries[seg]
+			anchor: ref.industries[seg]
 		};
-		const alias = data.aliases[seg];
-		if (alias && Object.hasOwn(data.industries, alias)) return {
+		const alias = ref.aliases[seg];
+		if (alias && Object.hasOwn(ref.industries, alias)) return {
 			category: alias,
-			anchor: data.industries[alias]
+			anchor: ref.industries[alias]
 		};
 	}
 	return {
@@ -685,7 +725,7 @@ function computeCalc(input) {
 		swing_price_high: swing.swing_price_high,
 		annual_profit_low: annual.annual_profit_low
 	});
-	const anchor = resolvePeAnchor(input.industry_category);
+	const anchor = resolvePeAnchor(input.industry_category, input.market);
 	return {
 		...annual,
 		...quality,
@@ -782,6 +822,7 @@ function prepareArgs(stockCode, stockName, opts) {
 	const current_price = Number(context.current_price ?? 0);
 	const total_shares = Number(context.total_shares ?? 0);
 	const industry_category = String(context.industry_category ?? "");
+	const market = String(context.market ?? "A");
 	const net_profit_parent = Number(context.net_profit_parent ?? financials[0]?.net_profit_parent ?? 0);
 	const net_profit_deducted = Number(context.net_profit_deducted ?? financials[0]?.net_profit_deducted ?? 0);
 	const peLow = (opts.peLow ?? Number(context.pe_low ?? 0)) || 15;
@@ -803,7 +844,8 @@ function prepareArgs(stockCode, stockName, opts) {
 			total_shares,
 			pe_low: peLow,
 			pe_high: peHigh,
-			industry_category
+			industry_category,
+			market
 		}),
 		ralph_enabled: opts.ralphEnabled === true
 	};
