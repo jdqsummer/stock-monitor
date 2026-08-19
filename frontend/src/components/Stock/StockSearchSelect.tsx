@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AutoComplete, Card, Descriptions, Spin } from 'antd';
+import { AutoComplete, Card, Descriptions, Spin, Tag } from 'antd';
 import type { StockQuote } from '@/types';
 import { watchlistApi } from '@/api/client';
+import { currencyOf, marketLabel } from '@/utils/market';
 
 interface Props {
   onSelect: (stock: StockQuote) => void;
@@ -86,9 +87,12 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
           value: o.code,
           label: (
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <span>{o.code} {o.name}</span>
+              <span>
+                <Tag style={{ marginRight: 4, fontSize: 12 }}>{marketLabel(o.code)}</Tag>
+                {o.code} {o.name}
+              </span>
               <span style={{ color: changeColor(o.change_pct) }}>
-                {o.current_price.toFixed(2)} {o.change_pct > 0 ? '+' : ''}{o.change_pct.toFixed(2)}%
+                {currencyOf(o.code)}{o.current_price.toFixed(2)} {o.change_pct > 0 ? '+' : ''}{o.change_pct.toFixed(2)}%
               </span>
             </div>
           ),
@@ -101,7 +105,7 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
       {selected && (
         <Card size="small" style={{ marginTop: 12 }}>
           <Descriptions column={2} size="small" title={`${selected.name} ${selected.code}`}>
-            <Descriptions.Item label="现价">{selected.current_price.toFixed(2)}</Descriptions.Item>
+            <Descriptions.Item label="现价">{currencyOf(selected.code)}{selected.current_price.toFixed(2)}</Descriptions.Item>
             <Descriptions.Item label="涨跌幅">
               <span style={{ color: changeColor(selected.change_pct) }}>
                 {selected.change_pct > 0 ? '+' : ''}{selected.change_pct.toFixed(2)}%
