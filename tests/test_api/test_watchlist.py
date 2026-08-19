@@ -311,6 +311,23 @@ class TestWatchlistAPI:
         assert result["total_shares"] == 668.81
 
     @pytest.mark.asyncio
+    async def test_search_ah_dual_listing(self, client, mock_redis):
+        """搜索"工商银行"：mock provider 返回 A 股 601398 与 H 股 01398.HK，market 字段正确"""
+        from backend.data.providers.mock import MockProvider
+
+        token = await _auth_token(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        with patch("backend.api.watchlist._client", MockProvider()):
+            resp = await client.get(
+                "/api/watchlist/search", params={"keyword": "工商银行"}, headers=headers,
+            )
+        assert resp.status_code == 200
+        by_code = {r["code"]: r for r in resp.json()["data"]}
+        assert "601398" in by_code and "01398.HK" in by_code
+        assert by_code["601398"]["market"] == "A"
+        assert by_code["01398.HK"]["market"] == "HK"
+
+    @pytest.mark.asyncio
     async def test_search_quote_failure_keeps_meta(self, client, mock_redis):
         """某只股票行情拉取失败时，保留搜索返回的 code/name 元数据，不中断整批"""
         token = await _auth_token(client)

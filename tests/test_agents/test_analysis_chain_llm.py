@@ -91,3 +91,52 @@ async def test_analyze_passes_mode_and_position_context_to_initial_state():
     assert captured["initial_state"]["analysis_mode"] == "position"
     assert captured["initial_state"]["position_context"] == {"shares": 100, "cost_price": 1500.0}
     assert report.analysis_mode == "position"          # from_state 往返：state 回填进报告
+
+
+@pytest.mark.asyncio
+async def test_analysis_chain_hk_mock():
+    """mock 模式下港股全链路分析：.HK 代码贯穿分析链，行业解析 + 规则降级标记；
+    市场路由：resolve_pe_anchor(industry, "HK") 命中独立港股 PE 表（非 A 股表）"""
+    from backend.agents.constraints import resolve_pe_anchor
+
+    chain = AnalysisChain(llm_provider=None)
+
+    mock_quote = StockQuote(
+        code="00700.HK",
+        name="腾讯控股",
+        current_price=380.0,
+        total_market_cap=36000.0,
+        total_shares=93.0,
+        pe_dynamic=22.5,
+        market="HK",
+    )
+    mock_fin = FinancialReport(
+        code="00700.HK",
+        name="腾讯控股",
+        report_period="2025H1",
+        net_profit_parent=35.0,
+        net_profit_deducted=34.0,
+        is_official=True,
+    )
+
+    with patch.object(DataAgent, "collect", new_callable=AsyncMock) as mock_collect:
+        mock_collect.return_value = {
+            "quote": mock_quote,
+            "financials": [mock_fin],
+            "news": [],
+            "errors": [],
+        }
+        report = await chain.analyze(
+            "00700.HK", stock_name="腾讯控股", industry="互联网服务",
+        )
+
+    # 港股代码 .HK 后缀贯穿全链路，行业分类经 initial_state 回填进报告
+    assert report.code == "00700.HK"
+    assert report.industry_category == "互联网服务"
+    assert report.analysis_degraded is True     # 无 LLM → 纯规则降级链
+    assert report.final_rating
+
+    # 市场路由：港股互联网服务命中独立港股 PE 表（Task 5），区别于 A 股表
+    cat, (lo, hi) = resolve_pe_anchor("互联网服务", "HK")
+    assert cat == "互联网服务"
+    assert (lo, hi) == (15, 30)
