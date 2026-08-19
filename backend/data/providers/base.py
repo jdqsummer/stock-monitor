@@ -13,6 +13,19 @@ class ProviderError(Exception):
     pass
 
 
+def market_of(code: str) -> str:
+    """返回市场标识：港股 'HK'，其余 'A'。支持 `.HK` 后缀与 `hk` 前缀两种形态。"""
+    c = code.strip()
+    if c.upper().endswith(".HK") or c[:2].lower() == "hk":
+        return "HK"
+    return "A"
+
+
+def is_hk(code: str) -> bool:
+    """是否港股。"""
+    return market_of(code) == "HK"
+
+
 def normalize_code(code: str) -> tuple[str, str]:
     """
     把裸股票代码转成渠道代码。
@@ -20,9 +33,12 @@ def normalize_code(code: str) -> tuple[str, str]:
     600519 -> ("sh600519", "1.600519")   沪
     000001 -> ("sz000001", "0.000001")   深
     300750 -> ("sz300750", "0.300750")   创业板
-    4xx/8xx/920 -> bj（东财 secid 待完善）
+    00700.HK -> ("hk00700", "116.00700") 港股（东财 secid 市场 116）
     """
     code = code.strip()
+    if is_hk(code):
+        rest = code[2:] if code[:2].lower() == "hk" else code[:-3]  # 剥 hk 前缀或 .HK 后缀
+        return f"hk{rest}", f"116.{rest}"
     if code[:2].lower() in ("sh", "sz", "bj"):
         rest = code[2:]
     else:
