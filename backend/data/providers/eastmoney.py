@@ -65,11 +65,13 @@ class EastMoneyProvider(StockDataProvider):
             except (TypeError, ValueError):
                 return 0.0
 
-        # 价格类字段（f2/f3/f4/f8/f115）为 ×100 整数，÷100 还原为浮点
-        price = _f("f2") / 100
+        # push2 无 fltt 时价格类字段为整数放大：A 股 ×100（2 位小数），
+        # 港股 ×1000（3 位小数，f2=451400 即 451.400）。涨跌幅 f3/换手 f8/PE f115 两市场恒 ×100。
+        price_scale = 1000 if is_hk(code) else 100
+        price = _f("f2") / price_scale
         mkt_cap = _f("f20") / 1e8  # 元 → 亿
         shares = mkt_cap / price if price > 0 else None
-        change_amount = _f("f4") / 100
+        change_amount = _f("f4") / price_scale
         turnover_rate = _f("f8") / 100
         return StockQuote(
             code=code,

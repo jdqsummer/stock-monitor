@@ -126,8 +126,10 @@ def _hk_search_fixture() -> dict:
 
 
 def _hk_quote_fixture() -> dict:
+    # 真实 push2 港股响应：价格类字段 ×1000 整数（f2=5320 即 5.320，3 位小数）；
+    # 涨跌幅 f3/换手 f8/PE f115 仍为 ×100（f3=15 即 0.15%）
     return {"rc": 0, "data": {"total": 1, "diff": [
-        {"f2": 5320, "f3": 15, "f4": 80, "f8": 20,
+        {"f2": 5320, "f3": 15, "f4": 8, "f8": 20,
          "f12": "01398", "f13": 116, "f14": "工商银行",
          "f20": 1.8e12, "f21": 1.75e12, "f115": 550, "f167": 850, "f168": 20},
     ]}}
@@ -160,11 +162,15 @@ async def test_eastmoney_search_includes_hk():
 
 @pytest.mark.asyncio
 async def test_eastmoney_quote_hk():
+    """港股价格字段 ×1000 精度（f2=5320 → 5.32，而非 A 股的 ×100 → 53.2）"""
     provider = EastMoneyProvider(transport=httpx.MockTransport(_handler_factory(_hk_quote_fixture())))
     quote = await provider.fetch_quote("01398.HK")
     assert quote.code == "01398.HK"
     assert quote.market == "HK"
-    assert quote.current_price == 53.20
+    assert quote.current_price == 5.32
+    assert quote.change_pct == 0.15
+    assert quote.change_amount == 0.008
+    assert quote.pe_dynamic == 5.5
     assert quote.total_market_cap == pytest.approx(1.8e12 / 1e8)
 
 
