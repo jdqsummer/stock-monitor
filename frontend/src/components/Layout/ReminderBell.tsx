@@ -21,14 +21,6 @@ export function ReminderBell({ items, enabled, markAllRead }: Props) {
       </Badge>
       <Drawer title="系统消息" open={open} onClose={() => setOpen(false)} width={420}
         extra={<Button size="small" onClick={() => markAllRead()}>全部已读</Button>}>
-        <div style={{ overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', whiteSpace: 'nowrap',
-                        border: '1px solid #eee', borderRadius: 4, padding: '4px 8px', marginBottom: 12 }}>
-            {items.slice(0, 5).map(r => (
-              <Tag color={categoryMeta(r.category).color} key={r.id}>{r.message}</Tag>
-            ))}
-          </div>
-        </div>
         <List
           dataSource={items}
           renderItem={r => (
