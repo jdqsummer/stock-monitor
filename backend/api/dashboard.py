@@ -1,4 +1,5 @@
 # stock-monitor/backend/api/dashboard.py
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends
@@ -6,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_db
+from backend.data.providers.base import ProviderError
+from backend.data.westock_client import WestockClient
 from backend.models.portfolio import Position
 from backend.models.stock import AnalysisSnapshot, StockSnapshot
 from backend.models.user import User
@@ -18,6 +21,43 @@ from backend.services.watchlist_svc import WatchlistService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/dashboard", tags=["仪表盘"])
+
+_client = WestockClient()
+
+
+async def _fetch_quote_safe(code: str) -> StockQuote | None:
+    try:
+        return await _client.fetch_quote(code)
+    except ProviderError:
+        return None
+
+
+async def _load_quotes(db: AsyncSession, codes: list[str]) -> dict[str, StockQuote]:
+    """批量取行情：A 表优先，缺失代码实时拉取兜底（与 watchlist-status/get_board_rows 同策略）。
+
+    新加持仓在下次定时刷新前 A 表无行，直接读 A 表会显示 0/None；兜底实时价保证
+    仪表盘现价/PE/盈亏字段始终有值，且不阻断。
+    """
+    quotes_by_code: dict[str, StockQuote] = {}
+    if not codes:
+        return quotes_by_code
+    a_rows = (
+        await db.execute(select(StockSnapshot).where(StockSnapshot.code.in_(codes)))
+    ).scalars().all()
+    for a in a_rows:
+        quotes_by_code[a.code] = StockQuote(
+            code=a.code, name=a.name, current_price=a.current_price,
+            change_pct=a.change_pct, total_market_cap=a.total_market_cap,
+            pe_dynamic=a.pe_dynamic, total_shares=a.total_shares,
+            update_time=a.update_time,
+        )
+    missing = [c for c in codes if c not in quotes_by_code]
+    if missing:
+        fetched = await asyncio.gather(*(_fetch_quote_safe(c) for c in missing))
+        for q in fetched:
+            if q is not None:
+                quotes_by_code[q.code] = q
+    return quotes_by_code
 
 
 @router.get("/watchlist-status", response_model=ApiResponse[list[WatchlistBoardRow]])
@@ -41,20 +81,9 @@ async def dashboard_overview(
         await db.execute(select(Position).where(Position.user_id == current_user.id))
     ).scalars().all()
 
-    # 批量取 A 表行情 → dict
+    # 批量取行情：A 表优先，缺失实时兜底（新加持仓在下次刷新前也能显示真实价）
     codes = [p.stock_code for p in positions]
-    quotes_by_code: dict[str, StockQuote] = {}
-    if codes:
-        a_rows = (
-            await db.execute(select(StockSnapshot).where(StockSnapshot.code.in_(codes)))
-        ).scalars().all()
-        for a in a_rows:
-            quotes_by_code[a.code] = StockQuote(
-                code=a.code, name=a.name, current_price=a.current_price,
-                change_pct=a.change_pct, total_market_cap=a.total_market_cap,
-                pe_dynamic=a.pe_dynamic, total_shares=a.total_shares,
-                update_time=a.update_time,
-            )
+    quotes_by_code = await _load_quotes(db, codes)
 
     total_value = 0.0
     total_cost = 0.0
@@ -106,20 +135,9 @@ async def dashboard_positions(
         await db.execute(select(Position).where(Position.user_id == current_user.id))
     ).scalars().all()
 
-    # 批量取 A 表行情 → dict
+    # 批量取行情：A 表优先，缺失实时兜底（新加持仓在下次刷新前也能显示真实价）
     codes = [p.stock_code for p in positions]
-    quotes_by_code: dict[str, StockQuote] = {}
-    if codes:
-        a_rows = (
-            await db.execute(select(StockSnapshot).where(StockSnapshot.code.in_(codes)))
-        ).scalars().all()
-        for a in a_rows:
-            quotes_by_code[a.code] = StockQuote(
-                code=a.code, name=a.name, current_price=a.current_price,
-                change_pct=a.change_pct, total_market_cap=a.total_market_cap,
-                pe_dynamic=a.pe_dynamic, total_shares=a.total_shares,
-                update_time=a.update_time,
-            )
+    quotes_by_code = await _load_quotes(db, codes)
 
     # 先算总市值，再算 position_ratio（空 shares 行不参与，避免 None*float TypeError）
     values: list[tuple[float, float]] = []  # [(price, shares), ...]

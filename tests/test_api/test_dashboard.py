@@ -125,6 +125,38 @@ async def test_dashboard_overview_daily_pl_computed(client, db_session, user):
 
 
 @pytest.mark.asyncio
+async def test_dashboard_positions_live_fallback_when_a_table_missing(client, db_session, user):
+    """A 表缺失的持仓 → 实时拉取兜底（mock 环境返回 50.0），不显示 0/None"""
+    from backend.models.portfolio import Position
+    db_session.add(Position(user_id=user.id, stock_code="00700.HK", stock_name="腾讯控股",
+                            shares=100, cost_price=400.0))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/positions", headers=user_headers(user))
+    assert res.status_code == 200
+    row = res.json()["data"][0]
+    assert row["stock_code"] == "00700.HK"
+    assert row["current_price"] == 50.0      # mock 兜底实时价，而非 0
+    assert row["pe_dynamic"] == 25.0         # mock 兜底 PE，而非 None
+    assert row["profit_loss"] == pytest.approx((50.0 - 400.0) * 100)
+    assert row["profit_loss_pct"] == pytest.approx((50.0 - 400.0) / 400.0 * 100)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_live_fallback_when_a_table_missing(client, db_session, user):
+    """A 表缺失的持仓也计入 overview 聚合（实时兜底价），而非按 0 漏算"""
+    from backend.models.portfolio import Position
+    db_session.add(Position(user_id=user.id, stock_code="00700.HK", stock_name="腾讯控股",
+                            shares=100, cost_price=400.0))
+    await db_session.commit()
+    res = await client.get("/api/dashboard/overview", headers=user_headers(user))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["position_count"] == 1
+    assert data["total_market_value"] == 5000.0       # 50*100，而非 0
+    assert data["total_pl"] == pytest.approx((50.0 - 400.0) * 100)
+
+
+@pytest.mark.asyncio
 async def test_dashboard_positions_sell_enriched(client, db_session, user):
     from backend.models.portfolio import Position
     from backend.models.stock import AnalysisSnapshot, StockSnapshot

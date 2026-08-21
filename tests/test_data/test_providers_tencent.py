@@ -106,19 +106,22 @@ def _hk_search_fixture() -> str:
 
 
 def _hk_quote_fixture() -> str:
-    fields = [""] * 60
+    # 真实 qt.gtimg.cn 港股响应（len=78）：字段下标与 A 股镜像一致（[3]现价/[4]昨收/
+    # [31]涨跌额/[32]涨跌幅/[39]PE/[45]市值），仅时间戳 [30] 为 "YYYY/MM/DD HH:MM:SS"
+    # （19 位，A 股为 14 位数字）；[38] 换手港股不返回（0）。
+    fields = [""] * 78
     fields[1] = "腾讯控股"
     fields[2] = "00700"
-    fields[3] = "380.00"
-    fields[4] = "378.50"
-    fields[5] = "375.00"
-    fields[30] = "20260811150000"
-    fields[31] = "5.60"
-    fields[32] = "1.50"
-    fields[38] = "0.30"
-    fields[39] = "22.50"
-    fields[44] = "35500.00"
-    fields[45] = "36000.00"
+    fields[3] = "459.000"
+    fields[4] = "451.400"
+    fields[5] = "451.000"
+    fields[30] = "2026/08/21 16:06:24"
+    fields[31] = "7.600"
+    fields[32] = "1.68"
+    fields[38] = "0"
+    fields[39] = "16.78"
+    fields[44] = "41700.00"
+    fields[45] = "41783.35"
     return ('v_hk00700="' + "~".join(fields) + '";')
 
 
@@ -134,10 +137,19 @@ async def test_tencent_search_includes_hk():
 
 @pytest.mark.asyncio
 async def test_tencent_quote_hk():
-    """港股行情 layout 未验证：腾讯直接抛 ProviderError，由链切东财（plan 文档化兜底）。
+    """港股行情 layout 已实测为 A 股镜像：腾讯直接解析港股行情（2026-08-21 生产验证）。
 
-    原测试假定港股可用 A 股镜像布局解析，该假设未实测，已废弃。
+    qt.gtimg.cn 港股响应（len=78）字段下标与 A 股一致（[3]现价/[4]昨收/[31]涨跌额/
+    [32]涨跌幅/[39]PE/[45]市值），仅时间戳格式不同（"YYYY/MM/DD HH:MM:SS" 19 位）。
     """
     provider = TencentProvider(transport=httpx.MockTransport(_handler_factory(_hk_quote_fixture())))
-    with pytest.raises(ProviderError):
-        await provider.fetch_quote("00700.HK")
+    quote = await provider.fetch_quote("00700.HK")
+    assert quote.code == "00700.HK"
+    assert quote.market == "HK"
+    assert quote.current_price == 459.0
+    assert quote.change_pct == 1.68
+    assert quote.change_amount == 7.6
+    assert quote.pe_dynamic == 16.78
+    assert quote.total_market_cap == pytest.approx(41783.35)
+    assert quote.turnover_rate is None  # 港股 [38] 无换手 → None
+    assert quote.update_time is not None  # 港股时间戳 "2026/08/21 16:06:24" 已解析

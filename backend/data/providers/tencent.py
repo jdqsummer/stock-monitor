@@ -7,7 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from backend.data.providers.base import ProviderError, StockDataProvider, is_hk, market_of, normalize_code
+from backend.data.providers.base import ProviderError, StockDataProvider, market_of, normalize_code
 from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 
 logger = logging.getLogger(__name__)
@@ -32,13 +32,9 @@ class TencentProvider(StockDataProvider):
             self._client = None
 
     async def fetch_quote(self, code: str) -> StockQuote:
-        # 港股行情 field layout 未实测：腾讯 qt.gtimg.cn 港股与 A 股字段下标不同，
-        # 静默复用 A 股下标（price=parts[3] 等）会产出错误数据。plan 文档化兜底：
-        # 无法可靠解析时直接抛 ProviderError，由 WesstockClient 链自动切到东财
-        # （东财 116.xxxx 港股格式已验证）。
-        if is_hk(code):
-            _, em_code = normalize_code(code)
-            raise ProviderError(f"腾讯港股行情 field layout 未验证，由链切东财 {em_code}")
+        # 港股行情 layout 已实测为 A 股镜像（2026-08-21 生产验证 qt.gtimg.cn len=78，
+        # 字段下标 [3]现价/[4]昨收/[31]涨跌额/[32]涨跌幅/[39]PE/[45]市值 与 A 股一致），
+        # 直接复用 A 股解析；时间戳格式差异在 _parse_quote 内分流处理。
         tcode, _ = normalize_code(code)
         client = await self._get_client()
         try:
@@ -72,6 +68,12 @@ class TencentProvider(StockDataProvider):
         if len(ts) == 14:
             try:
                 update_time = datetime.strptime(ts, "%Y%m%d%H%M%S")
+            except ValueError:
+                update_time = None
+        elif len(ts) == 19 and "/" in ts:
+            # 港股时间戳格式 "2026/08/21 16:06:24"（A 股为 14 位数字）
+            try:
+                update_time = datetime.strptime(ts, "%Y/%m/%d %H:%M:%S")
             except ValueError:
                 update_time = None
         return StockQuote(
