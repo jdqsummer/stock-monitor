@@ -1,4 +1,4 @@
-/** DeepSeek 风格流式打字光标：闪烁竖线 */
+/** DeepSeek 风格流式打字光标：蓝色闪烁竖线 */
 export function TypingCursor() {
   return (
     <span
@@ -9,7 +9,7 @@ export function TypingCursor() {
         height: 18,
         marginLeft: 2,
         verticalAlign: 'text-bottom',
-        background: '#4b5563',
+        background: '#4D6EFE',
         borderRadius: 1,
         animation: 'chatCursorBlink 1s steps(2) infinite',
       }}
