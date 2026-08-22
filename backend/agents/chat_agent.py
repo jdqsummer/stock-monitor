@@ -203,6 +203,7 @@ class ChatAgent:
                 "messages": c.messages,
                 "summary": c.summary,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
+                "pinned": c.pinned,
             }
             for c in conversations
         ]
@@ -226,6 +227,31 @@ class ChatAgent:
             await self.db.commit()
             return True
         return False
+
+    async def set_pinned(self, user_id: str, conversation_id: str, pinned: bool) -> bool:
+        """
+        设置会话置顶状态（校验归属）。
+
+        Args:
+            user_id: 用户 ID
+            conversation_id: 对话 ID
+            pinned: 目标置顶状态
+
+        Returns:
+            是否成功（对话存在且属于该用户）
+        """
+        result = await self.db.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == user_id,
+            )
+        )
+        conv = result.scalar_one_or_none()
+        if not conv:
+            return False
+        conv.pinned = pinned
+        await self.db.commit()
+        return True
 
     # ── 内部方法 ──
 

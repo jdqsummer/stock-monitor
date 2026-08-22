@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.llm.provider import LLMProvider, LLMResponse, LLMConfig, ProviderType
+from backend.agents.chat_agent import ChatAgent
 
 
 # ── Helpers ──
@@ -354,3 +355,41 @@ class TestChatAgentPersistence:
         result = await agent.delete_conversation(conversation_id="conv-123")
 
         assert result is True or result is False  # bool 返回
+
+
+class TestChatAgentPinned:
+    """ChatAgent.set_pinned + get_history 返回 pinned"""
+
+    @pytest.mark.asyncio
+    async def test_set_pinned_success(self):
+        conv = MagicMock()
+        conv.pinned = False
+        db = make_mock_db(conversation_for_load=conv)
+        agent = ChatAgent(llm_provider=make_mock_llm(), db=db)
+        ok = await agent.set_pinned("user-1", "conv-1", True)
+        assert ok is True
+        assert conv.pinned is True
+        db.commit.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_set_pinned_nonexistent_returns_false(self):
+        db = make_mock_db(conversation_for_load=None)
+        agent = ChatAgent(llm_provider=make_mock_llm(), db=db)
+        ok = await agent.set_pinned("user-1", "conv-none", True)
+        assert ok is False
+
+    @pytest.mark.asyncio
+    async def test_get_history_includes_pinned(self):
+        conv = MagicMock()
+        conv.id = "conv-1"
+        conv.agent_type = "chat"
+        conv.messages = []
+        conv.summary = "你好"
+        conv.created_at = None
+        conv.pinned = True
+        result = make_mock_db_result([conv])
+        db = AsyncMock(spec=AsyncSession)
+        db.execute = AsyncMock(return_value=result)
+        agent = ChatAgent(llm_provider=make_mock_llm(), db=db)
+        history = await agent.get_history("user-1")
+        assert history[0]["pinned"] is True

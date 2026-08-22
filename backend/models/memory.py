@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.db.base import Base
@@ -17,6 +17,7 @@ class Conversation(Base):
     messages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=text("0"))
 
 
 class Memory(Base):

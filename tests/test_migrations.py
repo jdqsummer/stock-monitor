@@ -176,3 +176,15 @@ def test_migrations_add_position_and_sell_columns(tmp_path):
             "sell_market_cap_low", "sell_market_cap_high", "sell_price_low",
             "sell_price_high", "sell_distance_pct", "sell_signal", "sell_action",
             "sell_analysis", "stage_results_sell"} <= snap
+
+
+def test_conversations_pinned_column_exists(tmp_path):
+    """迁移到 head 后 conversations 表应有 pinned 列（模型-迁移同步）"""
+    db_path = str(tmp_path / "mig.db")
+    _run_alembic(db_path, "head")
+    conn = sqlite3.connect(db_path)
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(conversations)")}
+    finally:
+        conn.close()
+    assert "pinned" in cols
