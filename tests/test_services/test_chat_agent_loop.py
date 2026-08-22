@@ -1,5 +1,6 @@
 # tests/test_services/test_chat_agent_loop.py
 """聊天 Agent Loop（function calling 编排）— TDD"""
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -36,6 +37,34 @@ def _fake_stream(chunks):
     return _gen()
 
 
+def _llm_with_run_five_stage_then_text():
+    """Mock LLM：第一轮返回 run_five_stage tool_call，第二轮返回文本。
+
+    用 SimpleNamespace 构造 raw_response，保证 fn.name 为真实字符串
+    （MagicMock(name=...) 会让 fn.name 返回子 mock，导致 name 匹配失效）。
+    """
+    llm = MagicMock()
+
+    def fake_chat(messages, tools=None, tool_choice="auto"):
+        # 第一轮（无 tool 消息）→ run_five_stage tool_call
+        if not any(m.get("role") == "tool" for m in messages):
+            raw = SimpleNamespace(choices=[
+                SimpleNamespace(message=SimpleNamespace(tool_calls=[
+                    SimpleNamespace(
+                        id="call_1",
+                        function=SimpleNamespace(name="run_five_stage",
+                                                 arguments='{"code": "600519"}'),
+                    ),
+                ])),
+            ])
+            return LLMResponse(content="", model="mock", raw_response=raw)
+        return LLMResponse(content="分析已提交，约 1-2 分钟完成。", model="mock", raw_response=None)
+
+    llm.chat = AsyncMock(side_effect=fake_chat)
+    llm.chat_stream = AsyncMock(return_value=_fake_stream(["分析已提交，约 1-2 分钟完成。"]))
+    return llm
+
+
 @pytest.mark.asyncio
 async def test_run_stream_executes_tool_and_streams_text():
     """run_stream 应产出 tool_call → tool_result → chunk → done 事件"""
@@ -67,16 +96,70 @@ async def test_run_stream_executes_tool_and_streams_text():
 
 
 @pytest.mark.asyncio
-async def test_run_send_returns_content_and_job_ids():
-    """run_send 聚合事件返回 content + conversation_id + job_ids"""
-    llm = MagicMock()
-    llm.chat = AsyncMock(return_value=LLMResponse(
-        content="分析已提交，约 1-2 分钟完成。", model="mock", raw_response=None))
-    llm.chat_stream = AsyncMock(return_value=_fake_stream(["分析已提交，约 1-2 分钟完成。"]))
+async def test_run_stream_run_five_stage_emits_analysis_submitted():
+    """run_five_stage 工具结果含 job_id → 产出 analysis_submitted 事件 + 记录 submitted_job_ids"""
+    llm = _llm_with_run_five_stage_then_text()
     db = AsyncMock()
     db.add = MagicMock()  # AsyncSession.add 是同步方法
     with patch("backend.services.chat_agent_loop.load_chat_persona",
                return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.execute_tool",
+               AsyncMock(return_value={"code": "600519", "job_id": "job_chat_1",
+                                       "status": "submitted"})), \
+         patch("backend.services.chat_agent_loop.build_chat_context",
+               AsyncMock(return_value={"summary_positions": "", "summary_watchlist": "",
+                                       "summary_diary": "", "memories": {}})), \
+         patch("backend.services.chat_agent_loop.MemoryService") as ms:
+        ms.return_value.distill_async = MagicMock()
+        loop = ChatAgentLoop(llm_provider=llm, db=db)
+        events = []
+        async for ev in loop.run_stream("u1", "分析 600519"):
+            events.append(ev)
+
+    analysis_events = [e for e in events if e["event"] == "analysis_submitted"]
+    assert len(analysis_events) == 1
+    assert analysis_events[0]["data"]["job_id"] == "job_chat_1"
+    assert analysis_events[0]["data"]["code"] == "600519"
+    assert loop.submitted_job_ids == ["job_chat_1"]
+
+
+@pytest.mark.asyncio
+async def test_run_stream_tool_error_still_yields_tool_result():
+    """工具抛异常 → 仍产出 tool_result（含失败摘要），且不产出 analysis_submitted"""
+    llm = _llm_with_tool_call_then_text()  # 第一轮 get_stock_snapshot tool_call
+    db = AsyncMock()
+    db.add = MagicMock()  # AsyncSession.add 是同步方法
+    with patch("backend.services.chat_agent_loop.load_chat_persona",
+               return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.execute_tool",
+               AsyncMock(side_effect=RuntimeError("boom"))), \
+         patch("backend.services.chat_agent_loop.build_chat_context",
+               AsyncMock(return_value={"summary_positions": "", "summary_watchlist": "",
+                                       "summary_diary": "", "memories": {}})), \
+         patch("backend.services.chat_agent_loop.MemoryService") as ms:
+        ms.return_value.distill_async = MagicMock()
+        loop = ChatAgentLoop(llm_provider=llm, db=db)
+        events = []
+        async for ev in loop.run_stream("u1", "分析 600519"):
+            events.append(ev)
+
+    ev_types = [e["event"] for e in events]
+    assert "tool_result" in ev_types
+    assert "analysis_submitted" not in ev_types
+    tool_result = next(e for e in events if e["event"] == "tool_result")
+    assert "失败" in tool_result["data"]["summary"]
+
+
+@pytest.mark.asyncio
+async def test_run_send_returns_content_and_job_ids():
+    """run_send 聚合事件返回 content + conversation_id + job_ids"""
+    llm = _llm_with_run_five_stage_then_text()
+    db = AsyncMock()
+    db.add = MagicMock()  # AsyncSession.add 是同步方法
+    with patch("backend.services.chat_agent_loop.load_chat_persona",
+               return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.execute_tool",
+               AsyncMock(return_value={"job_id": "job_send_1"})), \
          patch("backend.services.chat_agent_loop.build_chat_context",
                AsyncMock(return_value={})), \
          patch("backend.services.chat_agent_loop.MemoryService") as ms:
@@ -86,3 +169,4 @@ async def test_run_send_returns_content_and_job_ids():
 
     assert "content" in result
     assert "conversation_id" in result
+    assert result["job_ids"] == ["job_send_1"]
