@@ -1,6 +1,7 @@
-/** DeepSeek 风格单条消息：用户浅灰轻块 / 助手文本流 + 工具卡片 + 分析卡片 + hover 操作 */
+/** DeepSeek 浅色风格单条消息：用户浅灰轻块 / 助手文本流 + 工具卡片 + 分析卡片 + hover 操作行 */
 import { useState } from 'react';
-import { Avatar, Button, Space, Spin, Tag, Tooltip, message as antMsg } from 'antd';
+import type { ReactNode } from 'react';
+import { Avatar, Button, Spin, Tag, message as antMsg } from 'antd';
 import {
   CopyOutlined, DislikeFilled, DislikeOutlined, LikeFilled, LikeOutlined,
   ReloadOutlined, RobotOutlined,
@@ -9,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import type { Signal, WatchlistBoardRow } from '@/types';
 import { TypingCursor } from './TypingCursor';
+import { ds } from './theme';
 
 export interface DisplayToolCall {
   name: string;
@@ -66,8 +68,29 @@ const mdComponents = {
   ol: ({ node: _node, ...props }: any) => <ol style={{ margin: '2px 0', paddingLeft: 20 }} {...props} />,
   li: ({ node: _node, ...props }: any) => <li style={{ margin: '2px 0' }} {...props} />,
   table: ({ node: _node, ...props }: any) => <table style={{ margin: '6px 0', borderCollapse: 'collapse' }} {...props} />,
-  hr: ({ node: _node, ...props }: any) => <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid #eee' }} {...props} />,
+  hr: ({ node: _node, ...props }: any) => <hr style={{ margin: '8px 0', border: 'none', borderTop: `1px solid ${ds.borderLight}` }} {...props} />,
 };
+
+// 参考风格 icon 按钮：30×30 圆角，hover 浅底，active 蓝
+function ActionIcon({ title, active, onClick, children }: {
+  title: string; active?: boolean; onClick: () => void; children: ReactNode;
+}) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      style={{
+        width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        color: active ? ds.primary : ds.textTertiary,
+        background: active ? ds.primarySoft : 'transparent',
+        transition: 'background 0.12s ease, color 0.12s ease',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate }: Props) {
   const navigate = useNavigate();
@@ -87,55 +110,30 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
       <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          width: '100%',
-          maxWidth: 768,
-          justifyContent: isUser ? 'flex-end' : 'flex-start',
-        }}
+        style={{ display: 'flex', gap: 12, width: '100%', maxWidth: 760, justifyContent: isUser ? 'flex-end' : 'flex-start' }}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
       >
         {!isUser && (
-          <Avatar size={32} icon={<RobotOutlined />} style={{ background: '#52c41a', flexShrink: 0, marginTop: 2 }} />
+          <Avatar size={32} icon={<RobotOutlined />} style={{ background: ds.primary, flexShrink: 0, marginTop: 2 }} />
         )}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            maxWidth: '86%',
-            alignItems: isUser ? 'flex-end' : 'flex-start',
-            minWidth: 0,
-          }}
-        >
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 6, maxWidth: '86%',
+          alignItems: isUser ? 'flex-end' : 'flex-start', minWidth: 0,
+        }}>
           {isUser ? (
-            <div
-              style={{
-                background: '#f1f5f9',
-                borderRadius: 12,
-                padding: '10px 16px',
-                color: '#1a1a1a',
-                fontSize: 14,
-                lineHeight: 1.6,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-              }}
-            >
+            <div style={{
+              background: ds.bgSoft, borderRadius: 12, padding: '10px 16px',
+              color: ds.textPrimary, fontSize: 14, lineHeight: 1.6,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>
               {msg.content}
             </div>
           ) : (
-            <div
-              style={{
-                color: '#1a1a1a',
-                fontSize: 15,
-                lineHeight: 1.6,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                minHeight: 22,
-              }}
-            >
+            <div style={{
+              color: ds.textPrimary, fontSize: 15, lineHeight: 1.6,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word', minHeight: 22,
+            }}>
               {msg.content ? <ReactMarkdown components={mdComponents}>{msg.content}</ReactMarkdown> : null}
               {showCursor && <TypingCursor />}
               {!msg.content && !showCursor && (loading && isLast ? <Spin size="small" /> : null)}
@@ -144,17 +142,10 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
 
           {/* 工具过程卡片 */}
           {!isUser && msg.toolCalls?.map((tc, idx) => (
-            <div
-              key={idx}
-              style={{
-                padding: '6px 10px',
-                borderRadius: 8,
-                background: '#f7f7f7',
-                border: '1px solid #e5e5e5',
-                fontSize: 12,
-                color: '#999',
-              }}
-            >
+            <div key={idx} style={{
+              padding: '6px 10px', borderRadius: 8, background: ds.bgSoft,
+              border: `1px solid ${ds.borderLight}`, fontSize: 12, color: ds.textSecondary,
+            }}>
               {tc.status === 'done'
                 ? <>🔧 {toolLabel(tc.name)}{tc.summary ? `：${tc.summary}` : ''}</>
                 : tc.status === 'error'
@@ -165,22 +156,18 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
 
           {/* 五段式分析结论卡片 */}
           {!isUser && msg.analysisResult && (
-            <div
-              style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                background: '#f7f7f7',
-                border: '1px solid #e5e5e5',
-              }}
-            >
+            <div style={{
+              padding: '10px 12px', borderRadius: 8, background: ds.bgSoft,
+              border: `1px solid ${ds.borderLight}`,
+            }}>
               <Tag color={signalColor(msg.analysisResult.signal)}>
                 {msg.analysisResult.signal_label ?? msg.analysisResult.signal ?? '—'}
               </Tag>
-              <div style={{ color: '#1a1a1a', fontSize: 13, marginTop: 4 }}>
+              <div style={{ color: ds.textPrimary, fontSize: 13, marginTop: 4 }}>
                 击球区：{msg.analysisResult.swing_price ?? '—'}　距击球区：{msg.analysisResult.distance_pct ?? '—'}%
               </div>
               {msg.analysisResult.conclusion != null && msg.analysisResult.conclusion !== '' && (
-                <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>{msg.analysisResult.conclusion}</div>
+                <div style={{ fontSize: 12, color: ds.textSecondary, marginTop: 4 }}>{msg.analysisResult.conclusion}</div>
               )}
               {msg.analysisResult.code ? (
                 <Button type="link" size="small" style={{ padding: 0, marginTop: 4 }}
@@ -191,52 +178,33 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
             </div>
           )}
 
-          {/* 五段式分析失败提示 */}
+          {/* 五段式分析失败提示（数据色红，不动） */}
           {!isUser && msg.jobError && (
-            <div
-              style={{
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: '#fff1f0',
-                border: '1px solid #ffccc7',
-                color: '#cf1322',
-                fontSize: 13,
-              }}
-            >
+            <div style={{
+              padding: '8px 12px', borderRadius: 8, background: '#fff1f0',
+              border: '1px solid #ffccc7', color: '#cf1322', fontSize: 13,
+            }}>
               ⚠️ {msg.jobError}
             </div>
           )}
 
-          {/* hover 操作：复制 / 重新生成 / 点赞 / 点踩（仅助手消息） */}
+          {/* hover 操作行（复制 / 重新生成 / 点赞 / 点踩，赞踩互斥选中变蓝） */}
           {!isUser && hover && (
-            <Space
-              size={0}
-              style={{
-                background: '#f5f5f5',
-                border: '1px solid #e0e0e0',
-                borderRadius: 8,
-                padding: 2,
-              }}
-            >
-              <Tooltip title="复制">
-                <Button type="text" size="small" icon={<CopyOutlined />} onClick={copy} />
-              </Tooltip>
+            <div style={{
+              display: 'flex', gap: 6, background: ds.bgSidebar,
+              border: `1px solid ${ds.borderLight}`, borderRadius: 8, padding: 2,
+            }}>
+              <ActionIcon title="复制" onClick={copy}><CopyOutlined /></ActionIcon>
               {canRegenerate && (
-                <Tooltip title="重新生成">
-                  <Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => onRegenerate(msg)} />
-                </Tooltip>
+                <ActionIcon title="重新生成" onClick={() => onRegenerate(msg)}><ReloadOutlined /></ActionIcon>
               )}
-              <Tooltip title="有用">
-                <Button type="text" size="small"
-                  icon={vote === 'like' ? <LikeFilled /> : <LikeOutlined />}
-                  onClick={() => setVote(vote === 'like' ? null : 'like')} />
-              </Tooltip>
-              <Tooltip title="没用">
-                <Button type="text" size="small"
-                  icon={vote === 'dislike' ? <DislikeFilled /> : <DislikeOutlined />}
-                  onClick={() => setVote(vote === 'dislike' ? null : 'dislike')} />
-              </Tooltip>
-            </Space>
+              <ActionIcon title="有用" active={vote === 'like'} onClick={() => setVote(vote === 'like' ? null : 'like')}>
+                {vote === 'like' ? <LikeFilled /> : <LikeOutlined />}
+              </ActionIcon>
+              <ActionIcon title="没用" active={vote === 'dislike'} onClick={() => setVote(vote === 'dislike' ? null : 'dislike')}>
+                {vote === 'dislike' ? <DislikeFilled /> : <DislikeOutlined />}
+              </ActionIcon>
+            </div>
           )}
         </div>
       </div>
