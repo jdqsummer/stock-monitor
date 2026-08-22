@@ -31,25 +31,43 @@ MAX_TOOL_ROUNDS = 5
 # 工具角色消息必须带 tools（OpenAI 契约：有 tool 消息必须传 tools）
 _TOOLS_FOR_FINAL = TOOL_SCHEMAS
 
-# 模型在正文中泄漏的伪工具调用 XML 标记（DeepSeek 偶发把 function calling 当正文输出）。
+# 模型在正文中泄漏的伪工具调用 XML 标记（DeepSeek 偶发把 function calling 当正文输出，
+# 且流式输出会把标记拆成 2-4 字节微块，如 < + tool + _c + alls + >）。
 # 分两类闭合：<tool_calls>...</tool_calls>（外层）与 <invoke ...>...</invoke>（独立）。
 _TOOL_XML_OPEN = re.compile(r"<tool_calls>|<invoke[^>]*>", re.IGNORECASE)
 _TOOL_XML_CLOSE_TOOL = re.compile(r"</tool_calls>", re.IGNORECASE)
 _TOOL_XML_CLOSE_INVOKE = re.compile(r"</invoke>", re.IGNORECASE)
+_MARKERS = ("<tool_calls>", "</tool_calls>", "<invoke", "</invoke>")
+_MAX_MARKER_PREFIX = max(len(m) for m in _MARKERS)  # 12/13
+
+
+def _marker_prefix_len(s: str) -> int:
+    """返回 s 尾部是与任一标记前缀匹配的最长后缀长度；0 表示可安全输出全部。
+
+    用于跨 chunk 保留可能未闭合的标记前缀（如 "<t"），下一 chunk 拼全后即可命中。
+    """
+    for n in range(min(len(s), _MAX_MARKER_PREFIX), 0, -1):
+        tail = s[-n:]
+        if any(m.startswith(tail) for m in _MARKERS):
+            return n
+    return 0
 
 
 class _ToolCallXmlStripper:
     """有状态过滤流式正文中泄漏的 <tool_calls>/<invoke> 伪调用 XML（标记可能跨 chunk 分片）。
 
-    行为：未抑制态 → 输出普通文本，遇 `<tool_calls>` 或 `<invoke ...>` 起抑制并按 opener 类型
-    匹配对应闭合（`<tool_calls>`→`</tool_calls>`，`<invoke>`→`</invoke>`）；抑制态 → 丢弃直到
-    闭合（未闭合则丢弃尾部）。纯过滤，不改动正常文本。
+    行为：未抑制态 → 输出普通文本（尾部若为未闭合的标记前缀则暂留缓冲），遇 `<tool_calls>` 或
+    `<invoke ...>` 起抑制并按 opener 类型匹配对应闭合；抑制态 → 丢弃直到闭合（未闭合丢弃尾部）。
+    纯过滤，不改动正常文本。
     """
 
     def __init__(self) -> None:
         self._suppress = False
         self._open_kind = ""
         self._buf = ""
+
+    def _close_pattern(self) -> "re.Pattern[str]":
+        return _TOOL_XML_CLOSE_TOOL if self._open_kind == "tool_calls" else _TOOL_XML_CLOSE_INVOKE
 
     def feed(self, text: str) -> str:
         out: list[str] = []
@@ -62,19 +80,28 @@ class _ToolCallXmlStripper:
                     self._open_kind = "tool_calls" if m.group(0).startswith("<tool_calls") else "invoke"
                     self._suppress = True
                     self._buf = self._buf[m.end():]
+                    continue
+                keep = _marker_prefix_len(self._buf)
+                if keep:
+                    orig_len = len(self._buf)
+                    out.append(self._buf[:-keep])
+                    self._buf = self._buf[-keep:]
+                    if keep == orig_len:
+                        break  # 整个缓冲都是标记前缀 → 等待下一 chunk，避免死循环
                 else:
                     out.append(self._buf)
                     self._buf = ""
+                    break
             else:
-                close_pat = (_TOOL_XML_CLOSE_TOOL if self._open_kind == "tool_calls"
-                             else _TOOL_XML_CLOSE_INVOKE)
-                m = close_pat.search(self._buf)
+                m = self._close_pattern().search(self._buf)
                 if m:
                     self._suppress = False
                     self._buf = self._buf[m.end():]
-                else:
-                    self._buf = ""  # 未闭合 → 丢弃剩余，等下一 chunk
-                    break
+                    continue
+                # 未闭合：丢弃已确认的抑制内容，仅保留可能是闭合标记前缀的尾部（分片场景）
+                keep = _marker_prefix_len(self._buf)
+                self._buf = self._buf[-keep:] if keep else ""
+                break
         return "".join(out)
 
 

@@ -91,6 +91,29 @@ def test_tool_call_xml_stripper_cross_chunk():
     assert s.feed(" 结尾") == " 结尾"
 
 
+def test_tool_call_xml_stripper_micro_split():
+    """DeepSeek 流式把标记拆成 2-4 字节微块（< + tool + _c + alls + >）也能过滤——生产实测泄漏场景"""
+    s = _ToolCallXmlStripper()
+    out = ""
+    for frag in ["<", "tool", "_c", "alls", ">\n", "<invoke", " name=\"x\">", "aa",
+                 "</", "invoke", ">", " ", "</", "tool", "_c", "alls", ">", " 正文"]:
+        out += s.feed(frag)
+    assert "tool_calls" not in out and "invoke" not in out
+    assert "正文" in out
+
+
+def test_tool_call_xml_stripper_micro_split_leading_text():
+    """微块分片 + 前置文本：前置文本保留，标记整块过滤"""
+    s = _ToolCallXmlStripper()
+    out = ""
+    for frag in ["结论", "：", "<", "tool", "_c", "alls", ">", "<invoke", " n=", "\"x\"", ">",
+                 "</invoke>", "</", "tool", "_c", "alls", ">", "，数据如下", "。"]:
+        out += s.feed(frag)
+    assert "tool_calls" not in out and "invoke" not in out
+    assert out.startswith("结论：")
+    assert "，数据如下。" in out
+
+
 @pytest.mark.asyncio
 async def test_run_stream_filters_tool_call_xml_from_chunks():
     """模型把伪调用 XML 当正文流式输出 → chunk 事件不含 XML，正常文本保留"""
