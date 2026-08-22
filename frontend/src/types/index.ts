@@ -236,6 +236,7 @@ export interface ConversationItem {
   messages: ChatMessage[];
   summary: string | null;
   created_at: string;
+  pinned?: boolean;
 }
 
 export interface ChatResponse {

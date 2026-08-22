@@ -102,15 +102,18 @@ export const portfolioApi = {
 
 // 聊天
 export const chatApi = {
-  send: (message: string, conversationId?: string) =>
-    client.post<ApiResponse<{ content: string; conversation_id: string; model: string }>>('/chat/send', { message, conversation_id: conversationId }),
+  send: (message: string, conversationId?: string, model?: string) =>
+    client.post<ApiResponse<{ content: string; conversation_id: string; model: string }>>('/chat/send', { message, conversation_id: conversationId, model }),
   getHistory: (limit = 20) =>
     client.get<ApiResponse<ConversationItem[]>>('/chat/history', { params: { limit } }),
   deleteConversation: (conversationId: string) =>
     client.delete<ApiResponse>(`/chat/history/${conversationId}`),
-  getStreamUrl: (message: string, conversationId?: string) => {
+  togglePin: (conversationId: string, pinned: boolean) =>
+    client.post<ApiResponse<{ id: string; pinned: boolean }>>(`/chat/history/${conversationId}/pin`, { pinned }),
+  getStreamUrl: (message: string, conversationId?: string, model?: string) => {
     const params = new URLSearchParams({ message });
     if (conversationId) params.set('conversation_id', conversationId);
+    if (model) params.set('model', model);
     return `/api/chat/stream?${params.toString()}`;
   },
   getProfile: (refresh = false) =>
