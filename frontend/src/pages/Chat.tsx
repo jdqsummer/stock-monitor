@@ -1,11 +1,13 @@
 // frontend/src/pages/Chat.tsx
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Button, Divider, Drawer, List, Popconfirm, Space, Spin, Tag, Typography, message as antMsg } from 'antd';
-import { DeleteOutlined, PlusOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from '@ant-design/icons';
+import { Button, Divider, Drawer, Space, Spin, Tag, Typography, message as antMsg } from 'antd';
+import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
 import { chatApi } from '@/api/client';
 import type { ChatProfile, ConversationItem, WatchlistBoardRow } from '@/types';
 import { ChatComposer } from './chat/ChatComposer';
 import { MessageItem, type DisplayMessage } from './chat/MessageItem';
+import { ChatSidebar } from './chat/ChatSidebar';
+import { ds } from './chat/theme';
 
 const { Text: Txt, Paragraph } = Typography;
 
@@ -15,7 +17,7 @@ export function Chat() {
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [history, setHistory] = useState<ConversationItem[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profile, setProfile] = useState<ChatProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -51,7 +53,6 @@ export function Chat() {
   const newChat = () => {
     setMessages([]);
     setConversationId(null);
-    setShowHistory(false);
     if (abortRef.current) { abortRef.current.abort(); setLoading(false); }
   };
 
@@ -68,7 +69,7 @@ export function Chat() {
   };
   const openProfile = () => { loadProfile(false); setProfileOpen(true); };
 
-  // SSE 事件分流（五个 setState helper 保持不变，定义见下）
+  // SSE 事件分流（五个 setState helper 保持不变）
   const appendAssistantText = (prev: DisplayMessage[], text: string): DisplayMessage[] => {
     const last = prev[prev.length - 1];
     if (last && last.role === 'assistant') {
@@ -265,75 +266,59 @@ export function Chat() {
       {/* 注入流式光标 keyframes */}
       <style>{`@keyframes chatCursorBlink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }`}</style>
 
-      {/* 侧边栏：对话历史（保留） */}
+      {/* 历史侧栏（ChatSidebar，宽度由 showHistory 控制） */}
       <div style={{
         width: showHistory ? 260 : 0,
         overflow: 'hidden',
         transition: 'width 0.2s',
-        borderRight: showHistory ? '1px solid #e5e5e5' : 'none',
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#fafafa',
+        borderRight: showHistory ? `1px solid ${ds.borderLight}` : 'none',
+        background: ds.bgSidebar,
+        flexShrink: 0,
       }}>
-        <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Txt strong style={{ color: '#1a1a1a' }}>对话历史</Txt>
-          <Button type="text" size="small" icon={<PlusOutlined />} onClick={newChat} style={{ color: '#52c41a' }} />
-        </div>
-        <List
-          style={{ flex: 1, overflow: 'auto', padding: '0 8px' }}
-          dataSource={history}
-          locale={{ emptyText: <Txt style={{ color: '#999' }}>暂无对话</Txt> }}
-          renderItem={(item) => (
-            <List.Item
-              onClick={() => loadConversation(item)}
-              style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6, marginBottom: 4, background: item.id === conversationId ? '#f0f4ff' : 'transparent', border: 'none' }}
-              actions={[
-                <Popconfirm key="del" title="确定删除？" onConfirm={(e) => { e?.stopPropagation(); deleteConversation(item.id); }}
-                  onCancel={(e) => e?.stopPropagation()}>
-                  <Button type="text" size="small" icon={<DeleteOutlined />} style={{ color: '#999' }} onClick={(e) => e.stopPropagation()} />
-                </Popconfirm>,
-              ]}
-            >
-              <List.Item.Meta
-                title={<Txt style={{ color: '#1a1a1a', fontSize: 13 }} ellipsis>{item.summary || '新对话'}</Txt>}
-                description={<Txt style={{ color: '#999', fontSize: 11 }}>{item.created_at ? new Date(item.created_at).toLocaleDateString() : ''}</Txt>}
-              />
-            </List.Item>
-          )}
+        <ChatSidebar
+          history={history}
+          activeId={conversationId}
+          onSelect={loadConversation}
+          onNewChat={newChat}
+          onDelete={deleteConversation}
         />
       </div>
 
       {/* 主聊天区域 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* 顶部栏（视觉简化） */}
+        {/* 顶部栏 */}
         <div style={{
           padding: '10px 20px',
-          borderBottom: '1px solid #e5e5e5',
+          borderBottom: `1px solid ${ds.borderLight}`,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: '#fafafa',
+          background: ds.bgApp,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Button type="text" size="small" onClick={() => setShowHistory(!showHistory)} style={{ color: '#8a8a8a' }}>
+            <Button type="text" size="small" onClick={() => setShowHistory(!showHistory)} style={{ color: ds.textTertiary }}>
               {showHistory ? '◁ 收起' : '▷ 历史'}
             </Button>
-            <Tag color="green" style={{ margin: 0 }}>价值投资助手</Tag>
+            <span style={{ fontSize: 15, fontWeight: 600, color: ds.textPrimary }}>投资小助手</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {conversationId && <Txt style={{ color: '#999', fontSize: 12 }}>ID: {conversationId.slice(0, 8)}...</Txt>}
-            <Button type="text" size="small" icon={<UserOutlined />} onClick={openProfile} style={{ color: '#8a8a8a' }}>我的投资画像</Button>
-            <Button type="text" size="small" icon={<PlusOutlined />} onClick={newChat} style={{ color: '#52c41a' }}>新对话</Button>
+            <Button type="text" size="small" icon={<UserOutlined />} onClick={openProfile} style={{ color: ds.primary }}>我的投资画像</Button>
+            <Button type="text" size="small" icon={<PlusOutlined />} onClick={newChat} style={{ color: ds.primary }}>新对话</Button>
           </div>
         </div>
 
         {/* 消息列（居中窄列） */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '28px 24px', background: '#ffffff' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: '28px 24px', background: ds.bgApp }}>
           {messages.length === 0 ? (
-            <div style={{ textAlign: 'center', marginTop: 120, color: '#999' }}>
-              <RobotOutlined style={{ fontSize: 44, marginBottom: 14, color: '#c0c0c0' }} />
-              <Paragraph style={{ color: '#1a1a1a', fontSize: 16 }}>价值投资助手</Paragraph>
-              <Txt style={{ color: '#999', fontSize: 13 }}>基于安全边际框架，帮你分析企业价值和投资时机</Txt>
+            <div style={{ textAlign: 'center', marginTop: 120 }}>
+              <div style={{
+                width: 56, height: 56, margin: '0 auto 16px', borderRadius: 14,
+                background: `linear-gradient(135deg, ${ds.gradientStart}, ${ds.gradientEnd})`,
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 24, fontWeight: 600, boxShadow: '0 2px 8px rgba(77,111,254,0.3)',
+              }}>投</div>
+              <div style={{ color: ds.textPrimary, fontSize: 18, fontWeight: 600 }}>价值投资助手</div>
+              <div style={{ color: ds.textTertiary, fontSize: 13, marginTop: 6 }}>基于安全边际框架，帮你分析企业价值和投资时机</div>
             </div>
           ) : (
             <>
@@ -367,16 +352,16 @@ export function Chat() {
         extra={<Button size="small" icon={<ReloadOutlined />} loading={profileLoading} onClick={() => loadProfile(true)}>刷新画像</Button>}>
         {profile ? (
           <>
-            <Paragraph style={{ color: '#1a1a1a', whiteSpace: 'pre-wrap' }}>{profile.L3}</Paragraph>
+            <Paragraph style={{ color: ds.textPrimary, whiteSpace: 'pre-wrap' }}>{profile.L3}</Paragraph>
             <Divider />
             <Space direction="vertical" style={{ width: '100%' }}>
               <Tag>持仓 {profile.position_count}</Tag>
               <Tag>自选 {profile.watchlist_count}</Tag>
               <Tag>笔记 {profile.diary_count}</Tag>
             </Space>
-            <Txt strong style={{ color: '#1a1a1a' }}>关注偏好</Txt>
+            <Txt strong style={{ color: ds.textPrimary }}>关注偏好</Txt>
             {profile.L1.map((m, i) => (
-              <Paragraph key={i} style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>[{m.category ?? '偏好'}] {m.content}</Paragraph>
+              <Paragraph key={i} style={{ fontSize: 12, color: ds.textSecondary, marginBottom: 4 }}>[{m.category ?? '偏好'}] {m.content}</Paragraph>
             ))}
           </>
         ) : <Spin />}
