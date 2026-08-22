@@ -19,8 +19,8 @@ export function ChatComposer({ value, onChange, onSend, loading, disabled }: Pro
         display: 'flex',
         justifyContent: 'center',
         padding: '12px 24px 14px',
-        borderTop: '1px solid #262626',
-        background: '#141414',
+        borderTop: '1px solid #e5e5e5',
+        background: '#fafafa',
       }}
     >
       <div style={{ width: '100%', maxWidth: 768 }}>
@@ -29,8 +29,8 @@ export function ChatComposer({ value, onChange, onSend, loading, disabled }: Pro
             display: 'flex',
             alignItems: 'flex-end',
             gap: 8,
-            background: '#1f1f1f',
-            border: '1px solid #262626',
+            background: '#f7f7f7',
+            border: '1px solid #e0e0e0',
             borderRadius: 14,
             padding: '6px 6px 6px 14px',
           }}
@@ -48,7 +48,7 @@ export function ChatComposer({ value, onChange, onSend, loading, disabled }: Pro
             autoSize={{ minRows: 1, maxRows: 4 }}
             disabled={loading}
             bordered={false}
-            style={{ flex: 1, background: 'transparent', color: '#e0e0e0', fontSize: 14 }}
+            style={{ flex: 1, background: 'transparent', color: '#1a1a1a', fontSize: 14 }}
           />
           <Button
             type="text"
@@ -56,7 +56,7 @@ export function ChatComposer({ value, onChange, onSend, loading, disabled }: Pro
             onClick={() => onSend()}
             disabled={disabled}
             style={{
-              background: disabled ? '#333' : '#52c41a',
+              background: disabled ? '#d9d9d9' : '#52c41a',
               color: '#fff',
               borderRadius: 10,
               width: 34,
@@ -66,7 +66,7 @@ export function ChatComposer({ value, onChange, onSend, loading, disabled }: Pro
             }}
           />
         </div>
-        <div style={{ textAlign: 'center', color: '#555', fontSize: 11, marginTop: 6 }}>
+        <div style={{ textAlign: 'center', color: '#999', fontSize: 11, marginTop: 6 }}>
           AI 分析仅供参考，不构成投资建议
         </div>
       </div>

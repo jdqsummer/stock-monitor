@@ -56,6 +56,19 @@ function toolLabel(name: string): string {
   return labels[name] ?? name;
 }
 
+// Markdown 紧凑排版：覆盖默认上下 margin，使段落/列表更紧促（浅色主题）
+const mdComponents = {
+  p: ({ node: _node, ...props }: any) => <p style={{ margin: '4px 0' }} {...props} />,
+  h1: ({ node: _node, ...props }: any) => <h1 style={{ margin: '8px 0 4px' }} {...props} />,
+  h2: ({ node: _node, ...props }: any) => <h2 style={{ margin: '8px 0 4px' }} {...props} />,
+  h3: ({ node: _node, ...props }: any) => <h3 style={{ margin: '8px 0 4px' }} {...props} />,
+  ul: ({ node: _node, ...props }: any) => <ul style={{ margin: '4px 0', paddingLeft: 20 }} {...props} />,
+  ol: ({ node: _node, ...props }: any) => <ol style={{ margin: '4px 0', paddingLeft: 20 }} {...props} />,
+  li: ({ node: _node, ...props }: any) => <li style={{ margin: '2px 0' }} {...props} />,
+  table: ({ node: _node, ...props }: any) => <table style={{ margin: '6px 0', borderCollapse: 'collapse' }} {...props} />,
+  hr: ({ node: _node, ...props }: any) => <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid #eee' }} {...props} />,
+};
+
 export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate }: Props) {
   const navigate = useNavigate();
   const [hover, setHover] = useState(false);
@@ -72,7 +85,7 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 22 }}>
+    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
       <div
         style={{
           display: 'flex',
@@ -100,12 +113,12 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
           {isUser ? (
             <div
               style={{
-                background: '#1f2937',
+                background: '#f1f5f9',
                 borderRadius: 12,
                 padding: '10px 16px',
-                color: '#e0e0e0',
+                color: '#1a1a1a',
                 fontSize: 14,
-                lineHeight: 1.7,
+                lineHeight: 1.6,
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
               }}
@@ -115,15 +128,15 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
           ) : (
             <div
               style={{
-                color: '#e0e0e0',
+                color: '#1a1a1a',
                 fontSize: 15,
-                lineHeight: 1.8,
+                lineHeight: 1.6,
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 minHeight: 22,
               }}
             >
-              {msg.content ? <ReactMarkdown>{msg.content}</ReactMarkdown> : null}
+              {msg.content ? <ReactMarkdown components={mdComponents}>{msg.content}</ReactMarkdown> : null}
               {showCursor && <TypingCursor />}
               {!msg.content && !showCursor && (loading && isLast ? <Spin size="small" /> : null)}
             </div>
@@ -136,10 +149,10 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
               style={{
                 padding: '6px 10px',
                 borderRadius: 8,
-                background: '#141414',
-                border: '1px solid #262626',
+                background: '#f7f7f7',
+                border: '1px solid #e5e5e5',
                 fontSize: 12,
-                color: '#aaa',
+                color: '#999',
               }}
             >
               {tc.status === 'done'
@@ -156,18 +169,18 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
               style={{
                 padding: '10px 12px',
                 borderRadius: 8,
-                background: '#141414',
-                border: '1px solid #262626',
+                background: '#f7f7f7',
+                border: '1px solid #e5e5e5',
               }}
             >
               <Tag color={signalColor(msg.analysisResult.signal)}>
                 {msg.analysisResult.signal_label ?? msg.analysisResult.signal ?? '—'}
               </Tag>
-              <div style={{ color: '#e0e0e0', fontSize: 13, marginTop: 4 }}>
+              <div style={{ color: '#1a1a1a', fontSize: 13, marginTop: 4 }}>
                 击球区：{msg.analysisResult.swing_price ?? '—'}　距击球区：{msg.analysisResult.distance_pct ?? '—'}%
               </div>
               {msg.analysisResult.conclusion != null && msg.analysisResult.conclusion !== '' && (
-                <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>{msg.analysisResult.conclusion}</div>
+                <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>{msg.analysisResult.conclusion}</div>
               )}
               {msg.analysisResult.code ? (
                 <Button type="link" size="small" style={{ padding: 0, marginTop: 4 }}
@@ -184,9 +197,9 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
               style={{
                 padding: '8px 12px',
                 borderRadius: 8,
-                background: '#2a1215',
-                border: '1px solid #5c1f1f',
-                color: '#ff7875',
+                background: '#fff1f0',
+                border: '1px solid #ffccc7',
+                color: '#cf1322',
                 fontSize: 13,
               }}
             >
@@ -199,8 +212,8 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
             <Space
               size={0}
               style={{
-                background: '#1f1f1f',
-                border: '1px solid #262626',
+                background: '#f5f5f5',
+                border: '1px solid #e0e0e0',
                 borderRadius: 8,
                 padding: 2,
               }}

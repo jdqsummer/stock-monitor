@@ -270,33 +270,33 @@ export function Chat() {
         width: showHistory ? 260 : 0,
         overflow: 'hidden',
         transition: 'width 0.2s',
-        borderRight: showHistory ? '1px solid #262626' : 'none',
+        borderRight: showHistory ? '1px solid #e5e5e5' : 'none',
         display: 'flex',
         flexDirection: 'column',
-        background: '#141414',
+        background: '#fafafa',
       }}>
         <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Txt strong style={{ color: '#e0e0e0' }}>对话历史</Txt>
+          <Txt strong style={{ color: '#1a1a1a' }}>对话历史</Txt>
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={newChat} style={{ color: '#52c41a' }} />
         </div>
         <List
           style={{ flex: 1, overflow: 'auto', padding: '0 8px' }}
           dataSource={history}
-          locale={{ emptyText: <Txt style={{ color: '#666' }}>暂无对话</Txt> }}
+          locale={{ emptyText: <Txt style={{ color: '#999' }}>暂无对话</Txt> }}
           renderItem={(item) => (
             <List.Item
               onClick={() => loadConversation(item)}
-              style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6, marginBottom: 4, background: item.id === conversationId ? '#1a1a2e' : 'transparent', border: 'none' }}
+              style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6, marginBottom: 4, background: item.id === conversationId ? '#f0f4ff' : 'transparent', border: 'none' }}
               actions={[
                 <Popconfirm key="del" title="确定删除？" onConfirm={(e) => { e?.stopPropagation(); deleteConversation(item.id); }}
                   onCancel={(e) => e?.stopPropagation()}>
-                  <Button type="text" size="small" icon={<DeleteOutlined />} style={{ color: '#666' }} onClick={(e) => e.stopPropagation()} />
+                  <Button type="text" size="small" icon={<DeleteOutlined />} style={{ color: '#999' }} onClick={(e) => e.stopPropagation()} />
                 </Popconfirm>,
               ]}
             >
               <List.Item.Meta
-                title={<Txt style={{ color: '#d0d0d0', fontSize: 13 }} ellipsis>{item.summary || '新对话'}</Txt>}
-                description={<Txt style={{ color: '#666', fontSize: 11 }}>{item.created_at ? new Date(item.created_at).toLocaleDateString() : ''}</Txt>}
+                title={<Txt style={{ color: '#1a1a1a', fontSize: 13 }} ellipsis>{item.summary || '新对话'}</Txt>}
+                description={<Txt style={{ color: '#999', fontSize: 11 }}>{item.created_at ? new Date(item.created_at).toLocaleDateString() : ''}</Txt>}
               />
             </List.Item>
           )}
@@ -308,32 +308,32 @@ export function Chat() {
         {/* 顶部栏（视觉简化） */}
         <div style={{
           padding: '10px 20px',
-          borderBottom: '1px solid #262626',
+          borderBottom: '1px solid #e5e5e5',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: '#141414',
+          background: '#fafafa',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Button type="text" size="small" onClick={() => setShowHistory(!showHistory)} style={{ color: '#888' }}>
+            <Button type="text" size="small" onClick={() => setShowHistory(!showHistory)} style={{ color: '#8a8a8a' }}>
               {showHistory ? '◁ 收起' : '▷ 历史'}
             </Button>
             <Tag color="green" style={{ margin: 0 }}>价值投资助手</Tag>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {conversationId && <Txt style={{ color: '#666', fontSize: 12 }}>ID: {conversationId.slice(0, 8)}...</Txt>}
-            <Button type="text" size="small" icon={<UserOutlined />} onClick={openProfile} style={{ color: '#888' }}>我的投资画像</Button>
+            {conversationId && <Txt style={{ color: '#999', fontSize: 12 }}>ID: {conversationId.slice(0, 8)}...</Txt>}
+            <Button type="text" size="small" icon={<UserOutlined />} onClick={openProfile} style={{ color: '#8a8a8a' }}>我的投资画像</Button>
             <Button type="text" size="small" icon={<PlusOutlined />} onClick={newChat} style={{ color: '#52c41a' }}>新对话</Button>
           </div>
         </div>
 
         {/* 消息列（居中窄列） */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '28px 24px', background: '#0d0d0d' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: '28px 24px', background: '#ffffff' }}>
           {messages.length === 0 ? (
-            <div style={{ textAlign: 'center', marginTop: 120, color: '#555' }}>
-              <RobotOutlined style={{ fontSize: 44, marginBottom: 14, color: '#666' }} />
-              <Paragraph style={{ color: '#c0c0c0', fontSize: 16 }}>价值投资助手</Paragraph>
-              <Txt style={{ color: '#666', fontSize: 13 }}>基于安全边际框架，帮你分析企业价值和投资时机</Txt>
+            <div style={{ textAlign: 'center', marginTop: 120, color: '#999' }}>
+              <RobotOutlined style={{ fontSize: 44, marginBottom: 14, color: '#c0c0c0' }} />
+              <Paragraph style={{ color: '#1a1a1a', fontSize: 16 }}>价值投资助手</Paragraph>
+              <Txt style={{ color: '#999', fontSize: 13 }}>基于安全边际框架，帮你分析企业价值和投资时机</Txt>
             </div>
           ) : (
             <>
@@ -367,16 +367,16 @@ export function Chat() {
         extra={<Button size="small" icon={<ReloadOutlined />} loading={profileLoading} onClick={() => loadProfile(true)}>刷新画像</Button>}>
         {profile ? (
           <>
-            <Paragraph style={{ color: '#e0e0e0', whiteSpace: 'pre-wrap' }}>{profile.L3}</Paragraph>
+            <Paragraph style={{ color: '#1a1a1a', whiteSpace: 'pre-wrap' }}>{profile.L3}</Paragraph>
             <Divider />
             <Space direction="vertical" style={{ width: '100%' }}>
               <Tag>持仓 {profile.position_count}</Tag>
               <Tag>自选 {profile.watchlist_count}</Tag>
               <Tag>笔记 {profile.diary_count}</Tag>
             </Space>
-            <Txt strong style={{ color: '#ccc' }}>关注偏好</Txt>
+            <Txt strong style={{ color: '#1a1a1a' }}>关注偏好</Txt>
             {profile.L1.map((m, i) => (
-              <Paragraph key={i} style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>[{m.category ?? '偏好'}] {m.content}</Paragraph>
+              <Paragraph key={i} style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>[{m.category ?? '偏好'}] {m.content}</Paragraph>
             ))}
           </>
         ) : <Spin />}

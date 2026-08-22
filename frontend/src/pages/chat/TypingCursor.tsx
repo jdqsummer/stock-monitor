@@ -9,7 +9,7 @@ export function TypingCursor() {
         height: 18,
         marginLeft: 2,
         verticalAlign: 'text-bottom',
-        background: '#52c41a',
+        background: '#4b5563',
         borderRadius: 1,
         animation: 'chatCursorBlink 1s steps(2) infinite',
       }}
