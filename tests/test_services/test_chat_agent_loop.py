@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.llm.provider import LLMResponse
-from backend.services.chat_agent_loop import ChatAgentLoop, MAX_TOOL_ROUNDS
+from backend.services.chat_agent_loop import ChatAgentLoop, MAX_TOOL_ROUNDS, _ToolCallXmlStripper
 
 
 def _llm_with_tool_call_then_text():
@@ -69,6 +69,53 @@ def _llm_with_run_five_stage_then_text():
 
     llm.chat_stream = _chat_stream
     return llm
+
+
+def test_tool_call_xml_stripper():
+    """stripper 过滤 <tool_calls>/<invoke> XML，保留正常文本"""
+    s = _ToolCallXmlStripper()
+    assert s.feed("贵州茅台现价 1340 元。") == "贵州茅台现价 1340 元。"
+    # 单 chunk 完整块被整体移除，前后文本保留
+    out = s.feed("结论：<tool_calls> <invoke name=\"get_financials_detail\"> <parameter name=\"code\">01810.HK</parameter> </invoke> </tool_calls> 财报见上。")
+    assert out == "结论： 财报见上。"
+    assert "tool_calls" not in out and "invoke" not in out
+
+
+def test_tool_call_xml_stripper_cross_chunk():
+    """标记跨多个 chunk 分片时仍有状态地过滤（不把分片漏出）"""
+    s = _ToolCallXmlStripper()
+    assert s.feed("开头 ") == "开头 "
+    assert s.feed("<tool_calls> <invoke") == ""  # 进入抑制态，不输出分片
+    assert s.feed(" name=\"x\">...") == ""
+    assert s.feed("</invoke> </tool_calls>") == ""
+    assert s.feed(" 结尾") == " 结尾"
+
+
+@pytest.mark.asyncio
+async def test_run_stream_filters_tool_call_xml_from_chunks():
+    """模型把伪调用 XML 当正文流式输出 → chunk 事件不含 XML，正常文本保留"""
+    llm = MagicMock()
+    llm.chat = AsyncMock(return_value=LLMResponse(content="", model="mock", raw_response=None))
+    async def _chat_stream(messages, tools=None):
+        for c in ["<tool_calls> <invoke name=\"get_financials_detail\"> <parameter name=\"code\">01810.HK</parameter> </invoke> </tool_calls>", "小米财报如下：营收 3659 亿。"]:
+            yield c
+    llm.chat_stream = _chat_stream
+    db = AsyncMock()
+    db.add = MagicMock()
+    with patch("backend.services.chat_agent_loop.load_chat_persona",
+               return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.build_chat_context",
+               AsyncMock(return_value={})), \
+         patch("backend.services.chat_agent_loop.MemoryService") as ms:
+        ms.return_value.distill_async = MagicMock()
+        loop = ChatAgentLoop(llm_provider=llm, db=db)
+        chunks = []
+        async for ev in loop.run_stream("u1", "小米财报"):
+            if ev["event"] == "chunk":
+                chunks.append(ev["data"]["content"])
+    joined = "".join(chunks)
+    assert "tool_calls" not in joined and "invoke" not in joined
+    assert "小米财报如下：营收 3659 亿" in joined
 
 
 @pytest.mark.asyncio

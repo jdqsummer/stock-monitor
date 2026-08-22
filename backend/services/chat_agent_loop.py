@@ -10,6 +10,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import AsyncIterator, Optional
 
 from sqlalchemy import select
@@ -29,6 +30,52 @@ MAX_TOOL_ROUNDS = 5
 
 # 工具角色消息必须带 tools（OpenAI 契约：有 tool 消息必须传 tools）
 _TOOLS_FOR_FINAL = TOOL_SCHEMAS
+
+# 模型在正文中泄漏的伪工具调用 XML 标记（DeepSeek 偶发把 function calling 当正文输出）。
+# 分两类闭合：<tool_calls>...</tool_calls>（外层）与 <invoke ...>...</invoke>（独立）。
+_TOOL_XML_OPEN = re.compile(r"<tool_calls>|<invoke[^>]*>", re.IGNORECASE)
+_TOOL_XML_CLOSE_TOOL = re.compile(r"</tool_calls>", re.IGNORECASE)
+_TOOL_XML_CLOSE_INVOKE = re.compile(r"</invoke>", re.IGNORECASE)
+
+
+class _ToolCallXmlStripper:
+    """有状态过滤流式正文中泄漏的 <tool_calls>/<invoke> 伪调用 XML（标记可能跨 chunk 分片）。
+
+    行为：未抑制态 → 输出普通文本，遇 `<tool_calls>` 或 `<invoke ...>` 起抑制并按 opener 类型
+    匹配对应闭合（`<tool_calls>`→`</tool_calls>`，`<invoke>`→`</invoke>`）；抑制态 → 丢弃直到
+    闭合（未闭合则丢弃尾部）。纯过滤，不改动正常文本。
+    """
+
+    def __init__(self) -> None:
+        self._suppress = False
+        self._open_kind = ""
+        self._buf = ""
+
+    def feed(self, text: str) -> str:
+        out: list[str] = []
+        self._buf += text
+        while self._buf:
+            if not self._suppress:
+                m = _TOOL_XML_OPEN.search(self._buf)
+                if m:
+                    out.append(self._buf[: m.start()])
+                    self._open_kind = "tool_calls" if m.group(0).startswith("<tool_calls") else "invoke"
+                    self._suppress = True
+                    self._buf = self._buf[m.end():]
+                else:
+                    out.append(self._buf)
+                    self._buf = ""
+            else:
+                close_pat = (_TOOL_XML_CLOSE_TOOL if self._open_kind == "tool_calls"
+                             else _TOOL_XML_CLOSE_INVOKE)
+                m = close_pat.search(self._buf)
+                if m:
+                    self._suppress = False
+                    self._buf = self._buf[m.end():]
+                else:
+                    self._buf = ""  # 未闭合 → 丢弃剩余，等下一 chunk
+                    break
+        return "".join(out)
 
 
 class ChatAgentLoop:
@@ -68,12 +115,16 @@ class ChatAgentLoop:
                     # 最终文本：流式输出。chat_stream 是 async generator（各 provider 均 async def ... yield），
                     # 直接 async for 消费，不可 await（否则 TypeError: object async_generator can't be used in 'await'）。
                     stream = self.llm.chat_stream(messages, tools=_TOOLS_FOR_FINAL)
+                    stripper = _ToolCallXmlStripper()
                     try:
                         async with asyncio.timeout(settings.LLM_TIMEOUT_SECONDS):
                             async for chunk in stream:
                                 text = chunk if isinstance(chunk, str) else getattr(chunk, "content", str(chunk))
-                                assistant_text += text
-                                yield {"event": "chunk", "data": {"content": text}}
+                                clean = stripper.feed(text)
+                                if not clean:
+                                    continue
+                                assistant_text += clean
+                                yield {"event": "chunk", "data": {"content": clean}}
                     except TimeoutError:
                         yield {"event": "error", "data": {"message": "LLM 响应超时，请重试"}}
                     break
