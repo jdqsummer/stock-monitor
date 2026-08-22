@@ -1,6 +1,6 @@
 // frontend/src/pages/Chat.tsx
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Button, Divider, Drawer, List, Popconfirm, Space, Spin, Tag, Typography } from 'antd';
+import { Button, Divider, Drawer, List, Popconfirm, Space, Spin, Tag, Typography, message as antMsg } from 'antd';
 import { DeleteOutlined, PlusOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from '@ant-design/icons';
 import { chatApi } from '@/api/client';
 import type { ChatProfile, ConversationItem, WatchlistBoardRow } from '@/types';
@@ -61,7 +61,7 @@ export function Chat() {
       const res = await chatApi.getProfile(refresh);
       setProfile(res.data.data);
     } catch {
-      // 画像加载失败静默
+      antMsg.error('画像加载失败');
     } finally {
       setProfileLoading(false);
     }
@@ -177,7 +177,9 @@ export function Chat() {
         case 'analysis_submitted': { const { code, job_id } = data.data ?? {}; setMessages((prev) => updateToolCall(prev, 'run_five_stage', undefined, 'running')); setMessages((prev) => addAnalysisJob(prev, code, job_id)); break; }
         case 'analysis_done': { const snap = data.data ?? {}; setMessages((prev) => updateAnalysisJob(prev, snap)); break; }
         case 'done': newConvId = data.data?.conversation_id ?? newConvId; break;
-        case 'error': break;
+        case 'error':
+          antMsg.error(data.data?.message ?? '消息发送失败');
+          break;
         default: break;
       }
     };
@@ -218,6 +220,7 @@ export function Chat() {
       loadHistory();
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
+      antMsg.error('消息发送失败，请重试');
       setMessages((prev) => prev.filter((m) => m.content !== '' || m.toolCalls?.length || m.analysisResult));
     } finally {
       setLoading(false);
@@ -230,8 +233,9 @@ export function Chat() {
       await chatApi.deleteConversation(convId);
       if (conversationId === convId) newChat();
       loadHistory();
+      antMsg.success('对话已删除');
     } catch {
-      // 删除失败静默
+      antMsg.error('删除失败');
     }
   };
 
