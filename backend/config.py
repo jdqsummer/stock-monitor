@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     DSH_CIRCUIT_BREAK_THRESHOLD: int = 3     # S6：连续失败熔断阈值（连续 N 次失败自动切 _rule_based）
     DSH_CIRCUIT_COOLDOWN_SECONDS: int = 300  # S6：熔断冷却期（恢复后重新探测）
 
+    # 聊天 Agent（方案C backend 直调）
+    LLM_TIMEOUT_SECONDS: float = 180.0          # 单轮对话 LLM 调用超时
+    CHAT_PERSONA_PATH: str = "./.dsh/skills/invest-chat/SKILL.md"  # 聊天 persona（热更新）
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

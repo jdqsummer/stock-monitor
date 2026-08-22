@@ -16,9 +16,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from types import SimpleNamespace
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -77,7 +79,7 @@ class LLMProvider(ABC):
         ...
 
     @abstractmethod
-    async def chat_stream(self, messages: list[dict[str, str]]) -> Any:
+    async def chat_stream(self, messages: list[dict[str, str]], tools: Optional[list[dict]] = None) -> Any:
         """流式对话（异步生成器）"""
         ...
 
@@ -189,7 +191,7 @@ class OpenAIProvider(LLMProvider):
             raw_response=resp,
         )
 
-    async def chat_stream(self, messages: list[dict[str, str]]) -> Any:
+    async def chat_stream(self, messages: list[dict[str, str]], tools: Optional[list[dict]] = None) -> Any:
         client = self._get_client()
         stream = await client.chat.completions.create(
             model=self.config.model_id,
@@ -270,7 +272,7 @@ class AnthropicProvider(LLMProvider):
             raw_response=resp,
         )
 
-    async def chat_stream(self, messages: list[dict[str, str]]) -> Any:
+    async def chat_stream(self, messages: list[dict[str, str]], tools: Optional[list[dict]] = None) -> Any:
         client = self._get_client()
         system_msg = ""
         user_messages = []
@@ -364,7 +366,7 @@ class OllamaProvider(LLMProvider):
             raw_response=data,
         )
 
-    async def chat_stream(self, messages: list[dict[str, str]]) -> Any:
+    async def chat_stream(self, messages: list[dict[str, str]], tools: Optional[list[dict]] = None) -> Any:
         import httpx
 
         url = f"{self.config.api_base}/api/chat"
@@ -431,7 +433,7 @@ class LiteLLMProvider(LLMProvider):
             raw_response=resp,
         )
 
-    async def chat_stream(self, messages: list[dict[str, str]]) -> Any:
+    async def chat_stream(self, messages: list[dict[str, str]], tools: Optional[list[dict]] = None) -> Any:
         from litellm import acompletion
 
         resp = await acompletion(
@@ -470,8 +472,46 @@ class MockLLMProvider(LLMProvider):
                 model="mock",
             )
 
+        # 工具调用场景：分析 <代码> → run_five_stage
+        if tools and ("分析" in user_content):
+            m = re.search(r"(\d{6})", user_content)
+            if m:
+                code = m.group(1)
+                tool_calls = [SimpleNamespace(
+                    id="call_mock_1",
+                    type="function",
+                    function=SimpleNamespace(
+                        name="run_five_stage",
+                        arguments=json.dumps({"code": code}, ensure_ascii=False),
+                    ),
+                )]
+                return LLMResponse(
+                    content="", model="mock",
+                    raw_response=SimpleNamespace(choices=[
+                        SimpleNamespace(message=SimpleNamespace(tool_calls=tool_calls))
+                    ]),
+                )
+
+        # 工具调用场景：搜索/查一下 <关键词> → search_stock
+        if tools and ("搜索" in user_content or "查一下" in user_content):
+            kw = user_content.replace("搜索", "").replace("查一下", "").strip()
+            tool_calls = [SimpleNamespace(
+                id="call_mock_2",
+                type="function",
+                function=SimpleNamespace(
+                    name="search_stock",
+                    arguments=json.dumps({"keyword": kw}, ensure_ascii=False),
+                ),
+            )]
+            return LLMResponse(
+                content="", model="mock",
+                raw_response=SimpleNamespace(choices=[
+                    SimpleNamespace(message=SimpleNamespace(tool_calls=tool_calls))
+                ]),
+            )
+
         # 分析场景
-        if "分析" in user_content or "安全边际" in user_content:
+        if "分析" in user_content:
             return LLMResponse(
                 content=self._mock_analysis(user_content),
                 model="mock",
@@ -491,7 +531,7 @@ class MockLLMProvider(LLMProvider):
             model="mock",
         )
 
-    async def chat_stream(self, messages: list[dict[str, str]]) -> Any:
+    async def chat_stream(self, messages: list[dict[str, str]], tools: Optional[list[dict]] = None) -> Any:
         resp = await self.chat(messages)
         for word in resp.content.split():
             yield word + " "
