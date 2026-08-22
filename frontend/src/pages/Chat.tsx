@@ -154,7 +154,8 @@ export function Chat() {
 
   // 发送消息（SSE 读取逻辑与 parseSSEEvent 原样保留）
   const sendMessage = async (textOverride?: string) => {
-    const text = (textOverride ?? inputValue).trim();
+    // 防御：antd Button onClick 可能把 MouseEvent 当参数传入 → 仅接受 string override
+    const text = (typeof textOverride === 'string' ? textOverride : inputValue).trim();
     if (!text || loading) return;
 
     const userMsg: DisplayMessage = { role: 'user', content: text, timestamp: Date.now() };

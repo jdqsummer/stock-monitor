@@ -53,7 +53,7 @@ export function ChatComposer({ value, onChange, onSend, loading, disabled }: Pro
           <Button
             type="text"
             icon={<ArrowUpOutlined />}
-            onClick={onSend}
+            onClick={() => onSend()}
             disabled={disabled}
             style={{
               background: disabled ? '#333' : '#52c41a',
