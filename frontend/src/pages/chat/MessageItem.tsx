@@ -58,12 +58,12 @@ function toolLabel(name: string): string {
 
 // Markdown 紧凑排版：覆盖默认上下 margin，使段落/列表更紧促（浅色主题）
 const mdComponents = {
-  p: ({ node: _node, ...props }: any) => <p style={{ margin: '4px 0' }} {...props} />,
-  h1: ({ node: _node, ...props }: any) => <h1 style={{ margin: '8px 0 4px' }} {...props} />,
-  h2: ({ node: _node, ...props }: any) => <h2 style={{ margin: '8px 0 4px' }} {...props} />,
-  h3: ({ node: _node, ...props }: any) => <h3 style={{ margin: '8px 0 4px' }} {...props} />,
-  ul: ({ node: _node, ...props }: any) => <ul style={{ margin: '4px 0', paddingLeft: 20 }} {...props} />,
-  ol: ({ node: _node, ...props }: any) => <ol style={{ margin: '4px 0', paddingLeft: 20 }} {...props} />,
+  p: ({ node: _node, ...props }: any) => <p style={{ margin: '2px 0' }} {...props} />,
+  h1: ({ node: _node, ...props }: any) => <h1 style={{ margin: '6px 0 2px' }} {...props} />,
+  h2: ({ node: _node, ...props }: any) => <h2 style={{ margin: '6px 0 2px' }} {...props} />,
+  h3: ({ node: _node, ...props }: any) => <h3 style={{ margin: '6px 0 2px' }} {...props} />,
+  ul: ({ node: _node, ...props }: any) => <ul style={{ margin: '2px 0', paddingLeft: 20 }} {...props} />,
+  ol: ({ node: _node, ...props }: any) => <ol style={{ margin: '2px 0', paddingLeft: 20 }} {...props} />,
   li: ({ node: _node, ...props }: any) => <li style={{ margin: '2px 0' }} {...props} />,
   table: ({ node: _node, ...props }: any) => <table style={{ margin: '6px 0', borderCollapse: 'collapse' }} {...props} />,
   hr: ({ node: _node, ...props }: any) => <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid #eee' }} {...props} />,
