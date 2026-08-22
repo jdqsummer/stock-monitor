@@ -1,5 +1,6 @@
 # tests/test_services/test_chat_agent_loop.py
 """聊天 Agent Loop（function calling 编排）— TDD"""
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -175,6 +176,39 @@ async def test_run_send_returns_content_and_job_ids():
     assert "content" in result
     assert "conversation_id" in result
     assert result["job_ids"] == ["job_send_1"]
+
+
+@pytest.mark.asyncio
+async def test_run_stream_llm_timeout_yields_error_then_done():
+    """LLM 调用超时 → 产出 error（含超时提示）+ done，会话仍保存不静默挂起。
+
+    LLM_TIMEOUT_SECONDS 接线回归：llm.chat 挂起时 asyncio.timeout 触发 TimeoutError，
+    run_stream 应产出 error 事件（不静默 hang），并继续保存会话产出 done。
+    """
+    async def _hang(messages, tools=None, tool_choice="auto"):
+        await asyncio.sleep(10)
+
+    llm = MagicMock()
+    llm.chat = _hang
+
+    db = AsyncMock()
+    db.add = MagicMock()  # AsyncSession.add 是同步方法
+    with patch("backend.services.chat_agent_loop.settings.LLM_TIMEOUT_SECONDS", 0.05), \
+         patch("backend.services.chat_agent_loop.load_chat_persona",
+               return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.build_chat_context",
+               AsyncMock(return_value={"summary_positions": "", "summary_watchlist": "",
+                                       "summary_diary": "", "memories": {}})), \
+         patch("backend.services.chat_agent_loop.MemoryService") as ms:
+        ms.return_value.distill_async = MagicMock()
+        loop = ChatAgentLoop(llm_provider=llm, db=db)
+        events = [e async for e in loop.run_stream("u1", "你好")]
+
+    ev_types = [e["event"] for e in events]
+    assert "error" in ev_types
+    assert "done" in ev_types
+    err = next(e for e in events if e["event"] == "error")
+    assert "超时" in err["data"]["message"]
 
 
 @pytest.mark.asyncio

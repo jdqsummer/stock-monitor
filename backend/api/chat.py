@@ -97,15 +97,24 @@ async def stream_message(
 
 
 async def _wait_analysis_job(db: AsyncSession, user_id: str, job_id: str,
-                             timeout: float = 0.0) -> dict | None:
-    """轮询 analysis job 到终态，返回快照 dict（signal/击球区/结论）。超时返回 None。"""
+                             timeout: float = 0.0) -> dict:
+    """轮询 analysis job 到终态，返回终态 dict。
+
+    status 取值：done（含完整快照字段）/ failed / skipped_llm_unavailable / timeout。
+    超时或未知 job 返回 status="timeout"，保证前端始终收到 terminal 事件（不再返回 None）。
+    """
     timeout = timeout or 1800.0
-    deadline = asyncio.get_event_loop().time() + timeout
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
     while True:
         status = analysis_job_service.get_status(job_id, user_id)
-        if status and all(s in STATUS_TERMINAL for s in status["results"].values()):
+        if status is None:
+            # 未知 job（提交侧不应发生，防御性处理）：立即终态，不空转到 deadline
+            return {"job_id": job_id, "code": "", "status": "timeout"}
+        if all(s in STATUS_TERMINAL for s in status["results"].values()):
             code = next(iter(status["results"]), "")
-            if status["results"].get(code) == "done":
+            terminal = status["results"].get(code)
+            if terminal == "done":
                 snap = (await db.execute(select(AnalysisSnapshot).where(
                     AnalysisSnapshot.user_id == user_id,
                     AnalysisSnapshot.stock_code == code,
@@ -113,9 +122,9 @@ async def _wait_analysis_job(db: AsyncSession, user_id: str, job_id: str,
                 if snap:
                     quote = await StockDataService.get_quote_for_code(db, code)
                     return StockDataService.snapshot_to_dict(snap, quote)
-            return {"job_id": job_id, "code": code, "status": "failed"}
-        if asyncio.get_event_loop().time() >= deadline:
-            return None
+            return {"job_id": job_id, "code": code, "status": terminal or "failed"}
+        if loop.time() >= deadline:
+            return {"job_id": job_id, "code": "", "status": "timeout"}
         await asyncio.sleep(3)
 
 

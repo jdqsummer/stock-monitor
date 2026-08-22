@@ -21,9 +21,9 @@ class TestDiaryCRUD:
 
         # list
         with patch("backend.api.diary.DiaryService.list_page",
-                   AsyncMock(return_value=[{"id": "d1", "content": "今天买入茅台"}])):
+                   AsyncMock(return_value={"total": 1, "items": [{"id": "d1", "content": "今天买入茅台"}]})):
             resp = await client.get("/api/diary", headers={"Authorization": f"Bearer {token}"})
-        assert resp.json()["data"][0]["id"] == "d1"
+        assert resp.json()["data"]["items"][0]["id"] == "d1"
 
         # analyze
         with patch("backend.api.diary.DiaryService.analyze",

@@ -23,6 +23,7 @@ interface DisplayMessage {
   toolCalls?: DisplayToolCall[];
   analysisJob?: { code: string; jobId: string; status: 'running' | 'done' | 'error' };
   analysisResult?: Partial<WatchlistBoardRow>;
+  jobError?: string;
 }
 
 // ── 纯函数式 setState helper（取最后一条 assistant 消息变更，缺失则追加）──
@@ -86,20 +87,42 @@ function addAnalysisJob(prev: DisplayMessage[], code: string, jobId: string): Di
   return [...prev, { role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job }];
 }
 
-function updateAnalysisJob(prev: DisplayMessage[], snap: Partial<WatchlistBoardRow>): DisplayMessage[] {
+function analysisErrorText(status: string): string {
+  switch (status) {
+    case 'skipped_llm_unavailable':
+      return 'LLM 不可用，五段式分析已跳过';
+    case 'timeout':
+      return '五段式分析超时，请稍后重试';
+    case 'failed':
+    default:
+      return '五段式分析失败，请稍后重试';
+  }
+}
+
+function updateAnalysisJob(
+  prev: DisplayMessage[],
+  snap: Partial<WatchlistBoardRow> & { status?: string },
+): DisplayMessage[] {
   const last = prev[prev.length - 1];
   const existingJob = last && last.role === 'assistant' ? last.analysisJob : undefined;
+  const errorStatuses = ['failed', 'skipped_llm_unavailable', 'timeout'];
+  const isError = errorStatuses.includes(snap.status ?? '');
   const job = {
     code: existingJob?.code ?? snap.code ?? '',
     jobId: existingJob?.jobId ?? '',
-    status: 'done' as const,
+    status: (isError ? 'error' : 'done') as 'running' | 'done' | 'error',
+  };
+  const patch: Partial<DisplayMessage> = {
+    analysisJob: job,
+    analysisResult: isError ? undefined : snap,
+    jobError: isError ? analysisErrorText(snap.status!) : undefined,
   };
   if (last && last.role === 'assistant') {
     const updated = [...prev];
-    updated[updated.length - 1] = { ...last, analysisJob: job, analysisResult: snap };
+    updated[updated.length - 1] = { ...last, ...patch };
     return updated;
   }
-  return [...prev, { role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job, analysisResult: snap }];
+  return [...prev, { role: 'assistant', content: '', timestamp: Date.now(), ...patch }];
 }
 
 // ── 展示辅助 ──
@@ -508,18 +531,28 @@ export function Chat() {
                         border: '1px solid #303030',
                       }}>
                         <Tag color={signalColor(msg.analysisResult.signal)}>
-                          {msg.analysisResult.signal_label ?? msg.analysisResult.signal}
+                          {msg.analysisResult.signal_label ?? msg.analysisResult.signal ?? '—'}
                         </Tag>
                         <div style={{ color: '#e0e0e0', fontSize: 13, marginTop: 4 }}>
-                          击球区：{msg.analysisResult.swing_price}　距击球区：{msg.analysisResult.distance_pct}%
+                          击球区：{msg.analysisResult.swing_price ?? '—'}　距击球区：{msg.analysisResult.distance_pct ?? '—'}%
                         </div>
-                        {msg.analysisResult.conclusion && (
+                        {msg.analysisResult.conclusion != null && msg.analysisResult.conclusion !== '' && (
                           <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
                             {msg.analysisResult.conclusion}
                           </div>
                         )}
-                        <Button type="link" size="small" style={{ padding: 0, marginTop: 4 }}
-                          onClick={() => navigate(`/stock/${msg.analysisResult?.code}`)}>查看详情</Button>
+                        {msg.analysisResult.code ? (
+                          <Button type="link" size="small" style={{ padding: 0, marginTop: 4 }}
+                            onClick={() => navigate(`/stock/${msg.analysisResult?.code}`)}>查看详情</Button>
+                        ) : null}
+                      </div>
+                    )}
+                    {msg.role === 'assistant' && msg.jobError && (
+                      <div style={{
+                        marginTop: 6, padding: '8px 12px', borderRadius: 6, background: '#2a1215',
+                        border: '1px solid #5c1f1f', color: '#ff7875', fontSize: 13,
+                      }}>
+                        ⚠️ {msg.jobError}
                       </div>
                     )}
                   </div>

@@ -155,7 +155,7 @@ class ChatAgent:
 
         async def _stream():
             nonlocal full_content
-            stream = await self.llm.chat_stream(messages)
+            stream = self.llm.chat_stream(messages)
             async for chunk in stream:
                 # chunk 可能是 str 或 LLMResponse-like object
                 text = chunk if isinstance(chunk, str) else getattr(chunk, "content", str(chunk))

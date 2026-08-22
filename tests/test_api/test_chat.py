@@ -181,6 +181,56 @@ class TestChatStream:
         assert resp.status_code != 404
 
     @pytest.mark.asyncio
+    async def test_stream_sse_wire_format(self, client):
+        """GET /api/chat/stream 应产出标准 SSE event:/data: 两行格式（chunk → done）
+
+        守护真实 wire format：后端 event_generator 输出 {event, data(json str)}，
+        sse_starlette 写成 event:/data: 两行，前端按此解析。曾因 chat_stream 被
+        await 的 bug 逃逸到冒烟测试，此测试直接断言最终 SSE 文本。
+        """
+        token = await _register_and_login(client, "chat_sse@example.com")
+
+        async def _run_stream(user_id, message, conversation_id=None):
+            yield {"event": "chunk", "data": {"content": "你好"}}
+            yield {"event": "done", "data": {"conversation_id": "conv1"}}
+
+        with patch("backend.api.chat.ChatAgentLoop") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run_stream = _run_stream
+            mock_agent.submitted_job_ids = []
+            mock_agent_cls.return_value = mock_agent
+
+            resp = await client.get(
+                "/api/chat/stream",
+                params={"message": "你好"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "text/event-stream",
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.text
+        assert "event: chunk" in body
+        assert "event: done" in body
+
+        # 解析 event:/data: 两行（与前端 Chat.tsx 的归一化逻辑一致）
+        events: dict[str, dict] = {}
+        for block in body.replace("\r\n", "\n").split("\n\n"):
+            event_name = None
+            data_str = ""
+            for line in block.split("\n"):
+                if line.startswith("event:"):
+                    event_name = line[len("event:"):].strip()
+                elif line.startswith("data:"):
+                    data_str += line[len("data:"):].strip()
+            if event_name and data_str:
+                events[event_name] = json.loads(data_str)
+
+        assert events["chunk"] == {"content": "你好"}
+        assert events["done"] == {"conversation_id": "conv1"}
+
+    @pytest.mark.asyncio
     async def test_stream_unauthorized(self, client):
         """未认证请求应该返回 401"""
         resp = await client.get(

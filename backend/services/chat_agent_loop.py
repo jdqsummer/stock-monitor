@@ -7,6 +7,7 @@
 3. 无 tool_calls → llm.chat_stream(messages, tools) 流式输出文本（chunk 事件）
 4. 保存 conversations 表（单一真相源）+ 每轮异步蒸馏 L1/L2（失败非致命）
 """
+import asyncio
 import json
 import logging
 from typing import AsyncIterator, Optional
@@ -55,17 +56,26 @@ class ChatAgentLoop:
         assistant_text = ""
         try:
             for _ in range(MAX_TOOL_ROUNDS):
-                resp = await self.llm.chat(messages, tools=TOOL_SCHEMAS, tool_choice="auto")
+                try:
+                    async with asyncio.timeout(settings.LLM_TIMEOUT_SECONDS):
+                        resp = await self.llm.chat(messages, tools=TOOL_SCHEMAS, tool_choice="auto")
+                except TimeoutError:
+                    yield {"event": "error", "data": {"message": "LLM 响应超时，请重试"}}
+                    break
                 tool_calls = self._extract_tool_calls(resp)
 
                 if not tool_calls:
                     # 最终文本：流式输出。chat_stream 是 async generator（各 provider 均 async def ... yield），
                     # 直接 async for 消费，不可 await（否则 TypeError: object async_generator can't be used in 'await'）。
                     stream = self.llm.chat_stream(messages, tools=_TOOLS_FOR_FINAL)
-                    async for chunk in stream:
-                        text = chunk if isinstance(chunk, str) else getattr(chunk, "content", str(chunk))
-                        assistant_text += text
-                        yield {"event": "chunk", "data": {"content": text}}
+                    try:
+                        async with asyncio.timeout(settings.LLM_TIMEOUT_SECONDS):
+                            async for chunk in stream:
+                                text = chunk if isinstance(chunk, str) else getattr(chunk, "content", str(chunk))
+                                assistant_text += text
+                                yield {"event": "chunk", "data": {"content": text}}
+                    except TimeoutError:
+                        yield {"event": "error", "data": {"message": "LLM 响应超时，请重试"}}
                     break
 
                 # 工具调用轮：追加 assistant tool_calls 消息

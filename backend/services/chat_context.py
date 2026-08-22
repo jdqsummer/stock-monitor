@@ -71,7 +71,7 @@ async def build_chat_context(db: AsyncSession, user_id: str, query: str = "最�
             q = quotes.get(p.stock_code)
             s = snaps.get(p.stock_code)
             price = f"{q.current_price:.2f}" if q else "-"
-            signal = s.sell_signal if s and s.sell_signal != "none" else "无信号"
+            signal = s.sell_signal if s and s.sell_signal is not None and s.sell_signal != "none" else "无信号"
             dist = f"{s.sell_distance_pct:.0f}%" if s and s.sell_distance_pct is not None else "-"
             position_lines.append(f"{p.stock_name}({p.stock_code}) 现价{price} 距卖出区{dist} 信号:{signal}")
     position_lines = _truncate_lines(position_lines, MAX_POSITIONS)

@@ -27,8 +27,9 @@ def make_mock_llm(response_text: str = "这是测试回复") -> LLMProvider:
         for chunk in response_text.split():
             yield chunk + " "
 
-    # chat_stream 是 async 方法，用 AsyncMock
-    mock.chat_stream = AsyncMock(return_value=mock_stream([{"role": "user", "content": "test"}]))
+    # chat_stream 是 async generator（各 provider 均 async def ... yield），不可 await，
+    # 直接赋值异步生成器函数（用 AsyncMock 会掩盖 `await chat_stream` 的契约错误）
+    mock.chat_stream = mock_stream
 
     return mock
 
@@ -236,7 +237,7 @@ class TestChatAgentStream:
                 yield chunk + " "
 
         llm = make_mock_llm()
-        llm.chat_stream = AsyncMock(return_value=mock_stream([{"role": "user", "content": "test"}]))
+        llm.chat_stream = mock_stream
         db = make_mock_db()
         agent = ChatAgent(llm_provider=llm, db=db)
 
