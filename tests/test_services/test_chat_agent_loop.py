@@ -26,15 +26,15 @@ def _llm_with_tool_call_then_text():
         return LLMResponse(content="贵州茅台现价 1500 元，信号灯🟡。", model="mock", raw_response=None)
 
     llm.chat = AsyncMock(side_effect=fake_chat)
-    llm.chat_stream = AsyncMock(return_value=_fake_stream(["贵州茅台现价 1500 元，信号灯🟡。"]))
-    return llm
 
-
-def _fake_stream(chunks):
-    async def _gen():
-        for c in chunks:
+    # chat_stream 契约：async generator（与各 provider 一致），不可 await。
+    # 用真实 async generator 而非 AsyncMock，否则会掩盖 loop 里 `await chat_stream` 的 bug。
+    async def _chat_stream(messages, tools=None):
+        for c in ["贵州茅台现价 1500 元，信号灯🟡。"]:
             yield c
-    return _gen()
+
+    llm.chat_stream = _chat_stream
+    return llm
 
 
 def _llm_with_run_five_stage_then_text():
@@ -61,7 +61,12 @@ def _llm_with_run_five_stage_then_text():
         return LLMResponse(content="分析已提交，约 1-2 分钟完成。", model="mock", raw_response=None)
 
     llm.chat = AsyncMock(side_effect=fake_chat)
-    llm.chat_stream = AsyncMock(return_value=_fake_stream(["分析已提交，约 1-2 分钟完成。"]))
+
+    async def _chat_stream(messages, tools=None):
+        for c in ["分析已提交，约 1-2 分钟完成。"]:
+            yield c
+
+    llm.chat_stream = _chat_stream
     return llm
 
 
@@ -170,3 +175,42 @@ async def test_run_send_returns_content_and_job_ids():
     assert "content" in result
     assert "conversation_id" in result
     assert result["job_ids"] == ["job_send_1"]
+
+
+@pytest.mark.asyncio
+async def test_run_stream_with_real_async_generator_chat_stream():
+    """回归：chat_stream 为真实 async generator 时，run_stream 应产出 chunk+done 而非 error。
+
+    各 provider 的 chat_stream 均为 `async def ... yield`（异步生成器），不可 await。
+    曾因 `await self.llm.chat_stream(...)` 抛 `TypeError: object async_generator can't be
+    used in 'await' expression`（被 try/except 吞成 error 事件），此测试用真实 async
+    generator 守护该契约。
+    """
+    llm = MagicMock()
+    llm.chat = AsyncMock(return_value=LLMResponse(
+        content="Mock LLM response to: 你好", model="mock", raw_response=None))
+
+    async def _chat_stream(messages, tools=None):
+        for c in ["你好，", "我是投资小助手。"]:
+            yield c
+
+    llm.chat_stream = _chat_stream
+
+    db = AsyncMock()
+    db.add = MagicMock()  # AsyncSession.add 是同步方法
+    with patch("backend.services.chat_agent_loop.load_chat_persona",
+               return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.build_chat_context",
+               AsyncMock(return_value={"summary_positions": "", "summary_watchlist": "",
+                                       "summary_diary": "", "memories": {}})), \
+         patch("backend.services.chat_agent_loop.MemoryService") as ms:
+        ms.return_value.distill_async = MagicMock()
+        loop = ChatAgentLoop(llm_provider=llm, db=db)
+        events = [e async for e in loop.run_stream("u1", "你好")]
+
+    ev_types = [e["event"] for e in events]
+    assert "chunk" in ev_types
+    assert "done" in ev_types
+    assert "error" not in ev_types
+    text = "".join(e["data"]["content"] for e in events if e["event"] == "chunk")
+    assert text == "你好，我是投资小助手。"

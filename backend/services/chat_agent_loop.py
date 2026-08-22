@@ -59,8 +59,9 @@ class ChatAgentLoop:
                 tool_calls = self._extract_tool_calls(resp)
 
                 if not tool_calls:
-                    # 最终文本：流式输出
-                    stream = await self.llm.chat_stream(messages, tools=_TOOLS_FOR_FINAL)
+                    # 最终文本：流式输出。chat_stream 是 async generator（各 provider 均 async def ... yield），
+                    # 直接 async for 消费，不可 await（否则 TypeError: object async_generator can't be used in 'await'）。
+                    stream = self.llm.chat_stream(messages, tools=_TOOLS_FOR_FINAL)
                     async for chunk in stream:
                         text = chunk if isinstance(chunk, str) else getattr(chunk, "content", str(chunk))
                         assistant_text += text
