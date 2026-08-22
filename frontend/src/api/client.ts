@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryDecision, ToolCallEvent, ChatProfile } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -113,6 +113,19 @@ export const chatApi = {
     if (conversationId) params.set('conversation_id', conversationId);
     return `/api/chat/stream?${params.toString()}`;
   },
+  getProfile: (refresh = false) =>
+    client.get<ApiResponse<ChatProfile>>('/chat/profile', { params: { refresh: refresh ? '1' : '0' } }),
+};
+
+// 投资笔记
+export const diaryApi = {
+  list: (offset = 0, limit = 20) =>
+    client.get<ApiResponse<{ total: number; items: DiaryEntry[] }>>('/diary', { params: { offset, limit } }),
+  get: (id: string) => client.get<ApiResponse<DiaryEntry>>(`/diary/${id}`),
+  create: (content: string) => client.post<ApiResponse<DiaryEntry>>('/diary', { content }),
+  update: (id: string, content: string) => client.put<ApiResponse<DiaryEntry>>(`/diary/${id}`, { content }),
+  remove: (id: string) => client.delete<ApiResponse>(`/diary/${id}`),
+  analyze: (id: string) => client.post<ApiResponse<{ decisions: DiaryDecision[] | null; emotion_tags: string[] | null; ai_feedback: string | null }>>(`/diary/${id}/analyze`),
 };
 
 // 配置

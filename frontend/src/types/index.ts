@@ -349,3 +349,18 @@ export interface ReverseAnalysis {
   evidence?: EvidenceClaim[];
   confidence?: ConfidenceLevel;
 }
+
+// ── 聊天工具调用 / 画像面板（AI 投资小助手）──
+export interface ToolCallEvent {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface ChatProfile {
+  L3: string;
+  L1: { category: string | null; content: string }[];
+  L2: { content: string }[];
+  position_count: number;
+  watchlist_count: number;
+  diary_count: number;
+}
