@@ -19,6 +19,8 @@ services:
     # SQLite 数据持久化：容器重建不丢库
     volumes:
       - app_data:/app/data
+      # 聊天 persona（方案C backend 读取）：改 .md + 重启生效
+      - ./.dsh/skills:/app/.dsh/skills:ro
     # 健康检查：供 nginx 等服务等待后端真正就绪
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
