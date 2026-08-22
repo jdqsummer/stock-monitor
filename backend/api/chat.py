@@ -40,6 +40,11 @@ STATUS_TERMINAL = ("done", "failed", "skipped_llm_unavailable")
 class SendMessageRequest(BaseModel):
     message: str = Field(..., description="用户消息", min_length=1)
     conversation_id: Optional[str] = Field(default=None, description="对话 ID")
+    model: Optional[str] = Field(default=None, description="模型 spec（provider:model_id），缺省用默认")
+
+
+class PinRequest(BaseModel):
+    pinned: bool = True
 
 
 class ApiResponse(BaseModel):
@@ -58,7 +63,7 @@ async def send_message(
 ):
     """发送消息（agent loop 非流式聚合）。"""
     try:
-        llm = get_llm()
+        llm = get_llm(req.model) if req.model else get_llm()
         loop = ChatAgentLoop(llm_provider=llm, db=db)
         result = await loop.run_send(current_user.id, req.message, req.conversation_id)
         return {"code": 0, "data": result, "message": "ok"}
@@ -71,6 +76,7 @@ async def send_message(
 async def stream_message(
     message: str = Query(..., min_length=1),
     conversation_id: Optional[str] = Query(default=None),
+    model: Optional[str] = Query(default=None, description="模型 spec（provider:model_id）"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -78,7 +84,7 @@ async def stream_message(
 
     async def event_generator():
         try:
-            llm = get_llm()
+            llm = get_llm(model) if model else get_llm()
             loop = ChatAgentLoop(llm_provider=llm, db=db)
             async for ev in loop.run_stream(current_user.id, message, conversation_id):
                 yield {"event": ev["event"], "data": json.dumps(ev["data"], ensure_ascii=False)}
@@ -171,3 +177,20 @@ async def delete_conversation(
     if not success:
         raise HTTPException(status_code=404, detail="对话不存在")
     return {"code": 0, "data": None, "message": "删除成功"}
+
+
+@router.post("/history/{conversation_id}/pin", response_model=ApiResponse)
+async def pin_conversation(
+    conversation_id: str,
+    req: PinRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """设置会话置顶状态（归属校验，非本人 404）。"""
+    from backend.agents.chat_agent import ChatAgent
+    from backend.llm.provider import get_llm as _llm
+    agent = ChatAgent(llm_provider=_llm(), db=db)
+    ok = await agent.set_pinned(current_user.id, conversation_id, req.pinned)
+    if not ok:
+        raise HTTPException(status_code=404, detail="对话不存在或无权操作")
+    return {"code": 0, "data": {"id": conversation_id, "pinned": req.pinned}, "message": "ok"}

@@ -313,3 +313,103 @@ class TestChatProfile:
                 "Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
         assert mock_fn.call_args.kwargs["refresh"] is True
+
+
+class TestChatModelParam:
+    """POST /api/chat/send 与 GET /api/chat/stream 支持可选 model 参数"""
+
+    @pytest.mark.asyncio
+    async def test_send_with_model_passes_to_get_llm(self, client):
+        token = await _register_and_login(client, "chat_model_send@example.com")
+        with patch("backend.api.chat.ChatAgentLoop") as mock_agent_cls, \
+             patch("backend.api.chat.get_llm") as mock_get_llm:
+            mock_llm = MagicMock()
+            mock_get_llm.return_value = mock_llm
+            mock_agent = MagicMock()
+            mock_agent.run_send = AsyncMock(return_value={
+                "content": "x", "conversation_id": "c", "model": "deepseek-v4-flash", "job_ids": []})
+            mock_agent_cls.return_value = mock_agent
+            resp = await client.post(
+                "/api/chat/send",
+                json={"message": "你好", "model": "deepseek:deepseek-v4-flash"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 200
+        mock_get_llm.assert_called_once_with("deepseek:deepseek-v4-flash")
+
+    @pytest.mark.asyncio
+    async def test_send_without_model_uses_default(self, client):
+        token = await _register_and_login(client, "chat_model_default@example.com")
+        with patch("backend.api.chat.ChatAgentLoop") as mock_agent_cls, \
+             patch("backend.api.chat.get_llm") as mock_get_llm:
+            mock_get_llm.return_value = MagicMock()
+            mock_agent = MagicMock()
+            mock_agent.run_send = AsyncMock(return_value={
+                "content": "x", "conversation_id": "c", "model": "mock", "job_ids": []})
+            mock_agent_cls.return_value = mock_agent
+            resp = await client.post(
+                "/api/chat/send",
+                json={"message": "你好"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 200
+        mock_get_llm.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_stream_with_model_passes_to_get_llm(self, client):
+        token = await _register_and_login(client, "chat_model_stream@example.com")
+
+        async def _run_stream(user_id, message, conversation_id=None):
+            yield {"event": "chunk", "data": {"content": "你好"}}
+            yield {"event": "done", "data": {"conversation_id": "conv1"}}
+
+        with patch("backend.api.chat.ChatAgentLoop") as mock_agent_cls, \
+             patch("backend.api.chat.get_llm") as mock_get_llm:
+            mock_get_llm.return_value = MagicMock()
+            mock_agent = MagicMock()
+            mock_agent.run_stream = _run_stream
+            mock_agent.submitted_job_ids = []
+            mock_agent_cls.return_value = mock_agent
+            resp = await client.get(
+                "/api/chat/stream",
+                params={"message": "你好", "model": "deepseek:deepseek-v4-flash"},
+                headers={"Authorization": f"Bearer {token}", "Accept": "text/event-stream"},
+            )
+        assert resp.status_code == 200
+        mock_get_llm.assert_called_once_with("deepseek:deepseek-v4-flash")
+
+
+class TestChatPin:
+    """POST /api/chat/history/{id}/pin — 置顶切换"""
+
+    @pytest.mark.asyncio
+    async def test_pin_conversation(self, client):
+        token = await _register_and_login(client, "chat_pin@example.com")
+        with patch("backend.agents.chat_agent.ChatAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.set_pinned = AsyncMock(return_value=True)
+            mock_agent_cls.return_value = mock_agent
+            resp = await client.post(
+                "/api/chat/history/conv-1/pin",
+                json={"pinned": True},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["code"] == 0
+        assert data["data"]["id"] == "conv-1"
+        assert data["data"]["pinned"] is True
+
+    @pytest.mark.asyncio
+    async def test_pin_nonexistent_returns_404(self, client):
+        token = await _register_and_login(client, "chat_pin_404@example.com")
+        with patch("backend.agents.chat_agent.ChatAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.set_pinned = AsyncMock(return_value=False)
+            mock_agent_cls.return_value = mock_agent
+            resp = await client.post(
+                "/api/chat/history/nonexistent/pin",
+                json={"pinned": True},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 404
