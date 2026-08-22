@@ -7,6 +7,7 @@ import type { ChatProfile, ConversationItem, WatchlistBoardRow } from '@/types';
 import { ChatComposer } from './chat/ChatComposer';
 import { MessageItem, type DisplayMessage } from './chat/MessageItem';
 import { ChatSidebar } from './chat/ChatSidebar';
+import { Markdown } from './chat/markdown';
 import { ds } from './chat/theme';
 
 const { Text: Txt, Paragraph } = Typography;
@@ -351,7 +352,9 @@ export function Chat() {
         extra={<Button size="small" icon={<ReloadOutlined />} loading={profileLoading} onClick={() => loadProfile(true)}>刷新画像</Button>}>
         {profile ? (
           <>
-            <Paragraph style={{ color: ds.textPrimary, whiteSpace: 'pre-wrap' }}>{profile.L3}</Paragraph>
+            <Paragraph style={{ color: ds.textPrimary, fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              <Markdown>{profile.L3}</Markdown>
+            </Paragraph>
             <Divider />
             <Space direction="vertical" style={{ width: '100%' }}>
               <Tag>持仓 {profile.position_count}</Tag>

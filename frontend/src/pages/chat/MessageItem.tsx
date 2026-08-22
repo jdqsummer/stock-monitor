@@ -7,9 +7,9 @@ import {
   ReloadOutlined, RobotOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
 import type { Signal, WatchlistBoardRow } from '@/types';
 import { TypingCursor } from './TypingCursor';
+import { Markdown } from './markdown';
 import { ds } from './theme';
 
 export interface DisplayToolCall {
@@ -57,19 +57,6 @@ function toolLabel(name: string): string {
   };
   return labels[name] ?? name;
 }
-
-// Markdown 紧凑排版：覆盖默认上下 margin，使段落/列表更紧促（浅色主题）
-const mdComponents = {
-  p: ({ node: _node, ...props }: any) => <p style={{ margin: '2px 0' }} {...props} />,
-  h1: ({ node: _node, ...props }: any) => <h1 style={{ margin: '6px 0 2px' }} {...props} />,
-  h2: ({ node: _node, ...props }: any) => <h2 style={{ margin: '6px 0 2px' }} {...props} />,
-  h3: ({ node: _node, ...props }: any) => <h3 style={{ margin: '6px 0 2px' }} {...props} />,
-  ul: ({ node: _node, ...props }: any) => <ul style={{ margin: '2px 0', paddingLeft: 20 }} {...props} />,
-  ol: ({ node: _node, ...props }: any) => <ol style={{ margin: '2px 0', paddingLeft: 20 }} {...props} />,
-  li: ({ node: _node, ...props }: any) => <li style={{ margin: '2px 0' }} {...props} />,
-  table: ({ node: _node, ...props }: any) => <table style={{ margin: '6px 0', borderCollapse: 'collapse' }} {...props} />,
-  hr: ({ node: _node, ...props }: any) => <hr style={{ margin: '8px 0', border: 'none', borderTop: `1px solid ${ds.borderLight}` }} {...props} />,
-};
 
 // 参考风格 icon 按钮：30×30 圆角，hover 浅底，active 蓝
 function ActionIcon({ title, active, onClick, children }: {
@@ -134,7 +121,7 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
               color: ds.textPrimary, fontSize: 15, lineHeight: 1.6,
               whiteSpace: 'pre-wrap', wordBreak: 'break-word', minHeight: 22,
             }}>
-              {msg.content ? <ReactMarkdown components={mdComponents}>{msg.content}</ReactMarkdown> : null}
+              {msg.content ? <Markdown>{msg.content}</Markdown> : null}
               {showCursor && <TypingCursor />}
               {!msg.content && !showCursor && (loading && isLast ? <Spin size="small" /> : null)}
             </div>
