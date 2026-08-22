@@ -33,11 +33,14 @@ _TOOLS_FOR_FINAL = TOOL_SCHEMAS
 
 # 模型在正文中泄漏的伪工具调用 XML 标记（DeepSeek 偶发把 function calling 当正文输出，
 # 且流式输出会把标记拆成 2-4 字节微块，如 < + tool + _c + alls + >）。
+# 生产实测还有「全角竖线」变体：<｜｜tool_calls> / </｜｜invoke> / </｜｜tool_calls>（U+FF5C ｜）。
 # 分两类闭合：<tool_calls>...</tool_calls>（外层）与 <invoke ...>...</invoke>（独立）。
-_TOOL_XML_OPEN = re.compile(r"<tool_calls>|<invoke[^>]*>", re.IGNORECASE)
-_TOOL_XML_CLOSE_TOOL = re.compile(r"</tool_calls>", re.IGNORECASE)
-_TOOL_XML_CLOSE_INVOKE = re.compile(r"</invoke>", re.IGNORECASE)
-_MARKERS = ("<tool_calls>", "</tool_calls>", "<invoke", "</invoke>")
+_TOOL_XML_OPEN = re.compile(
+    r"<tool_calls>|<invoke[^>]*>|<｜｜tool_calls>|<｜｜invoke[^>]*>", re.IGNORECASE)
+_TOOL_XML_CLOSE_TOOL = re.compile(r"</tool_calls>|</｜｜tool_calls>", re.IGNORECASE)
+_TOOL_XML_CLOSE_INVOKE = re.compile(r"</invoke>|</｜｜invoke>", re.IGNORECASE)
+_MARKERS = ("<tool_calls>", "</tool_calls>", "<invoke", "</invoke>",
+            "<｜｜tool_calls>", "</｜｜tool_calls>", "<｜｜invoke", "</｜｜invoke>")
 _MAX_MARKER_PREFIX = max(len(m) for m in _MARKERS)  # 12/13
 
 
@@ -77,7 +80,7 @@ class _ToolCallXmlStripper:
                 m = _TOOL_XML_OPEN.search(self._buf)
                 if m:
                     out.append(self._buf[: m.start()])
-                    self._open_kind = "tool_calls" if m.group(0).startswith("<tool_calls") else "invoke"
+                    self._open_kind = "tool_calls" if "tool_calls" in m.group(0) else "invoke"
                     self._suppress = True
                     self._buf = self._buf[m.end():]
                     continue

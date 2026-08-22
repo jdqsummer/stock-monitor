@@ -114,6 +114,22 @@ def test_tool_call_xml_stripper_micro_split_leading_text():
     assert "，数据如下。" in out
 
 
+def test_tool_call_xml_stripper_fullwidth_bar_variant():
+    """生产实测：DeepSeek 用全角竖线 ｜｜ 的变体标记 <｜｜tool_calls>...</｜｜tool_calls> 也须过滤"""
+    s = _ToolCallXmlStripper()
+    out = ""
+    frags = ["开头 ", "<", "｜", "｜", "tool", "_c", "alls", ">",
+             "<｜｜invoke", " name=\"get_financials\">",
+             "<｜｜parameter", " name=\"code\"", " string=\"true\">", "01810.HK",
+             "</", "｜", "｜", "parameter", ">",
+             "</", "｜", "｜", "invoke", ">",
+             "</", "｜", "｜", "tool", "_c", "alls", ">", " 结尾"]
+    for f in frags:
+        out += s.feed(f)
+    assert "tool_calls" not in out and "｜｜" not in out
+    assert out == "开头  结尾"
+
+
 @pytest.mark.asyncio
 async def test_run_stream_filters_tool_call_xml_from_chunks():
     """模型把伪调用 XML 当正文流式输出 → chunk 事件不含 XML，正常文本保留"""
