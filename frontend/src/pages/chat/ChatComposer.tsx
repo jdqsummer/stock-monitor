@@ -1,8 +1,8 @@
-/** DeepSeek 浅色输入区：居中大圆角 pill + 模型徽标 + 蓝色圆形发送钮 */
-import { useEffect, useState } from 'react';
-import { Input } from 'antd';
+// frontend/src/pages/chat/ChatComposer.tsx
+import { Dropdown, Input } from 'antd';
+import type { MenuProps } from 'antd';
 import { ArrowUpOutlined, DownOutlined } from '@ant-design/icons';
-import { configApi } from '@/api/client';
+import type { LLMModelInfo } from '@/types';
 import { ds } from './theme';
 
 const { TextArea } = Input;
@@ -13,26 +13,17 @@ interface Props {
   onSend: () => void;
   loading: boolean;
   disabled: boolean;
+  models: LLMModelInfo[];
+  model: string;            // 当前选中 model spec（provider:model_id），空串表示未选
+  onModelChange: (spec: string) => void;
 }
 
-export function ChatComposer({ value, onChange, onSend, loading, disabled }: Props) {
-  const [modelLabel, setModelLabel] = useState('模型');
-
-  // 展示型模型徽标：取当前配置模型，优先展示 display_name
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const cfg = (await configApi.get()).data?.data?.llm_model;
-        const models = (await configApi.getLLMModels()).data?.data ?? [];
-        const hit = models.find((m) => m.model_id === cfg);
-        if (!cancelled) setModelLabel(hit?.display_name ?? cfg ?? '模型');
-      } catch {
-        // 徽标加载失败保持默认文案，不影响输入
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+export function ChatComposer({ value, onChange, onSend, loading, disabled, models, model, onModelChange }: Props) {
+  const current = models.find((m) => `${m.provider}:${m.model_id}` === model);
+  const menuItems: MenuProps['items'] = models.map((m) => ({
+    key: `${m.provider}:${m.model_id}`,
+    label: m.display_name,
+  }));
 
   return (
     <div style={{ flexShrink: 0, padding: '12px 28px 8px', background: 'linear-gradient(to top, #FFFFFF 70%, rgba(255,255,255,0))' }}>
@@ -59,13 +50,17 @@ export function ChatComposer({ value, onChange, onSend, loading, disabled }: Pro
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px 5px 8px',
-            borderRadius: 999, background: ds.primarySoft, color: ds.primary, fontSize: 12.5, fontWeight: 500,
-          }}>
-            {modelLabel}
-            <DownOutlined style={{ fontSize: 10 }} />
-          </span>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px 5px 8px', borderRadius: 999, background: ds.primarySoft, color: ds.primary, fontSize: 12.5, fontWeight: 500 }}>
+            <Dropdown
+              menu={{ items: menuItems, onClick: ({ key }) => onModelChange(key) }}
+              trigger={['click']}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                {current?.display_name ?? (model || '模型')}
+                <DownOutlined style={{ fontSize: 10 }} />
+              </span>
+            </Dropdown>
+          </div>
           <button
             onClick={onSend}
             disabled={disabled}

@@ -2,8 +2,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Button, Divider, Drawer, Space, Spin, Tag, Typography, message as antMsg } from 'antd';
 import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
-import { chatApi } from '@/api/client';
-import type { ChatProfile, ConversationItem, WatchlistBoardRow } from '@/types';
+import { chatApi, configApi } from '@/api/client';
+import type { ChatProfile, ConversationItem, LLMModelInfo, WatchlistBoardRow } from '@/types';
 import { ChatComposer } from './chat/ChatComposer';
 import { MessageItem, type DisplayMessage } from './chat/MessageItem';
 import { ChatSidebar } from './chat/ChatSidebar';
@@ -22,6 +22,40 @@ export function Chat() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profile, setProfile] = useState<ChatProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [models, setModels] = useState<LLMModelInfo[]>([]);
+  const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem('chat_model') || '');
+
+  // 加载可用模型；无本地选择时默认取配置 llm_model（provider:model_id）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cfgRes, modelsRes] = await Promise.all([configApi.get(), configApi.getLLMModels()]);
+        const ms = modelsRes.data?.data ?? [];
+        if (!cancelled) setModels(ms);
+        const cfgModel = cfgRes.data?.data?.llm_model;
+        const match = ms.find((m) => m.model_id === cfgModel);
+        if (!cancelled) setChatModel((prev) => prev || (match ? `${match.provider}:${match.model_id}` : ''));
+      } catch {
+        // 保持默认
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleModelChange = (spec: string) => {
+    setChatModel(spec);
+    localStorage.setItem('chat_model', spec);
+  };
+
+  const handleTogglePin = async (conv: ConversationItem) => {
+    try {
+      await chatApi.togglePin(conv.id, !conv.pinned);
+      loadHistory();
+    } catch {
+      antMsg.error('置顶操作失败');
+    }
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -187,7 +221,7 @@ export function Chat() {
     };
 
     try {
-      const streamUrl = chatApi.getStreamUrl(text, conversationId || undefined);
+      const streamUrl = chatApi.getStreamUrl(text, conversationId || undefined, chatModel || undefined);
       const response = await fetch(streamUrl, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
@@ -281,6 +315,7 @@ export function Chat() {
           onSelect={loadConversation}
           onNewChat={newChat}
           onDelete={deleteConversation}
+          onTogglePin={handleTogglePin}
         />
       </div>
 
@@ -344,6 +379,9 @@ export function Chat() {
           onSend={sendMessage}
           loading={loading}
           disabled={!inputValue.trim() || loading}
+          models={models}
+          model={chatModel}
+          onModelChange={handleModelChange}
         />
       </div>
 
