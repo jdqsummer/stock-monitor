@@ -1,7 +1,6 @@
 // frontend/src/pages/chat/ChatSidebar.tsx
 import { Popconfirm } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
-import { useAppStore } from '@/store';
+import { PlusOutlined, PushpinOutlined } from '@ant-design/icons';
 import type { ConversationItem } from '@/types';
 import { ds } from './theme';
 import { groupConversations } from './conversationGroups';
@@ -12,6 +11,7 @@ interface Props {
   onSelect: (conv: ConversationItem) => void;
   onNewChat: () => void;
   onDelete: (convId: string) => void;
+  onTogglePin: (conv: ConversationItem) => void;
 }
 
 const EllipsisIcon = () => (
@@ -20,11 +20,12 @@ const EllipsisIcon = () => (
   </svg>
 );
 
-export function ChatSidebar({ history, activeId, onSelect, onNewChat, onDelete }: Props) {
-  const user = useAppStore((s) => s.user);
+const PinIcon = ({ pinned }: { pinned: boolean }) => (
+  <PushpinOutlined style={{ fontSize: 13 }} aria-hidden={!pinned} />
+);
+
+export function ChatSidebar({ history, activeId, onSelect, onNewChat, onDelete, onTogglePin }: Props) {
   const groups = groupConversations(history);
-  const name = user?.username || user?.email?.split('@')[0] || '用户';
-  const avatarChar = user?.username?.[0] || user?.email?.[0] || '用';
 
   const renderItem = (item: ConversationItem) => {
     const active = item.id === activeId;
@@ -43,6 +44,17 @@ export function ChatSidebar({ history, activeId, onSelect, onNewChat, onDelete }
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.summary || '新对话'}
         </span>
+        <span
+          className={item.pinned ? 'cc-pin is-pinned' : 'cc-pin'}
+          title={item.pinned ? '取消置顶' : '置顶'}
+          onClick={(e) => { e.stopPropagation(); onTogglePin(item); }}
+          style={{
+            width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: 4, transition: 'background 0.12s ease, color 0.12s ease', flexShrink: 0,
+          }}
+        >
+          <PinIcon pinned={!!item.pinned} />
+        </span>
         <Popconfirm
           title="确定删除？"
           onConfirm={(e) => { e?.stopPropagation(); onDelete(item.id); }}
@@ -59,6 +71,18 @@ export function ChatSidebar({ history, activeId, onSelect, onNewChat, onDelete }
             <EllipsisIcon />
           </span>
         </Popconfirm>
+      </div>
+    );
+  };
+
+  const renderSection = (title: string, items: ConversationItem[]) => {
+    if (items.length === 0) return null;
+    return (
+      <div style={{ marginTop: 6 }}>
+        <div style={{ padding: '10px 12px 6px', fontSize: 12, color: ds.textTertiary, fontWeight: 500 }}>
+          {title}
+        </div>
+        {items.map(renderItem)}
       </div>
     );
   };
@@ -98,37 +122,16 @@ export function ChatSidebar({ history, activeId, onSelect, onNewChat, onDelete }
         </button>
       </div>
 
-      {/* 分组对话列表 */}
+      {/* 分组对话列表：置顶 → 今天 → 更早 */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px', scrollbarWidth: 'thin' }}>
         {history.length === 0 && (
           <div style={{ padding: '20px 12px', textAlign: 'center', color: ds.textTertiary, fontSize: 12 }}>
             暂无对话
           </div>
         )}
-        {groups.today.length > 0 && (
-          <div style={{ marginTop: 6 }}>
-            <div style={{ padding: '10px 12px 6px', fontSize: 12, color: ds.textTertiary, fontWeight: 500 }}>今天</div>
-            {groups.today.map(renderItem)}
-          </div>
-        )}
-        {groups.earlier.length > 0 && (
-          <div style={{ marginTop: 6 }}>
-            <div style={{ padding: '10px 12px 6px', fontSize: 12, color: ds.textTertiary, fontWeight: 500 }}>更早</div>
-            {groups.earlier.map(renderItem)}
-          </div>
-        )}
-      </div>
-
-      {/* 底部用户 */}
-      <div style={{ borderTop: `1px solid ${ds.borderLight}`, padding: '12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{
-          width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, #B8C7F4, #94A8E8)',
-          color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600,
-        }}>{avatarChar}</span>
-        <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: ds.textPrimary }}>{name}</span>
-        <span style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: ds.textTertiary }}>
-          <EllipsisIcon />
-        </span>
+        {renderSection('置顶', groups.pinned)}
+        {renderSection('今天', groups.today)}
+        {renderSection('更早', groups.earlier)}
       </div>
     </div>
   );

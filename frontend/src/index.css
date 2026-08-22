@@ -54,3 +54,10 @@ body {
 .cc-item.is-active { background: #EEF2FF; color: #4D6EFE; font-weight: 500; }
 .cc-item.is-active:hover { background: #EEF2FF; }
 .cc-item.is-active .cc-more { color: #4D6EFE; }
+
+/* Chat 侧栏（DeepSeek 浅色）：置顶按钮 hover/激活 */
+.cc-pin { color: transparent; }
+.cc-item:hover .cc-pin { color: #8A8A8A; }
+.cc-item:hover .cc-pin:hover { background: rgba(0, 0, 0, 0.08); color: #555555; }
+.cc-item.is-active:hover .cc-pin { color: #4D6EFE; }
+.cc-pin.is-pinned { color: #4D6EFE; }
