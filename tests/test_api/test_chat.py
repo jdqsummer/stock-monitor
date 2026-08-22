@@ -40,13 +40,14 @@ class TestChatSend:
         """发送消息应该返回 AI 回复"""
         token = await _register_and_login(client, "chat_send@example.com")
 
-        with patch("backend.api.chat.ChatAgent") as mock_agent_cls:
+        with patch("backend.api.chat.ChatAgentLoop") as mock_agent_cls:
             mock_agent = MagicMock()
-            mock_agent.send_message = AsyncMock(return_value=MagicMock(
-                content="这是一条测试回复。",
-                conversation_id="test-conv-001",
-                model="mock-model",
-            ))
+            mock_agent.run_send = AsyncMock(return_value={
+                "content": "这是一条测试回复。",
+                "conversation_id": "test-conv-001",
+                "model": "mock-model",
+                "job_ids": [],
+            })
             mock_agent_cls.return_value = mock_agent
 
             resp = await client.post(
@@ -66,13 +67,14 @@ class TestChatSend:
         """提供 conversation_id 应该继续已有对话"""
         token = await _register_and_login(client, "chat_continue@example.com")
 
-        with patch("backend.api.chat.ChatAgent") as mock_agent_cls:
+        with patch("backend.api.chat.ChatAgentLoop") as mock_agent_cls:
             mock_agent = MagicMock()
-            mock_agent.send_message = AsyncMock(return_value=MagicMock(
-                content="继续之前的分析...",
-                conversation_id="existing-conv-id",
-                model="mock-model",
-            ))
+            mock_agent.run_send = AsyncMock(return_value={
+                "content": "继续之前的分析...",
+                "conversation_id": "existing-conv-id",
+                "model": "mock-model",
+                "job_ids": [],
+            })
             mock_agent_cls.return_value = mock_agent
 
             resp = await client.post(
@@ -120,7 +122,7 @@ class TestChatHistory:
         """获取历史记录应该返回对话列表"""
         token = await _register_and_login(client, "chat_history@example.com")
 
-        with patch("backend.api.chat.ChatAgent") as mock_agent_cls:
+        with patch("backend.agents.chat_agent.ChatAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.get_history = AsyncMock(return_value=[
                 {
@@ -196,7 +198,7 @@ class TestChatDelete:
         """删除对话应该返回成功"""
         token = await _register_and_login(client, "chat_delete@example.com")
 
-        with patch("backend.api.chat.ChatAgent") as mock_agent_cls:
+        with patch("backend.agents.chat_agent.ChatAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.delete_conversation = AsyncMock(return_value=True)
             mock_agent_cls.return_value = mock_agent
@@ -215,7 +217,7 @@ class TestChatDelete:
         """删除不存在的对话应该返回适当的错误"""
         token = await _register_and_login(client, "chat_delete_404@example.com")
 
-        with patch("backend.api.chat.ChatAgent") as mock_agent_cls:
+        with patch("backend.agents.chat_agent.ChatAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.delete_conversation = AsyncMock(return_value=False)
             mock_agent_cls.return_value = mock_agent
@@ -233,3 +235,31 @@ class TestChatDelete:
         """未认证请求应该返回 401"""
         resp = await client.delete("/api/chat/history/some-id")
         assert resp.status_code in (401, 403)
+
+
+class TestChatProfile:
+    """GET /api/chat/profile — 画像面板"""
+
+    @pytest.mark.asyncio
+    async def test_profile_returns_panel_data(self, client):
+        token = await _register_and_login(client, "chat_profile@example.com")
+        with patch("backend.api.chat.build_chat_profile", AsyncMock(return_value={
+            "L3": "价值投资型，风险偏好稳健",
+            "L1": [], "L2": [], "position_count": 2, "watchlist_count": 3, "diary_count": 1,
+        })):
+            resp = await client.get("/api/chat/profile", headers={
+                "Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["code"] == 0
+        assert data["data"]["L3"].startswith("价值投资型")
+        assert data["data"]["position_count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_profile_refresh_forwards_query(self, client):
+        token = await _register_and_login(client, "chat_profile_refresh@example.com")
+        with patch("backend.api.chat.build_chat_profile", AsyncMock(return_value={"L3": "x"})) as mock_fn:
+            resp = await client.get("/api/chat/profile", params={"refresh": "1"}, headers={
+                "Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        assert mock_fn.call_args.kwargs["refresh"] is True
