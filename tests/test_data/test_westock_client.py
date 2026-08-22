@@ -1,6 +1,12 @@
 # stock-monitor/tests/test_data/test_westock_client.py
+from unittest.mock import AsyncMock
+
 import pytest
 
+from backend.data.providers.base import ProviderError
+from backend.data.providers.eastmoney import EastMoneyProvider
+from backend.data.providers.tencent import TencentProvider
+from backend.data.westock_client import WestockClient
 from backend.schemas.stock import StockQuote, CompanyNews
 
 
@@ -26,6 +32,18 @@ class TestWestockClient:
         assert report.net_profit_deducted == 32.0
         assert report.is_official is False
         assert reports[-1].report_period == "2024Q3"
+
+    @pytest.mark.asyncio
+    async def test_fetch_financials_skips_mock_when_real_configured(self, monkeypatch):
+        """配置真实数据源时，真源无数据 → 抛 ProviderError（不落到 MockProvider 伪造财报）"""
+        client = WestockClient(priority="tencent,eastmoney,mock")
+        monkeypatch.setattr(TencentProvider, "fetch_financials",
+                            AsyncMock(side_effect=ProviderError("腾讯无财报接口")))
+        monkeypatch.setattr(EastMoneyProvider, "fetch_financials",
+                            AsyncMock(side_effect=ProviderError("东财财报无数据")))
+        with pytest.raises(ProviderError):
+            await client.fetch_financials("01810.HK")
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_fetch_news_mock(self, westock_client):

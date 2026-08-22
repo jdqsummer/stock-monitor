@@ -8,6 +8,7 @@ import logging
 
 from backend.data.providers import build_provider_chain
 from backend.data.providers.base import ProviderError, StockDataProvider
+from backend.data.providers.mock import MockProvider
 from backend.schemas.stock import CompanyNews, FinancialReport, StockQuote
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,14 @@ class WestockClient:
         raise ProviderError(f"所有数据源均不可用: {code}: {last_error}")
 
     async def fetch_financials(self, code: str) -> list[FinancialReport]:
+        # 财报是事实数据：仅当链为纯 mock（本地开发 mock 模式）时才允许 MockProvider 伪造财报；
+        # 配置了真实数据源时跳过 MockProvider —— 真源无数据的股票（如东财 datacenter 无港股财报）
+        # 诚实返回「无数据」（抛 ProviderError），不把伪造财报当生产事实。refresh/聊天工具据此降级。
+        real_only = any(not isinstance(p, MockProvider) for p in self.providers)
         last_error: Exception | None = None
         for p in self.providers:
+            if real_only and isinstance(p, MockProvider):
+                continue
             try:
                 reports = await p.fetch_financials(code)
                 if reports:
