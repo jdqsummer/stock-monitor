@@ -220,8 +220,10 @@ class ChatAgentLoop:
 
     def _summarize_tool_result(self, name: str, result: dict) -> str:
         if name == "get_stock_snapshot":
-            return (f"{result.get('name')}({result.get('code')}) 现价{result.get('current_price')} "
-                    f"信号:{result.get('signal')} 距击球区:{result.get('distance_pct')}%")
+            mcap = result.get("total_market_cap")
+            mcap_s = f" 市值{mcap:.0f}亿" if isinstance(mcap, (int, float)) and mcap else ""
+            return (f"{result.get('name')}({result.get('code')}) 现价{result.get('current_price')}"
+                    f"{mcap_s} 信号:{result.get('signal')} 距击球区:{result.get('distance_pct')}%")
         if name == "run_five_stage":
             return f"五段式分析已提交 job={result.get('job_id')}"
         if name == "get_financials":

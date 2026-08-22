@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.models.stock import AnalysisSnapshot, FinancialRecord, StockSnapshot
+from backend.schemas.stock import FinancialReport
 from backend.services.chat_tools import (
-    TOOL_SCHEMAS, execute_tool, get_industry_pe_tool, run_five_stage_tool,
+    TOOL_SCHEMAS, execute_tool, get_financials_tool, get_industry_pe_tool,
+    run_five_stage_tool,
 )
 
 
@@ -36,6 +38,9 @@ async def test_get_stock_snapshot_tool_reads_snapshot():
     assert out["name"] == "贵州茅台"
     assert out["signal"] == "yellow"
     assert out["distance_pct"] == 15.2
+    assert out["total_market_cap"] == 1.8e12
+    assert out["total_shares"] == 12.56
+    assert out["change_pct"] == 1.2
 
 
 @pytest.mark.asyncio
@@ -47,6 +52,61 @@ async def test_run_five_stage_submits_job():
         out = await run_five_stage_tool(db, {"code": "600519", "_user_id": "u1"})
     assert out["job_id"] == "job_chat_1"
     job_svc.submit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_financials_reads_snapshot_table():
+    """静态快照表有数据 → 直接映射返回（snapshot 源）"""
+    db = MagicMock()
+    record = FinancialRecord(code="600519", report_period="2026H1", revenue=922.78,
+                             net_profit_parent=445.17, net_profit_deducted=430.0)
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [record]
+    db.execute = AsyncMock(return_value=result)
+
+    out = await get_financials_tool(db, {"code": "600519"})
+
+    assert out["code"] == "600519"
+    assert out["source"] == "snapshot"
+    assert out["financials"][0]["period"] == "2026H1"
+    assert out["financials"][0]["revenue"] == 922.78
+    assert out["financials"][0]["net_profit_parent"] == 445.17
+
+
+@pytest.mark.asyncio
+async def test_get_financials_live_fallback_when_table_empty():
+    """静态快照表无数据 → 实时兜底（live 源）"""
+    db = MagicMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(return_value=result)
+    report = FinancialReport(code="600519", name="贵州茅台", report_period="2026H1",
+                             revenue=922.78, net_profit_parent=445.17,
+                             net_profit_deducted=430.0)
+
+    with patch("backend.services.chat_tools._client.fetch_financials",
+               AsyncMock(return_value=[report])):
+        out = await get_financials_tool(db, {"code": "600519"})
+
+    assert out["source"] == "live"
+    assert out["financials"][0]["period"] == "2026H1"
+    assert out["financials"][0]["revenue"] == 922.78
+
+
+@pytest.mark.asyncio
+async def test_get_financials_live_fallback_error_returns_empty():
+    """静态表空 + 实时兜底异常 → 空列表不崩溃（live-fallback-none 源）"""
+    db = MagicMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(return_value=result)
+
+    with patch("backend.services.chat_tools._client.fetch_financials",
+               AsyncMock(side_effect=Exception("数据源不可用"))):
+        out = await get_financials_tool(db, {"code": "600519"})
+
+    assert out["financials"] == []
+    assert out["source"] == "live-fallback-none"
 
 
 @pytest.mark.asyncio

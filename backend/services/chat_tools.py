@@ -30,7 +30,7 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "get_stock_snapshot",
-            "description": "获取个股行情与安全边际分析摘要：现价、PE、信号灯、距击球区、击球区价格、结论。",
+            "description": "获取个股行情与安全边际分析摘要：现价、涨跌幅、总市值、PE、信号灯、距击球区、击球区价格、结论。",
             "parameters": {
                 "type": "object",
                 "properties": {"code": {"type": "string", "description": "股票代码，如 600519"}},
@@ -42,7 +42,7 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "get_financials",
-            "description": "获取个股近 8 期财报：营收、归母净利润、扣非净利润。",
+            "description": "获取个股近 8 期财报：营收、归母净利润、扣非净利润（静态快照缺失时实时拉取）。",
             "parameters": {
                 "type": "object",
                 "properties": {"code": {"type": "string", "description": "股票代码，如 600519"}},
@@ -104,6 +104,10 @@ async def get_stock_snapshot_tool(db: AsyncSession, args: dict) -> dict:
         "code": code,
         "name": quote.name if quote else "",
         "current_price": quote.current_price if quote else None,
+        "change_pct": quote.change_pct if quote else None,
+        "total_market_cap": quote.total_market_cap if quote else None,
+        "total_shares": quote.total_shares if quote else None,
+        "update_time": quote.update_time if quote else None,
         "pe_dynamic": quote.pe_dynamic if quote else None,
         "signal": snap.signal if snap else "none",
         "distance_pct": snap.distance_pct if snap else None,
@@ -121,15 +125,29 @@ async def get_financials_tool(db: AsyncSession, args: dict) -> dict:
         select(FinancialRecord).where(FinancialRecord.code == code)
         .order_by(FinancialRecord.report_period.desc()).limit(8)
     )).scalars().all()
-    return {
-        "code": code,
-        "financials": [
-            {"period": r.report_period, "revenue": r.revenue,
-             "net_profit_parent": r.net_profit_parent,
-             "net_profit_deducted": r.net_profit_deducted}
-            for r in rows
-        ],
-    }
+    rows_out = [
+        {"period": r.report_period, "revenue": r.revenue,
+         "net_profit_parent": r.net_profit_parent,
+         "net_profit_deducted": r.net_profit_deducted}
+        for r in rows
+    ]
+    source = "snapshot"
+    if not rows_out:
+        # 静态快照表无数据 → 实时兜底（与 get_quote_for_code 的 A 表优先+实时兜底一致）
+        try:
+            reports = await _client.fetch_financials(code)   # list[FinancialReport]，无数据抛 ProviderError
+            rows_out = [
+                {"period": r.report_period, "revenue": r.revenue,
+                 "net_profit_parent": r.net_profit_parent,
+                 "net_profit_deducted": r.net_profit_deducted}
+                for r in reports[:8]
+            ]
+            source = "live"
+        except Exception as e:
+            logger.info(f"财报实时兜底不可用: {code}（静态表无数据）: {e}")
+            rows_out = []
+            source = "live-fallback-none"
+    return {"code": code, "financials": rows_out, "source": source}
 
 
 async def search_stock_tool(db: AsyncSession, args: dict) -> dict:
