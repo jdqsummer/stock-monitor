@@ -80,10 +80,11 @@ async def build_chat_context(db: AsyncSession, user_id: str, query: str = "最�
     items = await WatchlistService.list_items(db, user_id)
     watchlist_lines: list[str] = []
     if items:
-        rows = await StockDataService.get_board_rows(db, user_id, items[:MAX_WATCHLIST * 2])
+        # allow_live=False：聊天摘要只读快照，禁实时兜底（避免聊天阻塞）
+        rows = await StockDataService.get_board_rows(db, user_id, items[:MAX_WATCHLIST * 2], allow_live=False)
         for r in rows[:MAX_WATCHLIST]:
             dist = f"{r.distance_pct:.0f}%" if r.distance_pct is not None else "-"
-            watchlist_lines.append(f"{r.name}({r.code}) 现价{r.current_price:.2f} 距击球区{dist} 信号:{r.signal}")
+            watchlist_lines.append(f"{r.name}({r.code}) 现价{r.current_price:.2f} 距击球区{dist} 信号:{r.signal.value}")
     watchlist_lines = _truncate_lines(watchlist_lines, MAX_WATCHLIST)
 
     # ── 笔记（最近 N 条摘要；DiaryService 缺失时降级为空）──

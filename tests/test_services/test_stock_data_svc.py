@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from datetime import date
 
@@ -94,6 +96,40 @@ async def test_get_board_rows_skips_when_no_quote(db_session, monkeypatch):
     monkeypatch.setattr("backend.services.stock_data_svc.WestockClient.fetch_quote", boom)
     rows = await StockDataService.get_board_rows(db_session, "u1", items)
     assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_get_board_rows_allow_live_false_skips_live_fallback(db_session, monkeypatch):
+    """allow_live=False 时 A 表缺 code 不兜底实时拉取（聊天摘要只读快照），行被跳过"""
+    items = [WatchlistItem(user_id="u1", stock_code="999999", stock_name="不存在")]
+    await db_session.commit()
+
+    live = AsyncMock(return_value=StockQuote(code="999999", name="实时", current_price=10.0,
+                                            total_market_cap=100.0))
+    monkeypatch.setattr(
+        "backend.services.stock_data_svc.StockDataService.get_quote_for_code", live,
+    )
+    rows = await StockDataService.get_board_rows(db_session, "u1", items, allow_live=False)
+    assert rows == []
+    live.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_board_rows_allow_live_true_uses_live_fallback(db_session, monkeypatch):
+    """allow_live=True（默认）时 A 表缺 code 走实时兜底"""
+    items = [WatchlistItem(user_id="u1", stock_code="999999", stock_name="不存在")]
+    await db_session.commit()
+
+    live = AsyncMock(return_value=StockQuote(code="999999", name="实时", current_price=10.0,
+                                            total_market_cap=100.0))
+    monkeypatch.setattr(
+        "backend.services.stock_data_svc.StockDataService.get_quote_for_code", live,
+    )
+    rows = await StockDataService.get_board_rows(db_session, "u1", items)
+    assert len(rows) == 1
+    assert rows[0].current_price == 10.0
+    assert rows[0].signal == Signal.NONE
+    live.assert_awaited_once()
 
 
 def _min_snapshot() -> AnalysisSnapshot:

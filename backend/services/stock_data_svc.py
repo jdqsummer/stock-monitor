@@ -167,7 +167,7 @@ class StockDataService:
 
     @staticmethod
     async def get_board_rows(
-        db: AsyncSession, user_id: str, items,
+        db: AsyncSession, user_id: str, items, allow_live: bool = True,
     ) -> list[WatchlistBoardRow]:
         """组装安全边际监控看板行：A.watchlist × B.snapshot × A 实时价（批量查询，避免 N+1）"""
         rows: list[WatchlistBoardRow] = []
@@ -202,8 +202,8 @@ class StockDataService:
 
         for item in items:
             quote = quotes_by_code.get(item.stock_code)
-            if quote is None:
-                # A 表无该 code → 兜底取实时行情
+            if quote is None and allow_live:
+                # A 表无该 code → 兜底取实时行情（仅 allow_live=True 时，仪表盘用；聊天摘要禁实时）
                 quote = await StockDataService.get_quote_for_code(db, item.stock_code)
             if quote is None:
                 continue
