@@ -47,7 +47,6 @@ export function Chat() {
       .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content, timestamp: Date.now() }));
     setMessages(msgs);
     setConversationId(conv.id);
-    setShowHistory(false);
   };
 
   const newChat = () => {
