@@ -28,26 +28,24 @@ interface DisplayMessage {
 // ── 纯函数式 setState helper（取最后一条 assistant 消息变更，缺失则追加）──
 
 function appendAssistantText(prev: DisplayMessage[], text: string): DisplayMessage[] {
-  const updated = [...prev];
-  const last = updated[updated.length - 1];
+  const last = prev[prev.length - 1];
   if (last && last.role === 'assistant') {
-    last.content += text;
-  } else {
-    updated.push({ role: 'assistant', content: text, timestamp: Date.now() });
+    const updated = [...prev];
+    updated[updated.length - 1] = { ...last, content: last.content + text };
+    return updated;
   }
-  return updated;
+  return [...prev, { role: 'assistant', content: text, timestamp: Date.now() }];
 }
 
 function addToolCall(prev: DisplayMessage[], name: string, args: Record<string, unknown>): DisplayMessage[] {
-  const updated = [...prev];
-  const last = updated[updated.length - 1];
   const tool: DisplayToolCall = { name, arguments: args, status: 'running' };
+  const last = prev[prev.length - 1];
   if (last && last.role === 'assistant') {
-    last.toolCalls = [...(last.toolCalls ?? []), tool];
-  } else {
-    updated.push({ role: 'assistant', content: '', timestamp: Date.now(), toolCalls: [tool] });
+    const updated = [...prev];
+    updated[updated.length - 1] = { ...last, toolCalls: [...(last.toolCalls ?? []), tool] };
+    return updated;
   }
-  return updated;
+  return [...prev, { role: 'assistant', content: '', timestamp: Date.now(), toolCalls: [tool] }];
 }
 
 function updateToolCall(
@@ -56,39 +54,40 @@ function updateToolCall(
   summary: string | undefined,
   status: DisplayToolCall['status'],
 ): DisplayMessage[] {
-  const updated = [...prev];
-  for (let i = updated.length - 1; i >= 0; i--) {
-    const m = updated[i];
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const m = prev[i];
     if (m.role === 'assistant' && m.toolCalls) {
       const idx = m.toolCalls.findIndex((tc) => tc.name === name);
       if (idx >= 0) {
-        m.toolCalls[idx] = {
-          ...m.toolCalls[idx],
-          status,
-          ...(summary !== undefined ? { summary } : {}),
+        const updated = [...prev];
+        updated[i] = {
+          ...m,
+          toolCalls: m.toolCalls.map((tc, j) =>
+            j === idx
+              ? { ...tc, status, ...(summary !== undefined ? { summary } : {}) }
+              : tc,
+          ),
         };
         return updated;
       }
     }
   }
-  return updated;
+  return prev;
 }
 
 function addAnalysisJob(prev: DisplayMessage[], code: string, jobId: string): DisplayMessage[] {
-  const updated = [...prev];
-  const last = updated[updated.length - 1];
   const job = { code, jobId, status: 'running' as const };
+  const last = prev[prev.length - 1];
   if (last && last.role === 'assistant') {
-    last.analysisJob = job;
-  } else {
-    updated.push({ role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job });
+    const updated = [...prev];
+    updated[updated.length - 1] = { ...last, analysisJob: job };
+    return updated;
   }
-  return updated;
+  return [...prev, { role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job }];
 }
 
 function updateAnalysisJob(prev: DisplayMessage[], snap: Partial<WatchlistBoardRow>): DisplayMessage[] {
-  const updated = [...prev];
-  const last = updated[updated.length - 1];
+  const last = prev[prev.length - 1];
   const existingJob = last && last.role === 'assistant' ? last.analysisJob : undefined;
   const job = {
     code: existingJob?.code ?? snap.code ?? '',
@@ -96,12 +95,11 @@ function updateAnalysisJob(prev: DisplayMessage[], snap: Partial<WatchlistBoardR
     status: 'done' as const,
   };
   if (last && last.role === 'assistant') {
-    last.analysisJob = job;
-    last.analysisResult = snap;
-  } else {
-    updated.push({ role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job, analysisResult: snap });
+    const updated = [...prev];
+    updated[updated.length - 1] = { ...last, analysisJob: job, analysisResult: snap };
+    return updated;
   }
-  return updated;
+  return [...prev, { role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job, analysisResult: snap }];
 }
 
 // ── 展示辅助 ──
