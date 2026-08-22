@@ -30,7 +30,7 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "get_stock_snapshot",
-            "description": "获取个股行情与安全边际分析摘要：现价、涨跌幅、总市值、PE、信号灯、距击球区、击球区价格、结论。",
+            "description": "获取个股行情与安全边际分析摘要：现价、涨跌幅、总市值（亿元）、PE、信号灯、距击球区、击球区价格、结论。",
             "parameters": {
                 "type": "object",
                 "properties": {"code": {"type": "string", "description": "股票代码，如 600519"}},
