@@ -103,7 +103,7 @@ class ChatAgentLoop:
                     yield {"event": "tool_result", "data": {"name": tc["name"], "summary": summary}}
                     messages.append({
                         "role": "tool", "tool_call_id": tc["id"], "name": tc["name"],
-                        "content": json.dumps(result, ensure_ascii=False),
+                        "content": json.dumps(result, ensure_ascii=False, default=str),
                     })
             else:
                 yield {"event": "error", "data": {"message": "工具调用轮次超限，请重试"}}
@@ -232,7 +232,7 @@ class ChatAgentLoop:
             return f"搜到 {len(result.get('results', []))} 条"
         if name == "get_industry_pe":
             return f"{result.get('industry')} 典型PE {result.get('typical_pe_range')}"
-        return json.dumps(result, ensure_ascii=False)[:200]
+        return json.dumps(result, ensure_ascii=False, default=str)[:200]
 
     async def _save_conversation(
         self, user_id: str, messages: list[dict], assistant_content: str,

@@ -102,6 +102,33 @@ async def test_run_stream_executes_tool_and_streams_text():
 
 
 @pytest.mark.asyncio
+async def test_run_stream_tool_result_with_datetime_does_not_crash():
+    """工具结果含 datetime 等非 JSON 可序列化值 → json.dumps(default=str) 兜底，不产 error 事件"""
+    from datetime import datetime
+
+    llm = _llm_with_tool_call_then_text()
+    db = AsyncMock()
+    db.add = MagicMock()
+    with patch("backend.services.chat_agent_loop.load_chat_persona",
+               return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.execute_tool",
+               AsyncMock(return_value={"code": "600519", "name": "贵州茅台",
+                                       "update_time": datetime(2026, 8, 22, 15, 0)})), \
+         patch("backend.services.chat_agent_loop.build_chat_context",
+               AsyncMock(return_value={})), \
+         patch("backend.services.chat_agent_loop.MemoryService") as ms:
+        ms.return_value.distill_async = MagicMock()
+        loop = ChatAgentLoop(llm_provider=llm, db=db)
+        events = []
+        async for ev in loop.run_stream("u1", "分析 600519"):
+            events.append(ev)
+
+    ev_types = [e["event"] for e in events]
+    assert "error" not in ev_types
+    assert "done" in ev_types
+
+
+@pytest.mark.asyncio
 async def test_run_stream_run_five_stage_emits_analysis_submitted():
     """run_five_stage 工具结果含 job_id → 产出 analysis_submitted 事件 + 记录 submitted_job_ids"""
     llm = _llm_with_run_five_stage_then_text()

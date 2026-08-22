@@ -107,7 +107,10 @@ async def get_stock_snapshot_tool(db: AsyncSession, args: dict) -> dict:
         "change_pct": quote.change_pct if quote else None,
         "total_market_cap": quote.total_market_cap if quote else None,
         "total_shares": quote.total_shares if quote else None,
-        "update_time": quote.update_time if quote else None,
+        "update_time": (
+            quote.update_time.isoformat() if hasattr(quote.update_time, "isoformat")
+            else str(quote.update_time)
+        ) if quote and quote.update_time else None,
         "pe_dynamic": quote.pe_dynamic if quote else None,
         "signal": snap.signal if snap else "none",
         "distance_pct": snap.distance_pct if snap else None,

@@ -1,4 +1,5 @@
 """聊天工具执行器 — TDD"""
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,10 +22,10 @@ def test_tool_schemas_has_five_tools():
 async def test_get_stock_snapshot_tool_reads_snapshot():
     """行情工具读 A 表 + B 表返回紧凑 dict"""
     db = MagicMock()
-    # A 表行情（total_market_cap 单位：亿元）
+    # A 表行情（total_market_cap 单位：亿元；update_time 为 datetime 列，工具须转 ISO 字符串）
     quote = StockSnapshot(code="600519", name="贵州茅台", current_price=1500.0,
                           change_pct=1.2, total_market_cap=19500.0, pe_dynamic=28.0,
-                          total_shares=12.56, update_time="2026-08-22 15:00:00")
+                          total_shares=12.56, update_time=datetime(2026, 8, 22, 15, 0))
     # B 表快照
     snap = AnalysisSnapshot(user_id="u1", stock_code="600519", signal="yellow",
                             distance_pct=15.2, swing_price_low=1200.0, swing_price_high=1400.0,
@@ -41,7 +42,7 @@ async def test_get_stock_snapshot_tool_reads_snapshot():
     assert out["total_market_cap"] == 19500.0
     assert out["total_shares"] == 12.56
     assert out["change_pct"] == 1.2
-    assert out["update_time"] == "2026-08-22 15:00:00"
+    assert "2026-08-22" in out["update_time"]  # datetime → ISO 字符串，保证 json.dumps 可序列化
 
 
 @pytest.mark.asyncio
