@@ -342,7 +342,7 @@ export function Chat() {
                   msg={msg}
                   loading={loading}
                   isLast={i === messages.length - 1}
-                  canRegenerate={i === messages.length - 1 && msg.role === 'assistant' && msg === lastAssistant}
+                  canRegenerate={i === messages.length - 1 && msg.role === 'assistant' && msg === lastAssistant && !!msg.relatedUserText && !loading}
                   onRegenerate={() => handleRegenerate(msg)}
                 />
               ))}

@@ -1,9 +1,9 @@
 /** DeepSeek 风格单条消息：用户浅灰轻块 / 助手文本流 + 工具卡片 + 分析卡片 + hover 操作 */
 import { useState } from 'react';
-import { Avatar, Button, Space, Spin, Tag, Tooltip } from 'antd';
+import { Avatar, Button, Space, Spin, Tag, Tooltip, message as antMsg } from 'antd';
 import {
   CopyOutlined, DislikeFilled, DislikeOutlined, LikeFilled, LikeOutlined,
-  ReloadOutlined, RobotOutlined, UserOutlined,
+  ReloadOutlined, RobotOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
@@ -67,7 +67,7 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
     try {
       await navigator.clipboard.writeText(msg.content);
     } catch {
-      // 剪贴板权限拒绝时静默
+      antMsg.info('复制失败');
     }
   };
 
