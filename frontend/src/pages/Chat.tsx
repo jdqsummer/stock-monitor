@@ -1,27 +1,142 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Input, Button, List, Avatar, Typography, Space, Tag, Spin, message as antMsg, Popconfirm,
+  Input, Button, List, Avatar, Typography, Space, Tag, Spin, message as antMsg, Popconfirm, Drawer, Divider,
 } from 'antd';
-import { SendOutlined, DeleteOutlined, PlusOutlined, RobotOutlined, UserOutlined } from '@ant-design/icons';
+import { SendOutlined, DeleteOutlined, PlusOutlined, RobotOutlined, UserOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import { chatApi } from '@/api/client';
-import type { ConversationItem } from '@/types';
+import type { ConversationItem, ChatProfile, WatchlistBoardRow, Signal, ToolCallEvent } from '@/types';
 
 const { TextArea } = Input;
 const { Text, Paragraph } = Typography;
+
+interface DisplayToolCall extends ToolCallEvent {
+  summary?: string;
+  status: 'running' | 'done' | 'error';
+}
 
 interface DisplayMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  toolCalls?: DisplayToolCall[];
+  analysisJob?: { code: string; jobId: string; status: 'running' | 'done' | 'error' };
+  analysisResult?: Partial<WatchlistBoardRow>;
+}
+
+// ── 纯函数式 setState helper（取最后一条 assistant 消息变更，缺失则追加）──
+
+function appendAssistantText(prev: DisplayMessage[], text: string): DisplayMessage[] {
+  const updated = [...prev];
+  const last = updated[updated.length - 1];
+  if (last && last.role === 'assistant') {
+    last.content += text;
+  } else {
+    updated.push({ role: 'assistant', content: text, timestamp: Date.now() });
+  }
+  return updated;
+}
+
+function addToolCall(prev: DisplayMessage[], name: string, args: Record<string, unknown>): DisplayMessage[] {
+  const updated = [...prev];
+  const last = updated[updated.length - 1];
+  const tool: DisplayToolCall = { name, arguments: args, status: 'running' };
+  if (last && last.role === 'assistant') {
+    last.toolCalls = [...(last.toolCalls ?? []), tool];
+  } else {
+    updated.push({ role: 'assistant', content: '', timestamp: Date.now(), toolCalls: [tool] });
+  }
+  return updated;
+}
+
+function updateToolCall(
+  prev: DisplayMessage[],
+  name: string,
+  summary: string | undefined,
+  status: DisplayToolCall['status'],
+): DisplayMessage[] {
+  const updated = [...prev];
+  for (let i = updated.length - 1; i >= 0; i--) {
+    const m = updated[i];
+    if (m.role === 'assistant' && m.toolCalls) {
+      const idx = m.toolCalls.findIndex((tc) => tc.name === name);
+      if (idx >= 0) {
+        m.toolCalls[idx] = {
+          ...m.toolCalls[idx],
+          status,
+          ...(summary !== undefined ? { summary } : {}),
+        };
+        return updated;
+      }
+    }
+  }
+  return updated;
+}
+
+function addAnalysisJob(prev: DisplayMessage[], code: string, jobId: string): DisplayMessage[] {
+  const updated = [...prev];
+  const last = updated[updated.length - 1];
+  const job = { code, jobId, status: 'running' as const };
+  if (last && last.role === 'assistant') {
+    last.analysisJob = job;
+  } else {
+    updated.push({ role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job });
+  }
+  return updated;
+}
+
+function updateAnalysisJob(prev: DisplayMessage[], snap: Partial<WatchlistBoardRow>): DisplayMessage[] {
+  const updated = [...prev];
+  const last = updated[updated.length - 1];
+  const existingJob = last && last.role === 'assistant' ? last.analysisJob : undefined;
+  const job = {
+    code: existingJob?.code ?? snap.code ?? '',
+    jobId: existingJob?.jobId ?? '',
+    status: 'done' as const,
+  };
+  if (last && last.role === 'assistant') {
+    last.analysisJob = job;
+    last.analysisResult = snap;
+  } else {
+    updated.push({ role: 'assistant', content: '', timestamp: Date.now(), analysisJob: job, analysisResult: snap });
+  }
+  return updated;
+}
+
+// ── 展示辅助 ──
+
+function signalColor(signal?: Signal | null): string {
+  switch (signal) {
+    case 'green': return 'green';
+    case 'yellow': return 'gold';
+    case 'red': return 'red';
+    default: return 'default';
+  }
+}
+
+function toolLabel(name: string): string {
+  const labels: Record<string, string> = {
+    get_stock_snapshot: '查询快照',
+    get_financials: '查询财报',
+    search_stock: '搜索股票',
+    get_industry_pe: '行业 PE 锚定',
+    run_five_stage: '五段式分析',
+  };
+  return labels[name] ?? name;
 }
 
 export function Chat() {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [history, setHistory] = useState<ConversationItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState<ChatProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -73,6 +188,24 @@ export function Chat() {
     }
   };
 
+  // 画像面板
+  const loadProfile = async (refresh = false) => {
+    setProfileLoading(true);
+    try {
+      const res = await chatApi.getProfile(refresh);
+      setProfile(res.data.data);
+    } catch {
+      antMsg.error('画像加载失败');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const openProfile = () => {
+    loadProfile(false);
+    setProfileOpen(true);
+  };
+
   // SSE 流式发送消息
   const sendMessage = async () => {
     const text = inputValue.trim();
@@ -91,6 +224,44 @@ export function Chat() {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    let newConvId = conversationId;
+
+    // SSE 事件分流（后端 event_generator 输出 {event, data(json string)} → sse_starlette 写成 event:/data: 两行）
+    const parseSSEEvent = (data: { event: string; data: any }) => {
+      switch (data.event) {
+        case 'chunk':
+          setMessages((prev) => appendAssistantText(prev, data.data?.content ?? ''));
+          break;
+        case 'tool_call':
+          setMessages((prev) => addToolCall(prev, data.data?.name, data.data?.arguments ?? {}));
+          break;
+        case 'tool_result': {
+          const { name, summary } = data.data ?? {};
+          setMessages((prev) => updateToolCall(prev, name, summary, 'done'));
+          break;
+        }
+        case 'analysis_submitted': {
+          const { code, job_id } = data.data ?? {};
+          setMessages((prev) => updateToolCall(prev, 'run_five_stage', undefined, 'running'));
+          setMessages((prev) => addAnalysisJob(prev, code, job_id));
+          break;
+        }
+        case 'analysis_done': {
+          const snap = data.data ?? {};
+          setMessages((prev) => updateAnalysisJob(prev, snap));
+          break;
+        }
+        case 'done':
+          newConvId = data.data?.conversation_id ?? newConvId;
+          break;
+        case 'error':
+          antMsg.error(data.data?.message ?? '消息发送失败');
+          break;
+        default:
+          break;
+      }
+    };
+
     try {
       const streamUrl = chatApi.getStreamUrl(text, conversationId || undefined);
       const baseUrl = '';
@@ -107,35 +278,33 @@ export function Chat() {
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let newConvId = conversationId;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        // 归一化换行（兼容 \r\n 与 \n），再按空行切分 SSE 块，块内解析 event:/data: 行
+        buffer = buffer.replace(/\r\n/g, '\n');
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() || '';
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.event === 'chunk' || (data.data && typeof data.data === 'string' && data.event !== 'done')) {
-              const chunkText = typeof data.data === 'string' ? data.data : '';
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last && last.role === 'assistant') {
-                  last.content += chunkText;
-                }
-                return updated;
-              });
-            } else if (data.event === 'done') {
-              newConvId = typeof data.data === 'string' ? data.data : newConvId;
+        for (const block of blocks) {
+          let event = 'message';
+          let dataStr = '';
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event:')) {
+              event = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+              dataStr += line.slice(5).trim();
             }
+          }
+          if (!dataStr) continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            parseSSEEvent({ event, data: parsed });
           } catch {
-            // 跳过解析失败的行
+            // 跳过解析失败的块
           }
         }
       }
@@ -146,7 +315,7 @@ export function Chat() {
       if (err instanceof Error && err.name === 'AbortError') return;
       antMsg.error('消息发送失败，请重试');
       // 移除空的 assistant 消息
-      setMessages((prev) => prev.filter((m) => m.content !== ''));
+      setMessages((prev) => prev.filter((m) => m.content !== '' || m.toolCalls?.length || m.analysisResult));
     } finally {
       setLoading(false);
       abortRef.current = null;
@@ -248,6 +417,8 @@ export function Chat() {
                 ID: {conversationId.slice(0, 8)}...
               </Text>
             )}
+            <Button type="text" size="small" icon={<UserOutlined />} onClick={openProfile}
+              style={{ color: '#888' }}>我的投资画像</Button>
             <Button type="text" size="small" icon={<PlusOutlined />} onClick={newChat}
               style={{ color: '#52c41a' }}>新对话</Button>
           </Space>
@@ -284,6 +455,7 @@ export function Chat() {
                   maxWidth: '75%',
                   flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
                   gap: 10,
+                  alignItems: 'flex-start',
                 }}>
                   <Avatar
                     size={36}
@@ -294,19 +466,64 @@ export function Chat() {
                     }}
                   />
                   <div style={{
-                    padding: '10px 16px',
-                    borderRadius: 12,
-                    background: msg.role === 'user' ? '#1677ff' : '#1f1f1f',
-                    border: msg.role === 'assistant' ? '1px solid #303030' : 'none',
-                    color: msg.role === 'user' ? '#fff' : '#e0e0e0',
-                    lineHeight: 1.7,
-                    fontSize: 14,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                    gap: 6,
+                    minWidth: 0,
+                    maxWidth: '100%',
                   }}>
-                    {msg.content || (loading && i === messages.length - 1 ? (
-                      <Spin size="small" />
-                    ) : '')}
+                    <div style={{
+                      padding: '10px 16px',
+                      borderRadius: 12,
+                      background: msg.role === 'user' ? '#1677ff' : '#1f1f1f',
+                      border: msg.role === 'assistant' ? '1px solid #303030' : 'none',
+                      color: msg.role === 'user' ? '#fff' : '#e0e0e0',
+                      lineHeight: 1.7,
+                      fontSize: 14,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}>
+                      {msg.role === 'assistant' ? (
+                        msg.content ? (
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        ) : (loading && i === messages.length - 1 ? <Spin size="small" /> : '')
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
+                    {msg.role === 'assistant' && msg.toolCalls?.map((tc, idx) => (
+                      <div key={idx} style={{
+                        marginTop: 6, padding: '6px 10px', borderRadius: 6,
+                        background: '#141414', border: '1px solid #303030', fontSize: 12, color: '#aaa',
+                      }}>
+                        {tc.status === 'done'
+                          ? <>🔧 {toolLabel(tc.name)}{tc.summary ? `：${tc.summary}` : ''}</>
+                          : tc.status === 'error'
+                            ? <>⚠️ {toolLabel(tc.name)} 调用失败</>
+                            : <><Spin size="small" style={{ marginRight: 6 }} />正在调用 {toolLabel(tc.name)}</>}
+                      </div>
+                    ))}
+                    {msg.role === 'assistant' && msg.analysisResult && (
+                      <div style={{
+                        marginTop: 6, padding: '10px 12px', borderRadius: 6, background: '#1a1a2e',
+                        border: '1px solid #303030',
+                      }}>
+                        <Tag color={signalColor(msg.analysisResult.signal)}>
+                          {msg.analysisResult.signal_label ?? msg.analysisResult.signal}
+                        </Tag>
+                        <div style={{ color: '#e0e0e0', fontSize: 13, marginTop: 4 }}>
+                          击球区：{msg.analysisResult.swing_price}　距击球区：{msg.analysisResult.distance_pct}%
+                        </div>
+                        {msg.analysisResult.conclusion && (
+                          <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
+                            {msg.analysisResult.conclusion}
+                          </div>
+                        )}
+                        <Button type="link" size="small" style={{ padding: 0, marginTop: 4 }}
+                          onClick={() => navigate(`/stock/${msg.analysisResult?.code}`)}>查看详情</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -357,6 +574,29 @@ export function Chat() {
           </Text>
         </div>
       </div>
+
+      {/* 画像面板 */}
+      <Drawer title="我的投资画像" open={profileOpen} onClose={() => setProfileOpen(false)} width={420}
+        extra={<Button size="small" icon={<ReloadOutlined />} loading={profileLoading}
+          onClick={() => loadProfile(true)}>刷新画像</Button>}>
+        {profile ? (
+          <>
+            <Paragraph style={{ color: '#e0e0e0', whiteSpace: 'pre-wrap' }}>{profile.L3}</Paragraph>
+            <Divider />
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Tag>持仓 {profile.position_count}</Tag>
+              <Tag>自选 {profile.watchlist_count}</Tag>
+              <Tag>笔记 {profile.diary_count}</Tag>
+            </Space>
+            <Text strong style={{ color: '#ccc' }}>关注偏好</Text>
+            {profile.L1.map((m, i) => (
+              <Paragraph key={i} style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>
+                [{m.category ?? '偏好'}] {m.content}
+              </Paragraph>
+            ))}
+          </>
+        ) : <Spin />}
+      </Drawer>
     </div>
   );
 }
