@@ -153,14 +153,14 @@ export function Chat() {
   };
 
   // 发送消息（SSE 读取逻辑与 parseSSEEvent 原样保留）
-  const sendMessage = async () => {
-    const text = inputValue.trim();
+  const sendMessage = async (textOverride?: string) => {
+    const text = (textOverride ?? inputValue).trim();
     if (!text || loading) return;
 
     const userMsg: DisplayMessage = { role: 'user', content: text, timestamp: Date.now() };
     const assistantPlaceholder: DisplayMessage = { role: 'assistant', content: '', timestamp: Date.now() + 1, relatedUserText: text };
     setMessages((prev) => [...prev, userMsg, assistantPlaceholder]);
-    setInputValue('');
+    if (textOverride === undefined) setInputValue('');
     setLoading(true);
 
     const token = localStorage.getItem('token') || '';
@@ -237,6 +237,24 @@ export function Chat() {
     } catch {
       antMsg.error('删除失败');
     }
+  };
+
+  const handleRegenerate = (msg: DisplayMessage) => {
+    if (!msg.relatedUserText) return;
+    const targetText = msg.relatedUserText;
+    setMessages((prev) => {
+      const idx = prev.indexOf(msg);
+      if (idx < 0) return prev;
+      const before = prev.slice(0, idx);
+      const after = prev.slice(idx + 1);
+      // 移除目标 assistant 消息之前最近一条内容相同的 user 消息
+      if (before.length && before[before.length - 1].role === 'user'
+          && before[before.length - 1].content === targetText) {
+        before.pop();
+      }
+      return [...before, ...after];
+    });
+    void sendMessage(targetText);
   };
 
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
@@ -325,10 +343,7 @@ export function Chat() {
                   loading={loading}
                   isLast={i === messages.length - 1}
                   canRegenerate={i === messages.length - 1 && msg.role === 'assistant' && msg === lastAssistant}
-                  onRegenerate={() => {
-                    // 重新生成：Task 3 实现
-                    if (msg.relatedUserText) { setInputValue(msg.relatedUserText); }
-                  }}
+                  onRegenerate={() => handleRegenerate(msg)}
                 />
               ))}
               <div ref={messagesEndRef} />
