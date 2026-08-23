@@ -131,7 +131,13 @@ export function Chat() {
     for (let i = prev.length - 1; i >= 0; i--) {
       const m = prev[i];
       if (m.role === 'assistant' && m.toolCalls) {
-        const idx = m.toolCalls.findIndex((tc) => tc.name === name);
+        // 同名工具可能被调用多次（如 get_industry_pe 对比多行业）：须更新最后一个 pending(running)
+        // 的同名 toolCall，而非 findIndex 匹配的第一个 —— 否则后续同名 toolCall 的 tool_result
+        // 更新不到，卡片永远停留「正在调用」。
+        let idx = -1;
+        for (let j = m.toolCalls.length - 1; j >= 0; j--) {
+          if (m.toolCalls[j].name === name && m.toolCalls[j].status === 'running') { idx = j; break; }
+        }
         if (idx >= 0) {
           const updated = [...prev];
           updated[i] = {
