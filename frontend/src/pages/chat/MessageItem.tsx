@@ -88,7 +88,23 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(msg.content);
+      if (navigator.clipboard && window.isSecureContext) {
+        // 安全上下文（HTTPS/localhost）：原生 Clipboard API
+        await navigator.clipboard.writeText(msg.content);
+      } else {
+        // 非安全上下文（http 生产）：navigator.clipboard 不存在，降级 execCommand
+        const ta = document.createElement('textarea');
+        ta.value = msg.content;
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('execCommand copy failed');
+      }
     } catch {
       antMsg.info('复制失败');
     }
