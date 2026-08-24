@@ -128,13 +128,13 @@ export const diaryApi = {
   get: (id: string) => client.get<ApiResponse<DiaryEntry>>(`/diary/${id}`),
   create: (content: string, opts?: { title?: string; parent_folder_id?: string }) =>
     client.post<ApiResponse<DiaryEntry>>('/diary', { content, ...opts }),
-  update: (id: string, patch: { content?: string; title?: string; parent_folder_id?: string }) =>
+  update: (id: string, patch: { content?: string; title?: string; parent_folder_id?: string | null }) =>
     client.put<ApiResponse<DiaryEntry>>(`/diary/${id}`, patch),
   remove: (id: string) => client.delete<ApiResponse>(`/diary/${id}`),
   analyze: (id: string) => client.post<ApiResponse<{ decisions: DiaryDecision[] | null; emotion_tags: string[] | null; ai_feedback: string | null }>>(`/diary/${id}/analyze`),
   createFolder: (name: string, parent_id?: string) =>
     client.post<ApiResponse<DiaryFolderNode>>('/diary/folders', { name, parent_id }),
-  renameFolder: (id: string, patch: { name?: string; parent_id?: string }) =>
+  renameFolder: (id: string, patch: { name?: string; parent_id?: string | null }) =>
     client.put<ApiResponse<DiaryFolderNode>>(`/diary/folders/${id}`, patch),
   removeFolder: (id: string) => client.delete<ApiResponse>(`/diary/folders/${id}`),
 };

@@ -1,145 +1,215 @@
-import { useEffect, useState } from 'react';
-import { Button, Drawer, List, Modal, Popconfirm, Space, Tag, Typography, Input, message as antMsg } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined, RobotOutlined } from '@ant-design/icons';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Modal, Spin, message as antMsg } from 'antd';
+import { FolderAddOutlined, FileAddOutlined, LeftOutlined } from '@ant-design/icons';
 import { diaryApi } from '@/api/client';
-import type { DiaryEntry } from '@/types';
-
-const { TextArea } = Input;
-const { Text, Paragraph } = Typography;
-
-// 深色主题表格样式（与页面 #1f1f1f / #303030 配色一致）
-const diaryMd = {
-  table: ({ node: _node, ...props }: any) => <table style={{ margin: '6px 0', borderCollapse: 'collapse', width: '100%', fontSize: 13 }} {...props} />,
-  th: ({ node: _node, ...props }: any) => <th style={{ border: '1px solid #303030', padding: '6px 10px', background: '#1f1f1f', fontWeight: 600, textAlign: 'left' }} {...props} />,
-  td: ({ node: _node, ...props }: any) => <td style={{ border: '1px solid #303030', padding: '6px 10px' }} {...props} />,
-};
+import type { DiaryEntry, DiaryTree } from '@/types';
+import { DiaryFileTree } from './diary/DiaryFileTree';
+import { DiaryEditor } from './diary/DiaryEditor';
+import { DiaryReader } from './diary/DiaryReader';
 
 export function Diary() {
-  const [items, setItems] = useState<DiaryEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editing, setEditing] = useState<DiaryEntry | null>(null);
-  const [content, setContent] = useState('');
-  const [detail, setDetail] = useState<DiaryEntry | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [tree, setTree] = useState<DiaryTree>({ folders: [], root_notes: [] });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [entry, setEntry] = useState<DiaryEntry | null>(null);
+  const [loadingEntry, setLoadingEntry] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftContent, setDraftContent] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
+  const reloadTree = useCallback(async () => {
     try {
-      const res = await diaryApi.list();
-      setItems(res.data.data.items);
-    } catch { antMsg.error('加载失败'); }
-    finally { setLoading(false); }
+      const res = await diaryApi.tree();
+      setTree(res.data.data);
+    } catch { antMsg.error('加载文件夹树失败'); }
+  }, []);
+
+  useEffect(() => { reloadTree(); }, [reloadTree]);
+
+  const openNote = useCallback(async (noteId: string) => {
+    setActiveId(noteId);
+    setLoadingEntry(true);
+    setEditing(false);
+    try {
+      const res = await diaryApi.get(noteId);
+      setEntry(res.data.data);
+    } catch { antMsg.error('加载笔记失败'); }
+    finally { setLoadingEntry(false); }
+  }, []);
+
+  const currentFolderId = useMemo(() => {
+    if (!activeId) return null;
+    const walk = (nodes: DiaryTree['folders']): string | null => {
+      for (const f of nodes) {
+        if (f.notes.some((n) => n.id === activeId)) return f.id;
+        const hit = walk(f.children);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    return walk(tree.folders);
+  }, [tree, activeId]);
+
+  const createNote = async (folderId: string | null) => {
+    try {
+      const res = await diaryApi.create('', { title: '未命名笔记', parent_folder_id: folderId ?? undefined });
+      const id = res.data.data.id;
+      await reloadTree();
+      await openNote(id);
+      setEditing(true);
+      setDraftTitle('未命名笔记');
+      setDraftContent('');
+    } catch { antMsg.error('新建笔记失败'); }
   };
 
-  useEffect(() => { load(); }, []);
+  const createFolder = async (parentId: string | null) => {
+    try {
+      await diaryApi.createFolder('新建文件夹', parentId ?? undefined);
+      await reloadTree();
+    } catch { antMsg.error('新建文件夹失败'); }
+  };
 
-  const openCreate = () => { setEditing(null); setContent(''); setEditorOpen(true); };
-  const openEdit = (item: DiaryEntry) => { setEditing(item); setContent(item.content); setEditorOpen(true); };
+  const renameNote = async (noteId: string, newName: string) => {
+    try { await diaryApi.update(noteId, { title: newName }); await reloadTree(); if (activeId === noteId) setEntry((e) => e ? { ...e, title: newName } : e); }
+    catch { antMsg.error('重命名失败'); }
+  };
+
+  const renameFolder = async (folderId: string, newName: string) => {
+    try { await diaryApi.renameFolder(folderId, { name: newName }); await reloadTree(); }
+    catch { antMsg.error('重命名失败'); }
+  };
+
+  const deleteNote = (noteId: string) => {
+    Modal.confirm({ title: '删除这篇笔记？', content: '删除后不可恢复。', okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await diaryApi.remove(noteId);
+          if (activeId === noteId) { setActiveId(null); setEntry(null); }
+          await reloadTree();
+        } catch { antMsg.error('删除失败'); }
+      } });
+  };
+
+  const deleteFolder = (folderId: string) => {
+    Modal.confirm({ title: '删除该文件夹？', content: '将同时删除其中全部笔记，不可恢复。', okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await diaryApi.removeFolder(folderId);
+          // 若活动笔记在被删文件夹内，一并清空当前视图
+          if (activeId && isNoteInFolder(tree, folderId, activeId)) { setActiveId(null); setEntry(null); }
+          await reloadTree();
+        } catch { antMsg.error('删除失败'); }
+      } });
+  };
+
+  const isNoteInFolder = (t: DiaryTree, folderId: string, noteId: string): boolean => {
+    for (const f of t.folders) {
+      if (f.id === folderId) return f.notes.some((n) => n.id === noteId) || f.children.some((c) => isNoteInFolder({ folders: [c], root_notes: [] }, folderId, noteId));
+      const hit = isNoteInFolder({ folders: f.children, root_notes: [] }, folderId, noteId);
+      if (hit) return hit;
+    }
+    return false;
+  };
+
+  const moveNote = async (noteId: string, targetFolderId: string | null) => {
+    try { await diaryApi.update(noteId, { parent_folder_id: targetFolderId }); await reloadTree(); return true; }
+    catch { antMsg.error('移动失败'); return false; }
+  };
+
+  const moveFolder = async (folderId: string, targetFolderId: string | null) => {
+    try { await diaryApi.renameFolder(folderId, { parent_id: targetFolderId }); await reloadTree(); return true; }
+    catch { antMsg.error('移动失败'); return false; }
+  };
 
   const save = async () => {
-    if (!content.trim()) return;
+    if (!activeId) return;
+    setSaving(true);
     try {
-      if (editing) await diaryApi.update(editing.id, { content });
-      else await diaryApi.create(content);
+      await diaryApi.update(activeId, { title: draftTitle.trim() || '未命名笔记', content: draftContent });
       antMsg.success('已保存');
-      setEditorOpen(false);
-      load();
+      setEditing(false);
+      await openNote(activeId);
+      await reloadTree();
     } catch { antMsg.error('保存失败'); }
+    finally { setSaving(false); }
   };
 
-  const remove = async (id: string) => {
-    try { await diaryApi.remove(id); antMsg.success('已删除'); load(); }
-    catch { antMsg.error('删除失败'); }
-  };
-
-  const analyze = async (item: DiaryEntry) => {
-    setAnalyzingId(item.id);
+  const analyze = async () => {
+    if (!activeId) return;
+    setAnalyzing(true);
     try {
-      const res = await diaryApi.analyze(item.id);
-      antMsg.success('AI 分析完成');
-      setDetail({ ...item, ai_feedback: res.data.data.ai_feedback, decisions: res.data.data.decisions, emotion_tags: res.data.data.emotion_tags });
-      setDetailOpen(true);
-      load();
+      const res = await diaryApi.analyze(activeId);
+      setEntry((e) => e ? { ...e, ...res.data.data, id: e.id } : e);
+      await reloadTree();
     } catch { antMsg.error('AI 分析失败'); }
-    finally { setAnalyzingId(null); }
+    finally { setAnalyzing(false); }
   };
-
-  const openDetail = (item: DiaryEntry) => { setDetail(item); setDetailOpen(true); };
 
   return (
-    <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Text strong style={{ color: '#e0e0e0', fontSize: 16 }}>投资笔记</Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ background: '#52c41a', borderColor: '#52c41a' }}>新建笔记</Button>
-      </Space>
+    <div style={{ display: 'flex', height: 'calc(100vh - 130px)', border: '1px solid #ECECEC', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+      {/* 文件树侧栏 */}
+      <aside style={{ width: 240, flexShrink: 0, borderRight: '1px solid #ECECEC', background: '#FAFAFA', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', gap: 4, padding: 8, borderBottom: '1px solid #ECECEC' }}>
+          <Button size="small" icon={<FileAddOutlined />} onClick={() => createNote(currentFolderId)}>新建笔记</Button>
+          <Button size="small" icon={<FolderAddOutlined />} onClick={() => createFolder(currentFolderId)}>新建文件夹</Button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 6 }}>
+          <DiaryFileTree
+            tree={tree}
+            activeNoteId={activeId}
+            onSelectNote={openNote}
+            onNewNote={createNote}
+            onNewFolder={createFolder}
+            onRenameNote={renameNote}
+            onDeleteNote={deleteNote}
+            onMoveNote={moveNote}
+            onRenameFolder={renameFolder}
+            onDeleteFolder={deleteFolder}
+            onMoveFolder={moveFolder}
+          />
+        </div>
+      </aside>
 
-      <List
-        loading={loading}
-        dataSource={items}
-        locale={{ emptyText: <Text style={{ color: '#666' }}>暂无笔记，记录你的投资思考</Text> }}
-        renderItem={(item) => (
-          <List.Item
-            style={{ border: '1px solid #303030', borderRadius: 8, padding: '12px 16px', marginBottom: 8, background: '#141414', cursor: 'pointer' }}
-            onClick={() => openDetail(item)}
-            actions={[
-              <Button key="a" type="text" size="small" icon={<RobotOutlined />}
-                loading={analyzingId === item.id}
-                onClick={(e) => { e.stopPropagation(); analyze(item); }}
-                style={{ color: '#52c41a' }}>AI 分析</Button>,
-              <Button key="e" type="text" size="small" icon={<EditOutlined />}
-                onClick={(e) => { e.stopPropagation(); openEdit(item); }} style={{ color: '#888' }} />,
-              <Popconfirm key="d" title="确定删除？" onConfirm={(e) => { e?.stopPropagation(); remove(item.id); }}
-                onCancel={(e) => e?.stopPropagation()}>
-                <Button type="text" size="small" icon={<DeleteOutlined />}
-                  onClick={(e) => e.stopPropagation()} style={{ color: '#888' }} />
-              </Popconfirm>,
-            ]}
-          >
-            <div style={{ width: '100%' }}>
-              <Paragraph ellipsis={{ rows: 2 }} style={{ color: '#d0d0d0', marginBottom: 4 }}>{item.content}</Paragraph>
-              {item.emotion_tags?.map((t, i) => <Tag key={i} style={{ marginBottom: 4 }}>{t}</Tag>)}
-              {item.ai_feedback && <Tag color="green" style={{ marginBottom: 4 }}>已 AI 分析</Tag>}
-              <Text style={{ color: '#666', fontSize: 11 }}>
-                {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
-              </Text>
-            </div>
-          </List.Item>
-        )}
-      />
-
-      {/* 新建/编辑 */}
-      <Modal title={editing ? '编辑笔记' : '新建笔记'} open={editorOpen}
-        onOk={save} onCancel={() => setEditorOpen(false)} okButtonProps={{ style: { background: '#52c41a' } }}>
-        <TextArea value={content} onChange={(e) => setContent(e.target.value)} rows={8}
-          placeholder="写下你的投资思考（支持 Markdown）..." style={{ background: '#1f1f1f', color: '#e0e0e0' }} />
-      </Modal>
-
-      {/* 详情 + AI 分析 */}
-      <Drawer title="笔记详情" open={detailOpen} onClose={() => setDetailOpen(false)} width={520}>
-        {detail && (
+      {/* 主区 */}
+      <main style={{ flex: 1, overflowY: 'auto', background: '#fff' }}>
+        {loadingEntry ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+            <Spin size="large" />
+          </div>
+        ) : editing && entry ? (
           <>
-            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#1f1f1f',
-              border: '1px solid #303030', color: '#e0e0e0' }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={diaryMd}>{detail.content}</ReactMarkdown>
+            <div style={{ borderBottom: '1px solid #ECECEC', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Button type="text" size="small" icon={<LeftOutlined />} onClick={() => { setEditing(false); }}>返回</Button>
+              <input
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                placeholder="笔记标题"
+                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 18, fontWeight: 600, color: '#1A1A1A', background: 'transparent' }}
+              />
             </div>
-            {detail.decisions?.map((d, i) => (
-              <Tag key={i} color={d.type === 'buy' ? 'green' : d.type === 'sell' ? 'red' : 'gold'}
-                style={{ marginTop: 12 }}>{d.type} {d.stock ?? ''}{d.price ? ` @${d.price}` : ''}</Tag>
-            ))}
-            {detail.ai_feedback && (
-              <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 8, background: '#1a2e1a',
-                border: '1px solid #2e4d2e' }}>
-                <Text strong style={{ color: '#52c41a' }}>🤖 AI 行为点评</Text>
-                <Paragraph style={{ color: '#cfe8cf', whiteSpace: 'pre-wrap' }}>{detail.ai_feedback}</Paragraph>
-              </div>
-            )}
+            <div style={{ padding: '16px 20px' }}>
+              <DiaryEditor
+                initialMarkdown={entry.content}
+                onChange={setDraftContent}
+                onSave={save}
+                onCancel={() => setEditing(false)}
+                saving={saving}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ padding: '10px 20px', borderBottom: '1px solid #ECECEC', display: 'flex', justifyContent: 'flex-end' }}>
+              {entry && (
+                <Button size="small" onClick={() => { setDraftTitle(entry.title ?? ''); setDraftContent(entry.content); setEditing(true); }}
+                  style={{ borderColor: '#4D6EFE', color: '#4D6EFE' }}>编辑</Button>
+              )}
+            </div>
+            <DiaryReader entry={entry} analyzing={analyzing} onAnalyze={analyze} />
           </>
         )}
-      </Drawer>
+      </main>
     </div>
   );
 }
