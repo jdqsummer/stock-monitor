@@ -18,6 +18,8 @@ from backend.services.memory_svc import MemoryService
 
 logger = logging.getLogger(__name__)
 
+_NOT_SET = object()  # 模块级：区分「未提供」与「显式置 None」
+
 DIARY_ANALYZE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -88,17 +90,18 @@ class DiaryService:
 
     @staticmethod
     async def update(db: AsyncSession, user_id: str, diary_id: str, *,
-                     title: str | None = None, content: str | None = None,
-                     parent_folder_id: str | None = None) -> Diary | None:
-        """更新笔记；显式传 None 的字段保持原值（None 语义=不修改）。"""
+                     title: str | None | object = _NOT_SET,
+                     content: str | None | object = _NOT_SET,
+                     parent_folder_id: str | None | object = _NOT_SET) -> Diary | None:
+        """更新笔记；未显式传参的字段保持原值，传 None 即清空/置空。"""
         d = await DiaryService.get(db, user_id, diary_id)
         if d is None:
             return None
-        if content is not None:
+        if content is not _NOT_SET:
             d.content = content
-        if title is not None:
+        if title is not _NOT_SET:
             d.title = title
-        if parent_folder_id is not None:
+        if parent_folder_id is not _NOT_SET:
             d.parent_folder_id = parent_folder_id
         await db.commit()
         await db.refresh(d)

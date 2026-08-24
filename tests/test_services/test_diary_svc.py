@@ -103,6 +103,11 @@ async def test_create_and_update_write_title_and_folder():
     await DiaryService.update(db, "u1", "d1", parent_folder_id="f2")
     assert existing.parent_folder_id == "f2"
 
+    # sentinel 语义：显式传 parent_folder_id=None 可把笔记移回根目录（清空为 None）
+    await DiaryService.update(db, "u1", "d1", parent_folder_id=None)
+    assert existing.parent_folder_id is None
+    assert existing.title == "改名"  # 未传 title，保持原值
+
 
 @pytest.mark.asyncio
 async def test_diary_folder_model_roundtrip(db_session):
