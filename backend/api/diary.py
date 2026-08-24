@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/diary", tags=["diary"])
 
 
 class DiaryCreateRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    content: str = Field(default="")
     title: str | None = None
     parent_folder_id: str | None = None
 

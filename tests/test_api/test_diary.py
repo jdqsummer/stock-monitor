@@ -108,6 +108,32 @@ class TestDiaryFolders:
         assert resp.json()["data"]["title"] == "今日复盘"
 
     @pytest.mark.asyncio
+    async def test_create_diary_without_content(self, client):
+        """POST /api/diary 只传 title（content 缺省/空串）应 200 —— 允许新建空笔记"""
+        token = await _register_and_login(client, "diary3@example.com")
+        with patch("backend.api.diary.DiaryService.create", AsyncMock(return_value=MagicMock(
+                id="d3", content="", title="未命名笔记", decisions=None,
+                emotion_tags=None, ai_feedback=None, created_at=None))) as mock_create:
+            # 只传 title，不带 content
+            resp = await client.post("/api/diary",
+                                     json={"title": "未命名笔记"},
+                                     headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        assert resp.json()["data"]["id"] == "d3"
+        # service 收到 content 默认空串（create(db, user_id, title, content, parent_folder_id)）
+        assert mock_create.call_args.args[2] == "未命名笔记"
+        assert mock_create.call_args.args[3] == ""
+
+        # content 显式传空串也应 200
+        with patch("backend.api.diary.DiaryService.create", AsyncMock(return_value=MagicMock(
+                id="d4", content="", title="未命名笔记", decisions=None,
+                emotion_tags=None, ai_feedback=None, created_at=None))):
+            resp2 = await client.post("/api/diary",
+                                      json={"title": "未命名笔记", "content": ""},
+                                      headers={"Authorization": f"Bearer {token}"})
+        assert resp2.status_code == 200
+
+    @pytest.mark.asyncio
     async def test_update_folder_parent_id_null(self, client):
         """PUT /folders/{id} 显式传 parent_id: null → move_folder 收到 None（移回根）"""
         token = await _register_and_login(client, "folder_null@example.com")
