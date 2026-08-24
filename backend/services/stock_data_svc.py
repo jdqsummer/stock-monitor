@@ -216,6 +216,7 @@ class StockDataService:
                     current_market_cap=quote.total_market_cap,
                     current_price=quote.current_price,
                     pe_dynamic=quote.pe_dynamic,
+                    change_pct=quote.change_pct,
                     distance_pct=None, signal=Signal.NONE,
                     industry=item.industry, analysis_date=None,
                 ))
@@ -232,6 +233,7 @@ class StockDataService:
                 current_market_cap=quote.total_market_cap,
                 current_price=quote.current_price,
                 pe_dynamic=quote.pe_dynamic,
+                change_pct=quote.change_pct,
                 distance_pct=distance_pct,
                 signal=signal,
                 industry=item.industry,
