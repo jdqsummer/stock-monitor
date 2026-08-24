@@ -9,7 +9,7 @@
 
 ## 关键决策（已确认）
 
-1. **主题**：深色适配。借鉴设计稿的布局结构，配色沿用全站 Dark Bloomberg 深色体系（#1f1f1f / #303030 / 涨红 #EF4444 / 跌绿 #22C55E），不引入浅色。
+1. **主题**：浅色 DeepSeek。直接照搬设计稿配色体系（品牌蓝 `#4D6EFE` / 渐变 `#7B5BFF` / 选中态 `#EEF2FF`，白底 `#FFFFFF`，灰阶文字）。与整站现有浅色 + Chat 页（`pages/chat/theme.ts`）同一套体系；当前 `Diary.tsx` 的深色为旧残留，本次一并纠正。
 2. **结构**：完整 Obsidian 化——页内文件树侧栏 + 笔记编辑器 + 阅读/编辑切换。
 3. **编辑器**：富文本所见即所得（WYSIWYG），方案 A = **TipTap 3 + 官方 Markdown 扩展**。
 4. **数据模型**：新增 `title` 字段；文件树为**用户自由命名的层级结构**（非日期自动分组）。
@@ -29,6 +29,8 @@
 - `Diary` 模型新增 `title`（String，可空）与 `parent_folder_id`（String，可空）列
 - 新增 `DiaryFolder` 模型（自引用层级）
 - `analyze` 提示词注入标题
+
+**设计 tokens（浅色 DeepSeek，与 Chat 页 `pages/chat/theme.ts` 一致）**：brand `#4D6EFE` / gradient `#4D6EFE→#7B5BFF` / selected `#EEF2FF` / soft `#E8EEFF`；bg 白 `#FFFFFF`、侧栏 `#FAFAFA`、hover `#F2F2F2`、soft `#F5F7FA`；文字 `#1A1A1A / #555 / #8A8A8A / #B5B5B5`；边框 `#ECECEC / #E0E0E0`；圆角 6/8/12/16。
 
 ## 页面布局（`/diary` 路由内，三区结构）
 
@@ -90,7 +92,7 @@
 
 ## 前端组件
 
-### 文件树（antd Tree，深色主题）
+### 文件树（antd Tree，浅色 DeepSeek 风格）
 
 - 文件夹节点：展开/折叠 chevron + 文件夹图标；笔记节点：叶子 + 文档图标
 - **新建**：树顶部「新建文件夹」「新建笔记」按钮（新建笔记落在当前选中文件夹）
