@@ -60,6 +60,51 @@ async def test_analyze_extracts_decisions_and_feedback():
 
 
 @pytest.mark.asyncio
+async def test_create_and_update_with_title_and_folder():
+    db = MagicMock()
+    created = MagicMock()
+    created.id = "d1"
+    with patch.object(DiaryService, "create", AsyncMock(return_value=created)):
+        d = await DiaryService.create(db, "u1", "今日复盘", "正文内容", "f1")
+    assert d.id == "d1"
+
+    updated = MagicMock()
+    updated.title = "改名"
+    with patch.object(DiaryService, "update", AsyncMock(return_value=updated)):
+        got = await DiaryService.update(db, "u1", "d1", title="改名")
+    assert got.title == "改名"
+
+
+@pytest.mark.asyncio
+async def test_create_and_update_write_title_and_folder():
+    """真实调用 create/update（不 mock 方法本身），验证 title + parent_folder_id 落库"""
+    db = MagicMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    added = []
+    db.add.side_effect = lambda d: added.append(d)
+    d = await DiaryService.create(db, "u1", "今日复盘", "正文内容", "f1")
+    assert d is added[0]
+    assert d.title == "今日复盘"
+    assert d.content == "正文内容"
+    assert d.parent_folder_id == "f1"
+
+    existing = _diary("d1")
+    db.execute = AsyncMock(return_value=MagicMock(
+        scalar_one_or_none=MagicMock(return_value=existing)))
+
+    got = await DiaryService.update(db, "u1", "d1", title="改名")
+    assert got is existing
+    assert existing.title == "改名"
+    assert existing.content == "今天买入茅台"  # 未传 content，保持原值
+
+    await DiaryService.update(db, "u1", "d1", parent_folder_id="f2")
+    assert existing.parent_folder_id == "f2"
+
+
+@pytest.mark.asyncio
 async def test_diary_folder_model_roundtrip(db_session):
     """DiaryFolder 可建可查，Diary 可带 title + parent_folder_id 归属文件夹"""
     folder = DiaryFolder(id="f1", user_id="u1", name="自选研究")

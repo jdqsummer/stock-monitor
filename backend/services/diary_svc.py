@@ -76,20 +76,29 @@ class DiaryService:
             Diary.id == diary_id, Diary.user_id == user_id))).scalar_one_or_none()
 
     @staticmethod
-    async def create(db: AsyncSession, user_id: str, content: str) -> Diary:
-        d = Diary(id=str(uuid.uuid4()), user_id=user_id, content=content)
+    async def create(db: AsyncSession, user_id: str, title: str | None,
+                     content: str, parent_folder_id: str | None = None) -> Diary:
+        d = Diary(id=str(uuid.uuid4()), user_id=user_id, title=title,
+                  content=content, parent_folder_id=parent_folder_id)
         db.add(d)
         await db.commit()
         await db.refresh(d)
         return d
 
     @staticmethod
-    async def update(db: AsyncSession, user_id: str, diary_id: str,
-                     content: str) -> Diary | None:
+    async def update(db: AsyncSession, user_id: str, diary_id: str, *,
+                     title: str | None = None, content: str | None = None,
+                     parent_folder_id: str | None = None) -> Diary | None:
+        """更新笔记；显式传 None 的字段保持原值（None 语义=不修改）。"""
         d = await DiaryService.get(db, user_id, diary_id)
         if d is None:
             return None
-        d.content = content
+        if content is not None:
+            d.content = content
+        if title is not None:
+            d.title = title
+        if parent_folder_id is not None:
+            d.parent_folder_id = parent_folder_id
         await db.commit()
         await db.refresh(d)
         return d
