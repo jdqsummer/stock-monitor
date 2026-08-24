@@ -43,7 +43,7 @@ export function Diary() {
   const save = async () => {
     if (!content.trim()) return;
     try {
-      if (editing) await diaryApi.update(editing.id, content);
+      if (editing) await diaryApi.update(editing.id, { content });
       else await diaryApi.create(content);
       antMsg.success('已保存');
       setEditorOpen(false);

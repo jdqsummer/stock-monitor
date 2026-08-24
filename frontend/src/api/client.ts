@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryDecision, ToolCallEvent, ChatProfile } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryDecision, DiaryFolderNode, DiaryTree, ToolCallEvent, ChatProfile } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -124,11 +124,19 @@ export const chatApi = {
 export const diaryApi = {
   list: (offset = 0, limit = 20) =>
     client.get<ApiResponse<{ total: number; items: DiaryEntry[] }>>('/diary', { params: { offset, limit } }),
+  tree: () => client.get<ApiResponse<DiaryTree>>('/diary/tree'),
   get: (id: string) => client.get<ApiResponse<DiaryEntry>>(`/diary/${id}`),
-  create: (content: string) => client.post<ApiResponse<DiaryEntry>>('/diary', { content }),
-  update: (id: string, content: string) => client.put<ApiResponse<DiaryEntry>>(`/diary/${id}`, { content }),
+  create: (content: string, opts?: { title?: string; parent_folder_id?: string }) =>
+    client.post<ApiResponse<DiaryEntry>>('/diary', { content, ...opts }),
+  update: (id: string, patch: { content?: string; title?: string; parent_folder_id?: string }) =>
+    client.put<ApiResponse<DiaryEntry>>(`/diary/${id}`, patch),
   remove: (id: string) => client.delete<ApiResponse>(`/diary/${id}`),
   analyze: (id: string) => client.post<ApiResponse<{ decisions: DiaryDecision[] | null; emotion_tags: string[] | null; ai_feedback: string | null }>>(`/diary/${id}/analyze`),
+  createFolder: (name: string, parent_id?: string) =>
+    client.post<ApiResponse<DiaryFolderNode>>('/diary/folders', { name, parent_id }),
+  renameFolder: (id: string, patch: { name?: string; parent_id?: string }) =>
+    client.put<ApiResponse<DiaryFolderNode>>(`/diary/folders/${id}`, patch),
+  removeFolder: (id: string) => client.delete<ApiResponse>(`/diary/folders/${id}`),
 };
 
 // 配置

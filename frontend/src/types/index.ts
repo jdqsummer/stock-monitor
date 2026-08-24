@@ -248,7 +248,9 @@ export interface ChatResponse {
 // ── 日记 ──
 export interface DiaryEntry {
   id: string;
+  title: string | null;
   content: string;
+  parent_folder_id: string | null;
   decisions: DiaryDecision[] | null;
   emotion_tags: string[] | null;
   ai_feedback: string | null;
@@ -260,6 +262,25 @@ export interface DiaryDecision {
   stock?: string;
   price?: number;
   reason?: string;
+}
+
+export interface DiaryNoteBrief {
+  id: string;
+  title: string | null;
+  created_at: string | null;
+}
+
+export interface DiaryFolderNode {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  children: DiaryFolderNode[];
+  notes: DiaryNoteBrief[];
+}
+
+export interface DiaryTree {
+  folders: DiaryFolderNode[];
+  root_notes: DiaryNoteBrief[];
 }
 
 // ── 五段式分析详情（后端 snapshot_to_dict 契约）──
