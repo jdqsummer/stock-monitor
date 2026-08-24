@@ -1208,7 +1208,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Markdown } from '@tiptap/extension-markdown';
+import { Markdown } from '@tiptap/markdown';
 
 interface DiaryEditorProps {
   initialMarkdown: string;
