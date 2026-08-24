@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>投资小助手 — 概念通俗化讲解就业</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  /* =====================================================
+     Design Tokens — DeepSeek-inspired palette
+     ===================================================== */
+  :root {
+    /* Brand */
+    --ds-primary: #4D6EFE;
+    --ds-primary-hover: #3D5EE0;
+    --ds-primary-soft: #E8EEFF;
+    --ds-primary-selected: #EEF2FF;
+    --ds-accent-blue: #4D6EFE;
+    --ds-gradient-start: #4D6EFE;
+    --ds-gradient-end: #7B5BFF;
+
+    /* Surfaces */
+    --bg-app: #FFFFFF;
+    --bg-sidebar: #F9F9F9;
+    --bg-hover: #F3F3F3;
+    --bg-input: #F7F8FA;
+    --bg-card: #FFFFFF;
+    --bg-soft: #F5F7FA;
+
+    /* Text */
+    --text-primary: #1A1A1A;
+    --text-secondary: #555555;
+    --text-tertiary: #8A8A8A;
+    --text-quaternary: #B5B5B5;
+    --text-on-brand: #FFFFFF;
+
+    /* Borders */
+    --border-light: #ECECEC;
+    --border-medium: #E0E0E0;
+    --border-input: #E5E7EB;
+
+    /* Shadows */
+    --shadow-soft: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-card: 0 2px 8px rgba(0,0,0,0.06);
+
+    /* Radii */
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --r-xl: 20px;
+    --r-full: 999px;
+
+    /* Layout */
+    --sidebar-w: 260px;
+    --content-max: 760px;
+
+    /* Type */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+    background: var(--bg-app);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input, textarea { font-family: inherit; border: none; outline: none; background: none; }
+  a { color: inherit; text-decoration: none; }
+  ul { list-style: none; }
+
+  /* =====================================================
+     App layout
+     ===================================================== */
+  .app {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  /* =====================================================
+     Sidebar
+     ===================================================== */
+  .sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .sidebar-top {
+    padding: 14px 14px 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+
+  .brand-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--ds-gradient-start), var(--ds-gradient-end));
+    color: #FFFFFF;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(77, 111, 254, 0.25);
+  }
+
+  .brand-name {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    background: linear-gradient(90deg, var(--ds-gradient-start), var(--ds-gradient-end));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .icon-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .icon-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .new-chat-wrap {
+    padding: 8px 14px 14px 14px;
+  }
+
+  .new-chat-btn {
+    width: 100%;
+    height: 40px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--r-md);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+  }
+  .new-chat-btn:hover {
+    background: var(--bg-card);
+    border-color: #D8D8D8;
+  }
+  .new-chat-btn:active { transform: scale(0.99); }
+  .new-chat-btn svg { color: var(--text-secondary); }
+
+  /* User avatar at top of conversation list */
+  .avatar-row {
+    padding: 4px 18px 12px 18px;
+  }
+  .avatar-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #B8C7F4, #94A8E8);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+  }
+
+  /* Conversation list */
+  .convo-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 12px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: #D8D8D8 transparent;
+  }
+  .convo-list::-webkit-scrollbar { width: 6px; }
+  .convo-list::-webkit-scrollbar-thumb {
+    background: #D8D8D8;
+    border-radius: 3px;
+  }
+  .convo-list::-webkit-scrollbar-track { background: transparent; }
+
+  .convo-section {
+    margin-top: 6px;
+  }
+  .convo-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 6px 12px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+
+  .convo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    margin: 1px 0;
+    border-radius: var(--r-md);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+    position: relative;
+  }
+  .convo-item .label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .convo-item .more {
+    width: 22px; height: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    color: transparent;
+    transition: background 0.12s ease, color 0.12s ease;
+    flex-shrink: 0;
+  }
+  .convo-item:hover { background: rgba(0,0,0,0.04); }
+  .convo-item:hover .more { color: var(--text-tertiary); }
+  .convo-item:hover .more:hover { background: rgba(0,0,0,0.08); color: var(--text-secondary); }
+
+  .convo-item.is-active {
+    background: var(--ds-primary-selected);
+    color: var(--ds-primary);
+    font-weight: 500;
+  }
+  .convo-item.is-active .more { color: var(--ds-primary); }
+  .convo-item.is-active .more:hover { background: rgba(77, 111, 254, 0.12); }
+
+  .convo-item.is-link {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  /* User at the bottom */
+  .sidebar-bottom {
+    border-top: 1px solid var(--border-light);
+    padding: 12px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sidebar-bottom .avatar-circle {
+    width: 32px; height: 32px;
+    font-size: 13px;
+  }
+  .sidebar-bottom .user-name {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .sidebar-bottom .more-btn {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary);
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .sidebar-bottom .more-btn:hover { background: rgba(0,0,0,0.05); color: var(--text-secondary); }
+
+  /* =====================================================
+     Main content
+     ===================================================== */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg-app);
+  }
+
+  .main-header {
+    padding: 16px 28px 14px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 0;
+    flex-shrink: 0;
+  }
+  .main-title {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .main-title .title-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+  }
+
+
+
+  /* Chat content scroll area */
+  .chat-scroll {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #D8D8D8 transparent;
+  }
+  .chat-scroll::-webkit-scrollbar { width: 8px; }
+  .chat-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+  .chat-scroll::-webkit-scrollbar-thumb:hover { background: #E0E0E0; }
+
+  .chat-inner {
+    max-width: var(--content-max);
+    margin: 0 auto;
+    padding: 28px 28px 24px 28px;
+  }
+
+  .numbered-item {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 18px;
+    line-height: 1.85;
+    color: var(--text-primary);
+    font-size: 14.5px;
+  }
+  .numbered-item .num {
+    color: var(--text-primary);
+    font-weight: 500;
+    flex-shrink: 0;
+    min-width: 16px;
+    text-align: right;
+  }
+  .numbered-item p { color: var(--text-primary); }
+  .numbered-item strong {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .divider-soft {
+    height: 1px;
+    background: var(--border-light);
+    margin: 22px 0;
+  }
+
+  .summary-block {
+    line-height: 1.85;
+    color: var(--text-primary);
+    font-size: 14.5px;
+  }
+  .summary-block .label {
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .summary-block p { margin-top: 4px; }
+
+  .summary-block mark {
+    background: transparent;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Action row under assistant message */
+  .actions-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 18px;
+    padding-left: 4px;
+  }
+  .action-btn {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary);
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .action-btn:hover {
+    background: var(--bg-soft);
+    color: var(--text-secondary);
+  }
+
+  /* =====================================================
+     Composer (input area)
+     ===================================================== */
+  .composer-wrap {
+    flex-shrink: 0;
+    padding: 12px 28px 8px 28px;
+    background: linear-gradient(to top, #FFFFFF 70%, rgba(255,255,255,0));
+  }
+  .composer {
+    max-width: var(--content-max);
+    margin: 0 auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-input);
+    border-radius: 22px;
+    padding: 12px 16px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .composer:focus-within {
+    border-color: #C5CFE0;
+    box-shadow: 0 0 0 3px rgba(77, 111, 254, 0.06);
+  }
+  .composer-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .composer-input {
+    flex: 1;
+    font-size: 14.5px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    padding: 4px 0;
+    min-height: 24px;
+  }
+  .composer-input::before {
+    content: attr(data-placeholder);
+    color: var(--text-quaternary);
+  }
+  .composer-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+  .thinking-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px 5px 8px;
+    border-radius: var(--r-full);
+    background: var(--ds-primary-soft);
+    color: var(--ds-primary);
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  .thinking-toggle:hover { background: #DDE5FF; }
+  .thinking-toggle:active { transform: scale(0.98); }
+  .thinking-toggle svg { width: 13px; height: 13px; }
+
+  .composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .send-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--ds-primary);
+    color: white;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+    box-shadow: 0 2px 6px rgba(77, 111, 254, 0.35);
+  }
+  .send-btn:hover {
+    background: var(--ds-primary-hover);
+    box-shadow: 0 3px 10px rgba(77, 111, 254, 0.45);
+  }
+  .send-btn:active { transform: scale(0.95); }
+  .send-btn svg { width: 16px; height: 16px; }
+
+  /* Disclaimer */
+  .disclaimer-row {
+    max-width: var(--content-max);
+    margin: 8px auto 0 auto;
+    padding: 0 28px 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+  .disclaimer-row span {
+    text-align: center;
+  }
+
+  /* Subtle scroll affordance on the right of the assistant message */
+  .thread-scroll {
+    position: relative;
+  }
+  .scroll-rail {
+    position: absolute;
+    right: -22px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .scroll-rail .bar {
+    width: 3px;
+    height: 28px;
+    background: var(--text-tertiary);
+    border-radius: 2px;
+    opacity: 0.6;
+  }
+  .scroll-rail .bar.thumb {
+    background: var(--ds-primary);
+    opacity: 1;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ================== Sidebar ================== -->
+  <aside class="sidebar" aria-label="历史对话">
+
+    <div class="sidebar-top">
+      <div class="brand" aria-label="投资小助手">
+        <span class="brand-logo" aria-hidden="true">投</span>
+        <span class="brand-name">投资小助手</span>
+      </div>
+      <div class="icon-group">
+        <button class="icon-btn" title="搜索">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="m20 20-3.5-3.5"/>
+          </svg>
+        </button>
+        <button class="icon-btn" title="切换布局">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2"/>
+            <path d="M9 4v16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="new-chat-wrap">
+      <button class="new-chat-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 8v8M8 12h8"/>
+        </svg>
+        开启新对话
+      </button>
+    </div>
+
+    <nav class="convo-list" aria-label="对话列表">
+
+      <!-- 置顶 -->
+      <div class="convo-section">
+        <div class="convo-section-header">
+          <span>置顶</span>
+        </div>
+        <div class="convo-item">
+          <span class="label">价值投资分析</span>
+          <span class="more">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+            </svg>
+          </span>
+        </div>
+        <div class="convo-item is-active">
+          <span class="label">概念通俗化讲解就业</span>
+          <span class="more">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+            </svg>
+          </span>
+        </div>
+        <div class="convo-item">
+          <span class="label">AI核心技术</span>
+          <span class="more">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+            </svg>
+          </span>
+        </div>
+        <div class="convo-item">
+          <span class="label">书籍推荐</span>
+          <span class="more">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+            </svg>
+          </span>
+        </div>
+        <div class="convo-item">
+          <span class="label">AI智能体开发</span>
+          <span class="more">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <!-- 今天 -->
+      <div class="convo-section">
+        <div class="convo-section-header">
+          <span>今天</span>
+        </div>
+        <div class="convo-item">
+          <span class="label">OpenRouter速率限制解决</span>
+          <span class="more">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <!-- 2026-07 -->
+      <div class="convo-section">
+        <div class="convo-section-header">
+          <span>2026-07</span>
+        </div>
+        <div class="convo-item is-link">
+          <span class="label">https://x.com/sairahuli/article/</span>
+          <span class="more">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="avatar-circle">江</div>
+      <span class="user-name">江达强</span>
+      <button class="more-btn" title="更多">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="6" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/>
+        </svg>
+      </button>
+    </div>
+
+  </aside>
+
+  <!-- ================== Main ================== -->
+  <main class="main">
+
+    <header class="main-header">
+      <div class="main-title">
+        <span class="title-text">概念通俗化讲解就业</span>
+      </div>
+    </header>
+
+    <div class="chat-scroll" id="chatScroll">
+      <div class="chat-inner thread-scroll">
+
+        <div class="numbered-item">
+          <span class="num">2.</span>
+          <p><strong>资源的"吸引力"：</strong>你越有，别人就越愿意给你。比如社交平台粉丝多，广告商就找上门；名校出了状元，赞助和捐赠接踵而至。</p>
+        </div>
+
+        <div class="numbered-item">
+          <span class="num">3.</span>
+          <p><strong>认知的"捷径"：</strong>大脑喜欢省力。我们以为有钱人都是天才，其实只是他们的初始条件允许他们"钱生钱"。而贫困会消耗穷人的精力，让他们更难翻身。</p>
+        </div>
+
+        <div class="divider-soft"></div>
+
+        <div class="summary-block">
+          <span class="label">一个提醒：</span>
+          <p>马太效应最"残酷"的地方，是它让人误以为成功纯粹靠个人奋斗。其实很多"成功者"的第一桶金，就像那个雪球开始滚动的起点，往往带着运气或先天条件的成分，只是后来被"努力"的光环掩盖了。</p>
+          <p style="margin-top: 14px;">所以下次再看到有人"什么都有"时，可以多想一步：他可能不是"天 生有"，而是"有了"之后就有了"更多"。这个概念本身，就是个很好的马太效应案例——你理解了吗？</p>
+        </div>
+
+        <div class="actions-row" aria-label="消息操作">
+          <button class="action-btn" title="复制">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="8" y="8" width="12" height="12" rx="2"/>
+              <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
+            </svg>
+          </button>
+          <button class="action-btn" title="重新生成">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-3-6.7"/>
+              <path d="M21 4v5h-5"/>
+            </svg>
+          </button>
+          <button class="action-btn" title="点赞">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 10v10"/>
+              <path d="M15 5.5 15 10l5 .5a2 2 0 0 1 2 2.4l-1.5 7A2 2 0 0 1 18.5 22H7l1-9 4-7a2 2 0 0 1 3 0z"/>
+            </svg>
+          </button>
+          <button class="action-btn" title="点踩">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M17 14V4"/>
+              <path d="M9 18.5 9 14l-5-.5A2 2 0 0 1 2 11.1l1.5-7A2 2 0 0 1 5.5 2H17l-1 9-4 7a2 2 0 0 1-3 0z"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Composer -->
+    <div class="composer-wrap">
+      <div class="composer">
+        <div class="composer-top">
+          <input class="composer-input" type="text" placeholder="" data-placeholder="给 投资小助手 发送消息" aria-label="消息输入">
+        </div>
+        <div class="composer-bottom">
+          <button class="thinking-toggle" title="切换模型">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="8" width="16" height="12" rx="2"/>
+              <path d="M12 8V4M9 4h6"/>
+              <circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+              <circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+              <path d="M2 14h2M20 14h2"/>
+            </svg>
+            模型选择
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-left:2px;">
+              <path d="m6 9 6 6 6-6"/>
+            </svg>
+          </button>
+          <div class="composer-actions">
+            <button class="send-btn" title="发送" aria-label="发送消息">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5"/>
+                <path d="m6 11 6-6 6 6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="disclaimer-row">
+        <span>内容由 AI 生成，请仔细甄别</span>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Tiny enhancements — feel like the real chat client
+  const convoItems = document.querySelectorAll('.convo-item');
+  convoItems.forEach(item => {
+    item.addEventListener('click', e => {
+      if (e.target.closest('.more')) return;
+      convoItems.forEach(i => i.classList.remove('is-active'));
+      item.classList.add('is-active');
+    });
+  });
+
+  // Send button micro-interaction
+  const sendBtn = document.querySelector('.send-btn');
+  sendBtn.addEventListener('click', () => {
+    sendBtn.style.transform = 'scale(0.92)';
+    setTimeout(() => { sendBtn.style.transform = ''; }, 120);
+  });
+
+  // Like/dislike toggle (mutually exclusive)
+  const likeBtn = document.querySelectorAll('.action-btn')[2];
+  const dislikeBtn = document.querySelectorAll('.action-btn')[3];
+  [likeBtn, dislikeBtn].forEach(btn => {
+    btn.addEventListener('click', () => {
+      const active = btn.classList.toggle('is-active');
+      btn.style.color = active ? '#4D6EFE' : '';
+      btn.style.background = active ? 'rgba(77,111,254,0.10)' : '';
+      const other = btn === likeBtn ? dislikeBtn : likeBtn;
+      other.classList.remove('is-active');
+      other.style.color = '';
+      other.style.background = '';
+    });
+  });
+
+  // Focus the composer on load for a true chat feel
+  window.addEventListener('load', () => {
+    document.querySelector('.composer-input').focus();
+  });
+</script>
+
+</body>
+</html>
