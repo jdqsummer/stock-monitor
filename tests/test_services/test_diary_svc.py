@@ -121,3 +121,52 @@ async def test_diary_folder_model_roundtrip(db_session):
     got_note = await db_session.get(Diary, "d9")
     assert got_note.title == "今日复盘"
     assert got_note.parent_folder_id == "f1"
+
+
+@pytest.mark.asyncio
+async def test_folder_crud_tree_move_delete(db_session):
+    # 建两层级文件夹
+    parent = await DiaryService.create_folder(db_session, "u1", "研究")
+    child = await DiaryService.create_folder(db_session, "u1", "消费", parent_id=parent.id)
+    # 文件夹内放一篇笔记
+    note = await DiaryService.create(db_session, "u1", "今日复盘", "正文", child.id)
+
+    # tree：parent.children 含 child，child.notes 含 note
+    tree = await DiaryService.tree(db_session, "u1")
+    assert len(tree["folders"]) == 1
+    assert tree["folders"][0]["children"][0]["notes"][0]["id"] == note.id
+    assert len(tree["root_notes"]) == 0
+
+    # 重命名
+    renamed = await DiaryService.rename_folder(db_session, "u1", child.id, "消费升级")
+    assert renamed.name == "消费升级"
+
+    # 循环嵌套拒绝：把 parent 移入 child（child 是 parent 后代 → 报错）
+    with pytest.raises(ValueError):
+        await DiaryService.move_folder(db_session, "u1", parent.id, child.id)
+
+    # 删除 parent（含子树 child + 笔记 note）
+    ok = await DiaryService.delete_folder(db_session, "u1", parent.id)
+    assert ok is True
+    assert await DiaryService.get_folder(db_session, "u1", child.id) is None
+    assert await db_session.get(Diary, note.id) is None
+
+
+@pytest.mark.asyncio
+async def test_folder_move_to_root(db_session):
+    parent = await DiaryService.create_folder(db_session, "u1", "研究")
+    child = await DiaryService.create_folder(db_session, "u1", "消费", parent_id=parent.id)
+    await DiaryService.move_folder(db_session, "u1", child.id, None)
+    tree = await DiaryService.tree(db_session, "u1")
+    assert len(tree["folders"]) == 2
+    assert {f["id"] for f in tree["folders"]} == {parent.id, child.id}
+
+
+@pytest.mark.asyncio
+async def test_folder_move_into_own_descendant_rejected(db_session):
+    a = await DiaryService.create_folder(db_session, "u1", "a")
+    b = await DiaryService.create_folder(db_session, "u1", "b", parent_id=a.id)
+    c = await DiaryService.create_folder(db_session, "u1", "c", parent_id=b.id)
+    # a 是 c 的祖先 → 把 c 移入 a 是合法（向下收窄）；但把 a 移入 c 非法
+    with pytest.raises(ValueError):
+        await DiaryService.move_folder(db_session, "u1", a.id, c.id)
