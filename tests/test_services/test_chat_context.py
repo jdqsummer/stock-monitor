@@ -1,13 +1,15 @@
 # stock-monitor/tests/test_services/test_chat_context.py
 """聊天紧凑摘要构建器 — TDD"""
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.models.portfolio import Position
 from backend.models.stock import AnalysisSnapshot, StockSnapshot
-from backend.schemas.stock import Signal
+from backend.schemas.stock import Signal, StockQuote
 from backend.services.chat_context import (
-    build_chat_context, build_chat_profile, _truncate_lines,
+    build_chat_context, build_chat_profile, _truncate_lines, _render_position_block,
 )
 
 
@@ -77,3 +79,93 @@ async def test_build_chat_profile_rebuilds_l3_when_refresh():
     assert "position_count" in profile
     assert "watchlist_count" in profile
     assert "diary_count" in profile
+
+
+class FakeScalars:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+class FakeResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return FakeScalars(self._rows)
+
+
+@pytest.mark.asyncio
+async def test_build_chat_context_positions_full_fields():
+    """持仓块应含持股数/成本价/涨跌幅等全部业务字段"""
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=FakeResult([AnalysisSnapshot(
+        user_id="u1", stock_code="600519", sell_distance_pct=15.0,
+        sell_signal="yellow", sell_action="sell")]))
+    pos = Position(id="p1", user_id="u1", stock_code="600519", stock_name="贵州茅台",
+                   shares=1000.0, cost_price=128.0,
+                   purchased_at=datetime(2026, 3, 1), industry="白酒")
+    quote = StockQuote(code="600519", name="贵州茅台", current_price=174.6,
+                       change_pct=-3.3, total_market_cap=19500.0, pe_dynamic=25.3)
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr("backend.services.chat_context.PortfolioService", MagicMock(
+            list_positions=AsyncMock(return_value=[pos])))
+        mp.setattr("backend.services.chat_context.WatchlistService", MagicMock(
+            list_items=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.StockDataService", MagicMock(
+            get_board_rows=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.DiaryService", MagicMock(
+            list_recent=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.MemoryRetriever",
+                   lambda db, uid: MagicMock(retrieve=AsyncMock(return_value={})))
+        mp.setattr("backend.services.chat_context._load_quotes",
+                   AsyncMock(return_value={pos.stock_code: quote}))
+        ctx = await build_chat_context(db, "u1", query="最新")
+
+    s = ctx["summary_positions"]
+    assert "贵州茅台(600519)" in s
+    assert "持股数: 1000股" in s
+    assert "成本价: 128.00元" in s
+    assert "买入日期: 2026-03-01" in s
+    assert "现价: 174.60元" in s
+    assert "涨跌幅: -3.3%" in s
+    assert "市值: 19500亿" in s
+    assert "动态PE: 25.3" in s
+    assert "距卖出区: 15%" in s
+    assert "卖出信号: 🟡 接近卖出区" in s
+    assert "卖出建议: 建议卖出" in s
+    assert "行业: 白酒" in s
+
+
+@pytest.mark.asyncio
+async def test_build_chat_context_positions_missing_fields():
+    """缺成本价/持股数/快照时正确降级：未填写 / — / 无信号"""
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=FakeResult([]))
+    pos = Position(id="p1", user_id="u1", stock_code="600519", stock_name="贵州茅台")
+    quote = StockQuote(code="600519", name="贵州茅台", current_price=174.6,
+                       total_market_cap=19500.0)
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr("backend.services.chat_context.PortfolioService", MagicMock(
+            list_positions=AsyncMock(return_value=[pos])))
+        mp.setattr("backend.services.chat_context.WatchlistService", MagicMock(
+            list_items=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.StockDataService", MagicMock(
+            get_board_rows=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.DiaryService", MagicMock(
+            list_recent=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.MemoryRetriever",
+                   lambda db, uid: MagicMock(retrieve=AsyncMock(return_value={})))
+        mp.setattr("backend.services.chat_context._load_quotes",
+                   AsyncMock(return_value={pos.stock_code: quote}))
+        ctx = await build_chat_context(db, "u1", query="最新")
+
+    s = ctx["summary_positions"]
+    assert "持股数: 未填写" in s
+    assert "成本价: 未填写" in s
+    assert "卖出信号: 无信号" in s
+    assert "距卖出区: —" in s
+    assert "卖出建议:" not in s
+    assert "行业:" not in s

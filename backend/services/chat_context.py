@@ -14,7 +14,7 @@ from backend.memory.retrieval import MemoryRetriever
 from backend.memory.store import MemoryStore
 from backend.models.portfolio import Position
 from backend.models.stock import AnalysisSnapshot, StockSnapshot
-from backend.schemas.stock import StockQuote
+from backend.schemas.stock import Signal, StockQuote
 from backend.services.portfolio_svc import PortfolioService
 from backend.services.stock_data_svc import StockDataService
 from backend.services.watchlist_svc import WatchlistService
@@ -39,6 +39,71 @@ def _truncate_lines(lines: list[str], limit: int) -> list[str]:
     if len(lines) <= limit:
         return lines
     return lines[:limit] + [f"… 另有 {len(lines) - limit} 项未列出"]
+
+
+# ── 结构化 k:v 渲染（纯函数，无 DB I/O）──
+
+_SIGNAL_LABEL = {
+    Signal.GREEN: "🟢 击球区内",
+    Signal.YELLOW: "🟡 观察区",
+    Signal.RED: "🔴 高估区",
+    Signal.NONE: "未分析",
+    Signal.UNQUANTIFIABLE: "无法量化",
+}
+_SELL_SIGNAL_LABEL = {
+    "red": "🔴 建议卖出",
+    "yellow": "🟡 接近卖出区",
+    "green": "🟢 持有",
+}
+_SELL_ACTION_LABEL = {
+    "hold": "继续持有",
+    "sell": "建议卖出",
+    "immediate_sell": "立即卖出",
+}
+
+
+def _fmt_price(v: float | None) -> str:
+    """价格格式化：174.60元；None → —"""
+    return f"{v:.2f}元" if v is not None else "—"
+
+
+def _fmt_change(v: float | None) -> str:
+    """涨跌幅格式化：-3.3%；None → —"""
+    return f"{v:.1f}%" if v is not None else "—"
+
+
+def _fmt_dist(v: float | None) -> str:
+    """距离（%）格式化：15%；None → —"""
+    return f"{v:.0f}%" if v is not None else "—"
+
+
+def _fmt_mcap(v: float | None) -> str:
+    """市值格式化（亿元）：810亿；None → —"""
+    return f"{v:.0f}亿" if v is not None else "—"
+
+
+def _render_position_block(p, q, s) -> str:
+    """渲染单只持仓为结构化 k:v 块。p: Position；q: StockQuote|None；s: AnalysisSnapshot|None"""
+    lines = [f"- {p.stock_name}({p.stock_code})"]
+    lines.append(f"  持股数: {p.shares:.0f}股" if p.shares else "  持股数: 未填写")
+    lines.append(f"  成本价: {p.cost_price:.2f}元" if p.cost_price is not None else "  成本价: 未填写")
+    if p.purchased_at is not None:
+        lines.append(f"  买入日期: {p.purchased_at.date().isoformat()}")
+    lines.append(f"  现价: {_fmt_price(q.current_price if q else None)}")
+    lines.append(f"  涨跌幅: {_fmt_change(q.change_pct if q else None)}")
+    lines.append(f"  市值: {_fmt_mcap(q.total_market_cap if q else None)}")
+    pe = q.pe_dynamic if q else None
+    lines.append(f"  动态PE: {pe:.1f}" if pe is not None else "  动态PE: —")
+    dist = s.sell_distance_pct if s else None
+    lines.append(f"  距卖出区: {_fmt_dist(dist)}")
+    signal = _SELL_SIGNAL_LABEL.get(s.sell_signal, "无信号") if s and s.sell_signal else "无信号"
+    lines.append(f"  卖出信号: {signal}")
+    action = _SELL_ACTION_LABEL.get(s.sell_action) if s and s.sell_action else None
+    if action:
+        lines.append(f"  卖出建议: {action}")
+    if p.industry:
+        lines.append(f"  行业: {p.industry}")
+    return "\n".join(lines)
 
 
 async def _load_quotes(db: AsyncSession, codes: list[str]) -> dict[str, StockQuote]:
@@ -68,12 +133,8 @@ async def build_chat_context(db: AsyncSession, user_id: str, query: str = "最�
                 AnalysisSnapshot.stock_code.in_(codes)))).scalars().all()
             snaps = {s.stock_code: s for s in snap_rows}
         for p in positions:
-            q = quotes.get(p.stock_code)
-            s = snaps.get(p.stock_code)
-            price = f"{q.current_price:.2f}" if q else "-"
-            signal = s.sell_signal if s and s.sell_signal is not None and s.sell_signal != "none" else "无信号"
-            dist = f"{s.sell_distance_pct:.0f}%" if s and s.sell_distance_pct is not None else "-"
-            position_lines.append(f"{p.stock_name}({p.stock_code}) 现价{price} 距卖出区{dist} 信号:{signal}")
+            position_lines.append(_render_position_block(
+                p, quotes.get(p.stock_code), snaps.get(p.stock_code)))
     position_lines = _truncate_lines(position_lines, MAX_POSITIONS)
 
     # ── 自选（B 表击球区快照：现价/信号灯/距击球区）──
