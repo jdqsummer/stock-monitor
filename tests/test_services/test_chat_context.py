@@ -220,3 +220,39 @@ async def test_build_chat_context_watchlist_full_fields():
     assert "涨跌幅: -5.5%" in s
     assert "信号灯: 🔴 高估区" in s
     assert "距击球区: 143%" in s
+
+
+@pytest.mark.asyncio
+async def test_build_chat_context_positions_above_10_all_injected():
+    """持仓超过 10 只时全部注入（MAX_POSITIONS=50 上限内），不出现省略提示"""
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=FakeResult([]))  # 无 sell 快照
+    positions = [
+        Position(id=f"p{i}", user_id="u1", stock_code=f"6000{i:02d}",
+                 stock_name=f"股票{i}", shares=100.0, cost_price=10.0)
+        for i in range(12)
+    ]
+    quotes = {
+        p.stock_code: StockQuote(code=p.stock_code, name=p.stock_name,
+                                 current_price=20.0, total_market_cap=100.0)
+        for p in positions
+    }
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr("backend.services.chat_context.PortfolioService", MagicMock(
+            list_positions=AsyncMock(return_value=positions)))
+        mp.setattr("backend.services.chat_context.WatchlistService", MagicMock(
+            list_items=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.StockDataService", MagicMock(
+            get_board_rows=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.DiaryService", MagicMock(
+            list_recent=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.MemoryRetriever",
+                   lambda db, uid: MagicMock(retrieve=AsyncMock(return_value={})))
+        mp.setattr("backend.services.chat_context._load_quotes",
+                   AsyncMock(return_value=quotes))
+        ctx = await build_chat_context(db, "u1", query="最新")
+
+    s = ctx["summary_positions"]
+    for i in range(12):
+        assert f"股票{i}(6000{i:02d})" in s
+    assert "另有" not in s

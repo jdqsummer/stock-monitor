@@ -132,7 +132,7 @@ AI 投资小助手在回答持仓/自选相关问题时，注入的紧凑摘要�
 
 ## Token 预算
 
-每只约 10 行 k:v。`MAX_POSITIONS=10` + `MAX_WATCHLIST=10` 全满时约 200 行 ≈ 2~3k token，可接受。持仓/自选超过上限时沿用 `_truncate_lines` 截断并补省略提示。
+每只约 10 行 k:v。`MAX_POSITIONS=50`（持仓一般较少，全部覆盖）+ `MAX_WATCHLIST=10` 全满时约 600 行 ≈ 6~8k token，可接受。自选超过上限时沿用 `_truncate_lines` 截断并补省略提示（注：持仓原定 10 上限，经用户确认放宽至 50）。
 
 ## 测试
 

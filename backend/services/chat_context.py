@@ -28,8 +28,8 @@ except ImportError:  # pragma: no cover — diary_svc 未实现时的开发期�
 
 logger = logging.getLogger(__name__)
 
-# token 预算（各行/条数上限）
-MAX_POSITIONS = 10
+# token 预算（各行/条数上限；持仓数量一般较少，放宽到 50 全部覆盖）
+MAX_POSITIONS = 50
 MAX_WATCHLIST = 10
 MAX_DIARIES = 5
 
