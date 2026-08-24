@@ -31,6 +31,11 @@ interface ContextMenuState {
   y: number;
 }
 
+/** 拖拽解析结果：ok 时 targetFolderId 为 null 表示落根；reject 表示拒绝（拖入自身/后代） */
+type DropResult =
+  | { status: 'ok'; targetFolderId: string | null }
+  | { status: 'reject' };
+
 const NOTE_PREFIX = 'note:';
 const FOLDER_PREFIX = 'folder:';
 
@@ -173,17 +178,18 @@ export function DiaryFileTree({
   }, [tree, renaming]);
 
   /**
-   * 拖拽解析：返回目标文件夹 id（null = 移到根）。
+   * 拖拽解析：返回 DropResult。
    * - 拖入文件夹内部 → 该文件夹
    * - 拖到笔记上 → 笔记所在文件夹
    * - 拖到间隙（前/后）→ 目标节点的父级（与目标同层）
-   * - 文件夹拖入自身/后代 → 拒绝（返回 null，落根）
+   * - 文件夹拖入自身/后代 → reject（拒绝，不产生任何移动）
+   * - 其余 → ok，targetFolderId 为 null 表示落根
    */
-  function resolveDrop(dragKey: string, targetKey: string | null, dropToGap: boolean): string | null {
+  function resolveDrop(dragKey: string, targetKey: string | null, dropToGap: boolean): DropResult {
     const dragIsFolder = dragKey.startsWith(FOLDER_PREFIX);
     const dragId = dragKey.slice(dragIsFolder ? FOLDER_PREFIX.length : NOTE_PREFIX.length);
 
-    if (!targetKey) return null;
+    if (!targetKey) return { status: 'ok', targetFolderId: null };
 
     const targetIsFolder = targetKey.startsWith(FOLDER_PREFIX);
     const targetId = targetKey.slice(targetIsFolder ? FOLDER_PREFIX.length : NOTE_PREFIX.length);
@@ -202,10 +208,10 @@ export function DiaryFileTree({
     // 文件夹不能拖入自身或后代（防环）
     if (dragIsFolder && parentId) {
       if (parentId === dragId || isDescendant(tree, dragId, parentId)) {
-        return null;
+        return { status: 'reject' };
       }
     }
-    return parentId;
+    return { status: 'ok', targetFolderId: parentId };
   }
 
   function menuOnClick({ key: actionKey }: { key: string }) {
@@ -265,12 +271,13 @@ export function DiaryFileTree({
           onDrop={(info) => {
             const dragKey = info.dragNode.key as string;
             const targetKey = (info.node.key as string | undefined) ?? null;
-            const targetFolderId = resolveDrop(dragKey, targetKey, info.dropToGap);
+            const result = resolveDrop(dragKey, targetKey, info.dropToGap);
+            if (result.status === 'reject') return;
             const dragIsFolder = dragKey.startsWith(FOLDER_PREFIX);
             const id = dragKey.slice(dragIsFolder ? FOLDER_PREFIX.length : NOTE_PREFIX.length);
             const action = dragIsFolder
-              ? onMoveFolder(id, targetFolderId)
-              : onMoveNote(id, targetFolderId);
+              ? onMoveFolder(id, result.targetFolderId)
+              : onMoveNote(id, result.targetFolderId);
             action.catch(() => {});
           }}
         />
