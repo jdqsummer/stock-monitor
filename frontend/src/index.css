@@ -61,3 +61,48 @@ body {
 .cc-item:hover .cc-pin:hover { background: rgba(0, 0, 0, 0.08); color: #555555; }
 .cc-item.is-active:hover .cc-pin { color: #4D6EFE; }
 .cc-pin.is-pinned { color: #4D6EFE; }
+
+/* ===== 投资日记（Obsidian 式浅色 DeepSeek）===== */
+.diary-tree .ant-tree-node-content-wrapper {
+  min-height: 26px;
+  line-height: 26px;
+}
+.diary-tree .ant-tree-treenode { padding: 1px 0; }
+.diary-tree .diary-node-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: #1A1A1A; min-width: 0;
+}
+.diary-tree .diary-node-title .diary-node-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.diary-tree .diary-node-title .diary-node-meta { color: #B5B5B5; font-size: 11px; }
+.diary-tree .diary-rename-input {
+  height: 22px; font-size: 13px; padding: 0 4px;
+  border: 1px solid #4D6EFE; border-radius: 4px; outline: none;
+}
+
+.diary-editor .tiptap { min-height: 360px; outline: none; font-size: 15px; line-height: 1.9; color: #1A1A1A; }
+.diary-editor .tiptap p { margin: 0 0 10px; }
+.diary-editor .tiptap h1, .diary-editor .tiptap h2, .diary-editor .tiptap h3 { margin: 18px 0 10px; line-height: 1.4; }
+.diary-editor .tiptap h1 { font-size: 26px; } .diary-editor .tiptap h2 { font-size: 21px; } .diary-editor .tiptap h3 { font-size: 17px; }
+.diary-editor .tiptap ul, .diary-editor .tiptap ol { padding-left: 22px; margin: 0 0 10px; }
+.diary-editor .tiptap blockquote {
+  border-left: 3px solid #4D6EFE; margin: 0 0 10px; padding-left: 12px; color: #555555;
+}
+.diary-editor .tiptap pre { background: #F5F7FA; border: 1px solid #ECECEC; border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+.diary-editor .tiptap code { background: #F5F7FA; border-radius: 4px; padding: 1px 5px; font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+.diary-editor .tiptap table { border-collapse: collapse; width: 100%; margin: 0 0 12px; }
+.diary-editor .tiptap th, .diary-editor .tiptap td { border: 1px solid #E0E0E0; padding: 6px 10px; }
+.diary-editor .tiptap th { background: #F5F7FA; font-weight: 600; }
+.diary-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 4px; }
+.diary-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 8px; }
+.diary-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder); float: left; color: #B5B5B5; pointer-events: none; height: 0;
+}
+.diary-toolbar-btn { height: 28px; min-width: 28px; padding: 0 6px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #555555; font-size: 13px; background: none; border: none; cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease; }
+.diary-toolbar-btn:hover { background: #F2F2F2; color: #1A1A1A; }
+.diary-toolbar-btn.is-active { background: #E8EEFF; color: #4D6EFE; }
+.diary-toolbar-divider { width: 1px; height: 16px; background: #ECECEC; margin: 0 4px; }
