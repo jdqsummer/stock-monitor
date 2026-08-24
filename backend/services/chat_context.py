@@ -2,7 +2,7 @@
 """聊天紧凑摘要构建器 — 持仓/自选/笔记/记忆 → 只读 context 注入 system prompt
 
 数据从最近快照读取（A 表 stock_snapshots + B 表 analysis_snapshots），
-不实时请求 westock（避免聊天阻塞）。每行 ≤1 行，token 预算截断。
+不实时请求 westock（避免聊天阻塞）。每只 ≤1 段结构化 k:v 块，token 预算截断。
 """
 import logging
 
@@ -106,6 +106,28 @@ def _render_position_block(p, q, s) -> str:
     return "\n".join(lines)
 
 
+def _render_watchlist_block(r) -> str:
+    """渲染单只自选为结构化 k:v 块。r: WatchlistBoardRow"""
+    lines = [f"- {r.name}({r.code})"]
+    lines.append(f"  现价: {_fmt_price(r.current_price)}")
+    lines.append(f"  涨跌幅: {_fmt_change(r.change_pct)}")
+    lines.append(f"  距击球区: {_fmt_dist(r.distance_pct)}")
+    lines.append(f"  信号灯: {_SIGNAL_LABEL.get(r.signal, '未分析')}")
+    if r.industry:
+        lines.append(f"  行业: {r.industry}")
+    if r.annual_profit:
+        lines.append(f"  年利润: {r.annual_profit}")
+    if r.swing_pe:
+        lines.append(f"  击球区PE: {r.swing_pe}")
+    if r.swing_price:
+        lines.append(f"  击球区价格: {r.swing_price}")
+    lines.append(f"  市值: {_fmt_mcap(r.current_market_cap)}")
+    if r.pe_dynamic is not None:
+        lines.append(f"  动态PE: {r.pe_dynamic:.1f}")
+    lines.append(f"  未评估风险: {'是' if r.unassessable_risk else '否'}")
+    return "\n".join(lines)
+
+
 async def _load_quotes(db: AsyncSession, codes: list[str]) -> dict[str, StockQuote]:
     """A 表行情批量读取（缺失不实时拉取——摘要只读快照，避免阻塞）"""
     if not codes:
@@ -144,8 +166,7 @@ async def build_chat_context(db: AsyncSession, user_id: str, query: str = "最�
         # allow_live=False：聊天摘要只读快照，禁实时兜底（避免聊天阻塞）
         rows = await StockDataService.get_board_rows(db, user_id, items[:MAX_WATCHLIST * 2], allow_live=False)
         for r in rows[:MAX_WATCHLIST]:
-            dist = f"{r.distance_pct:.0f}%" if r.distance_pct is not None else "-"
-            watchlist_lines.append(f"{r.name}({r.code}) 现价{r.current_price:.2f} 距击球区{dist} 信号:{r.signal.value}")
+            watchlist_lines.append(_render_watchlist_block(r))
     watchlist_lines = _truncate_lines(watchlist_lines, MAX_WATCHLIST)
 
     # ── 笔记（最近 N 条摘要；DiaryService 缺失时降级为空）──

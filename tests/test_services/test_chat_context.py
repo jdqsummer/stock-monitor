@@ -1,15 +1,16 @@
 # stock-monitor/tests/test_services/test_chat_context.py
 """聊天紧凑摘要构建器 — TDD"""
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.models.portfolio import Position
 from backend.models.stock import AnalysisSnapshot, StockSnapshot
-from backend.schemas.stock import Signal, StockQuote
+from backend.schemas.stock import Signal, StockQuote, WatchlistBoardRow
 from backend.services.chat_context import (
-    build_chat_context, build_chat_profile, _truncate_lines, _render_position_block,
+    build_chat_context, build_chat_profile, _truncate_lines,
+    _render_position_block, _render_watchlist_block,
 )
 
 
@@ -169,3 +170,53 @@ async def test_build_chat_context_positions_missing_fields():
     assert "距卖出区: —" in s
     assert "卖出建议:" not in s
     assert "行业:" not in s
+
+
+def _full_board_row() -> WatchlistBoardRow:
+    return WatchlistBoardRow(
+        code="300285", name="国瓷材料",
+        annual_profit="8-12亿", profit_method="H1×2",
+        swing_pe="25-35倍", swing_market_cap="120-160亿", swing_price="40-60元",
+        current_market_cap=130.0, current_price=64.1, pe_dynamic=52.1,
+        change_pct=-5.5, distance_pct=143.0, signal=Signal.RED,
+        industry="电子", analysis_date=date(2026, 8, 11),
+    )
+
+
+def test_render_watchlist_block_full_fields():
+    out = _render_watchlist_block(_full_board_row())
+    assert "- 国瓷材料(300285)" in out
+    assert "现价: 64.10元" in out
+    assert "涨跌幅: -5.5%" in out
+    assert "距击球区: 143%" in out
+    assert "信号灯: 🔴 高估区" in out
+    assert "行业: 电子" in out
+    assert "年利润: 8-12亿" in out
+    assert "击球区PE: 25-35倍" in out
+    assert "击球区价格: 40-60元" in out
+    assert "市值: 130亿" in out
+    assert "动态PE: 52.1" in out
+    assert "未评估风险: 否" in out
+
+
+@pytest.mark.asyncio
+async def test_build_chat_context_watchlist_full_fields():
+    """自选块应含涨跌幅等全部业务字段"""
+    db = MagicMock()
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr("backend.services.chat_context.PortfolioService", MagicMock(
+            list_positions=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.WatchlistService", MagicMock(
+            list_items=AsyncMock(return_value=[MagicMock()])))
+        mp.setattr("backend.services.chat_context.StockDataService", MagicMock(
+            get_board_rows=AsyncMock(return_value=[_full_board_row()])))
+        mp.setattr("backend.services.chat_context.DiaryService", MagicMock(
+            list_recent=AsyncMock(return_value=[])))
+        mp.setattr("backend.services.chat_context.MemoryRetriever",
+                   lambda db, uid: MagicMock(retrieve=AsyncMock(return_value={})))
+        ctx = await build_chat_context(db, "u1", query="最新")
+
+    s = ctx["summary_watchlist"]
+    assert "涨跌幅: -5.5%" in s
+    assert "信号灯: 🔴 高估区" in s
+    assert "距击球区: 143%" in s
