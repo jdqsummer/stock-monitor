@@ -1,7 +1,7 @@
 /** DeepSeek 浅色风格单条消息：用户浅灰轻块 / 助手文本流 + 工具卡片 + 分析卡片 + hover 操作行 */
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Avatar, Button, Spin, Tag, message as antMsg } from 'antd';
+import { Avatar, Button, Input, Modal, Spin, Tag } from 'antd';
 import {
   CopyOutlined, DislikeFilled, DislikeOutlined, LikeFilled, LikeOutlined,
   ReloadOutlined, RobotOutlined,
@@ -83,31 +83,50 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
   const navigate = useNavigate();
   const [hover, setHover] = useState(false);
   const [vote, setVote] = useState<'like' | 'dislike' | null>(null);
+  const [copyFallback, setCopyFallback] = useState<string | null>(null);
   const isUser = msg.role === 'user';
   const showCursor = !isUser && isLast && loading;
 
-  const copy = async () => {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        // 安全上下文（HTTPS/localhost）：原生 Clipboard API
-        await navigator.clipboard.writeText(msg.content);
-      } else {
-        // 非安全上下文（http 生产）：navigator.clipboard 不存在，降级 execCommand
-        const ta = document.createElement('textarea');
-        ta.value = msg.content;
-        ta.style.position = 'fixed';
-        ta.style.top = '-1000px';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (!ok) throw new Error('execCommand copy failed');
+  // 分层复制：writeText（安全上下文）→ execCommand（非安全上下文）→ 手动复制弹窗兜底。
+  // execCommand('copy') 已废弃，现代浏览器可能返回 false 或已移除，无法保证可用，
+  // 因此失败时不直接提示「复制失败」，而是弹窗全选文本让用户 Ctrl+C 手动复制。
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // 权限被拒等，继续降级
       }
-    } catch {
-      antMsg.info('复制失败');
     }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      // 须在视口内且透明（不可 display:none / hidden 属性，否则无法选中复制）
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0;';
+      document.body.appendChild(ta);
+      const sel = document.getSelection();
+      const prevRange = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (prevRange && sel) {
+        sel.removeAllRanges();
+        sel.addRange(prevRange);
+      }
+      return !!ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const copy = async () => {
+    const ok = await copyToClipboard(msg.content);
+    if (ok) return;
+    setCopyFallback(msg.content); // 打开手动复制弹窗
   };
 
   return (
@@ -135,7 +154,7 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
           ) : (
             <div style={{
               color: ds.textPrimary, fontSize: 15, lineHeight: 1.6,
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word', minHeight: 22,
+              wordBreak: 'break-word', minHeight: 22,
             }}>
               {msg.content ? <Markdown>{msg.content}</Markdown> : null}
               {showCursor && <TypingCursor />}
@@ -211,6 +230,31 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
           )}
         </div>
       </div>
+
+      {/* 手动复制兜底弹窗：自动复制不可用时（浏览器废弃 execCommand / 非安全上下文），
+          弹窗内全选文本，用户按 Ctrl+C（Mac ⌘C）手动复制 */}
+      <Modal
+        title="复制内容"
+        open={copyFallback !== null}
+        onCancel={() => setCopyFallback(null)}
+        footer={null}
+        width={560}
+      >
+        <div style={{ fontSize: 12, color: ds.textSecondary, marginBottom: 8 }}>
+          浏览器限制了自动复制，请点击下方文本框（已自动全选），按 <b>Ctrl+C</b>（Mac：⌘C）复制。
+        </div>
+        <Input.TextArea
+          value={copyFallback ?? ''}
+          readOnly
+          autoFocus
+          rows={8}
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c') setCopyFallback(null);
+          }}
+          style={{ fontFamily: 'ui-monospace, "JetBrains Mono", Consolas, monospace', fontSize: 13 }}
+        />
+      </Modal>
     </div>
   );
 }

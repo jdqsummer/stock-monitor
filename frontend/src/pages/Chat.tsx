@@ -397,7 +397,7 @@ export function Chat() {
         extra={<Button size="small" icon={<ReloadOutlined />} loading={profileLoading} onClick={() => loadProfile(true)}>刷新画像</Button>}>
         {profile ? (
           <>
-            <Paragraph style={{ color: ds.textPrimary, fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            <Paragraph style={{ color: ds.textPrimary, fontSize: 14, wordBreak: 'break-word', marginBottom: 0 }}>
               <Markdown>{profile.L3}</Markdown>
             </Paragraph>
             <Divider />
