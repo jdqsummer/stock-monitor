@@ -79,6 +79,16 @@ AI 投资小助手在回答持仓/自选相关问题时，注入的紧凑摘要�
 | `sell_action` = `sell` | `建议卖出` |
 | `sell_action` = `immediate_sell` | `立即卖出` |
 
+自选信号灯映射（`Signal` 枚举为 str Enum，值为 `green`/`yellow`/`red`/`none`/`unquantifiable`，渲染时转 emoji+中文标签）：
+
+| 存储值 | 渲染 |
+|:--|:--|
+| `Signal.GREEN` | `🟢 击球区内` |
+| `Signal.YELLOW` | `🟡 观察区` |
+| `Signal.RED` | `🔴 高估区` |
+| `Signal.NONE` | `未分析` |
+| `Signal.UNQUANTIFIABLE` | `无法量化` |
+
 ## 自选块格式
 
 每只自选渲染为一段：
@@ -106,7 +116,7 @@ AI 投资小助手在回答持仓/自选相关问题时，注入的紧凑摘要�
 | 现价 | `current_price` |
 | 涨跌幅 | `change_pct`（新加） |
 | 距击球区 | `distance_pct`（`None` → `—`） |
-| 信号灯 | `signal.value` |
+| 信号灯 | `signal` 枚举映射（见下） |
 | 行业 | `industry` |
 | 年利润 | `annual_profit` |
 | 击球区PE | `swing_pe` |
