@@ -2,11 +2,19 @@ import { useEffect, useState } from 'react';
 import { Button, Drawer, List, Modal, Popconfirm, Space, Tag, Typography, Input, message as antMsg } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, RobotOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { diaryApi } from '@/api/client';
 import type { DiaryEntry } from '@/types';
 
 const { TextArea } = Input;
 const { Text, Paragraph } = Typography;
+
+// 深色主题表格样式（与页面 #1f1f1f / #303030 配色一致）
+const diaryMd = {
+  table: ({ node: _node, ...props }: any) => <table style={{ margin: '6px 0', borderCollapse: 'collapse', width: '100%', fontSize: 13 }} {...props} />,
+  th: ({ node: _node, ...props }: any) => <th style={{ border: '1px solid #303030', padding: '6px 10px', background: '#1f1f1f', fontWeight: 600, textAlign: 'left' }} {...props} />,
+  td: ({ node: _node, ...props }: any) => <td style={{ border: '1px solid #303030', padding: '6px 10px' }} {...props} />,
+};
 
 export function Diary() {
   const [items, setItems] = useState<DiaryEntry[]>([]);
@@ -116,7 +124,7 @@ export function Diary() {
           <>
             <div style={{ padding: '10px 12px', borderRadius: 8, background: '#1f1f1f',
               border: '1px solid #303030', color: '#e0e0e0' }}>
-              <ReactMarkdown>{detail.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={diaryMd}>{detail.content}</ReactMarkdown>
             </div>
             {detail.decisions?.map((d, i) => (
               <Tag key={i} color={d.type === 'buy' ? 'green' : d.type === 'sell' ? 'red' : 'gold'}
