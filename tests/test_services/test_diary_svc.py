@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.models.diary import Diary
+from backend.models.diary import Diary, DiaryFolder
 from backend.services.diary_svc import DiaryService, DIARY_ANALYZE_SCHEMA
 
 
@@ -57,3 +57,22 @@ async def test_analyze_extracts_decisions_and_feedback():
     # schema 通过 kwarg 传给 json_chat（含 decisions 字段）
     assert "decisions" in llm.json_chat.call_args.kwargs["schema"]["properties"]
     ms.return_value.distill_async.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_diary_folder_model_roundtrip(db_session):
+    """DiaryFolder 可建可查，Diary 可带 title + parent_folder_id 归属文件夹"""
+    folder = DiaryFolder(id="f1", user_id="u1", name="自选研究")
+    db_session.add(folder)
+    await db_session.commit()
+
+    note = Diary(id="d9", user_id="u1", title="今日复盘", content="正文",
+                 parent_folder_id="f1")
+    db_session.add(note)
+    await db_session.commit()
+
+    got = await db_session.get(DiaryFolder, "f1")
+    assert got.name == "自选研究"
+    got_note = await db_session.get(Diary, "d9")
+    assert got_note.title == "今日复盘"
+    assert got_note.parent_folder_id == "f1"
