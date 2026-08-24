@@ -78,7 +78,8 @@ export function Chat() {
 
   const loadConversation = async (conv: ConversationItem) => {
     const msgs: DisplayMessage[] = conv.messages
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      // 过滤 content 为空的助手占位消息（旧数据含 tool_calls 中间消息），避免历史出现空气泡
+      .filter((m) => m.role === 'user' || (m.role === 'assistant' && !!m.content))
       .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content, timestamp: Date.now() }));
     setMessages(msgs);
     setConversationId(conv.id);

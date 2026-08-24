@@ -188,6 +188,50 @@ async def test_run_stream_executes_tool_and_streams_text():
 
 
 @pytest.mark.asyncio
+async def test_save_conversation_strips_tool_call_placeholders():
+    """工具调用轮的中间消息（content=None 的 assistant tool_calls 占位 / role=tool 结果）
+    不应持久化到历史 —— 历史仅保留 user + 助手正文回复，否则前端加载历史时会把占位
+    消息渲染成「空助手气泡」（只有最后一条完整、其余为空数据）。
+
+    回归：修复前 stored = [user, assistant(content=None, tool_calls), tool, assistant(text)]，
+    前端按 role 过滤后出现 content=None 的空助手消息。
+    """
+    llm = _llm_with_tool_call_then_text()
+    db = AsyncMock()
+    saved: dict = {}
+    def _capture_add(conv):
+        saved["conv"] = conv
+    db.add = MagicMock(side_effect=_capture_add)
+    with patch("backend.services.chat_agent_loop.load_chat_persona",
+               return_value="你是投资助手"), \
+         patch("backend.services.chat_agent_loop.execute_tool",
+               AsyncMock(return_value={"code": "600519", "name": "贵州茅台"})), \
+         patch("backend.services.chat_agent_loop.build_chat_context",
+               AsyncMock(return_value={"summary_positions": "", "summary_watchlist": "",
+                                       "summary_diary": "", "memories": {}})), \
+         patch("backend.services.chat_agent_loop.MemoryService") as ms:
+        ms.return_value.distill_async = MagicMock()
+        loop = ChatAgentLoop(llm_provider=llm, db=db)
+        async for _ in loop.run_stream("u1", "分析 600519"):
+            pass
+
+    conv = saved.get("conv")
+    assert conv is not None
+    msgs = conv.messages
+    # 无 role=tool 中间结果
+    assert not any(m.get("role") == "tool" for m in msgs)
+    # 无 content 为空/None 的 assistant 占位
+    assert not any(m.get("role") == "assistant" and not m.get("content") for m in msgs)
+    # 恰好一条助手正文回复，含流式文本
+    assistants = [m for m in msgs if m["role"] == "assistant"]
+    assert len(assistants) == 1
+    assert "现价 1500" in assistants[0]["content"]
+    # 结构为 user → assistant 交替（首条 user）
+    assert msgs[0]["role"] == "user"
+    assert msgs[-1]["role"] == "assistant"
+
+
+@pytest.mark.asyncio
 async def test_run_stream_tool_result_with_datetime_does_not_crash():
     """工具结果含 datetime 等非 JSON 可序列化值 → json.dumps(default=str) 兜底，不产 error 事件"""
     from datetime import datetime

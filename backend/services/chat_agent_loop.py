@@ -319,9 +319,17 @@ class ChatAgentLoop:
         self, user_id: str, messages: list[dict], assistant_content: str,
         conversation_id: Optional[str] = None,
     ) -> str:
-        # 存储用消息：剥离 system（不随历史持久化，下次重新加载 persona）＋ 追加 assistant
-        stored = [m for m in messages if m["role"] != "system"] \
-            + [{"role": "assistant", "content": assistant_content}]
+        # 存储用消息：仅保留「用户提问 + 助手正文回复」的干净历史。
+        # 剥离 system（下次重新加载 persona）、role=tool 工具结果、以及 content 为空的
+        # assistant tool_calls 占位消息 —— 否则前端加载历史时占位消息会渲染成空助手气泡。
+        stored = [
+            m for m in messages
+            if m["role"] != "system"
+            and m["role"] != "tool"
+            and not (m["role"] == "assistant" and not m.get("content"))
+        ]
+        if assistant_content:
+            stored.append({"role": "assistant", "content": assistant_content})
         if conversation_id:
             result = await self.db.execute(
                 select(Conversation).where(Conversation.id == conversation_id))
