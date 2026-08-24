@@ -45,7 +45,7 @@ DIARY_ANALYZE_SCHEMA = {
 _ANALYZE_PROMPT = (
     "你是一名资深价值投资行为分析师。请分析以下投资笔记，提取买卖决策与情绪标签，"
     "并给出理性行为点评（对照投资框架：扣非优先/安全边际/避免追涨杀跌）。\n\n"
-    "笔记内容：\n{content}"
+    "笔记标题：{title}\n笔记内容：\n{content}"
 )
 
 
@@ -67,8 +67,10 @@ class DiaryService:
             select(Diary).where(Diary.user_id == user_id)
             .order_by(Diary.created_at.desc()).offset(offset).limit(limit))
         items = [{
-            "id": d.id, "content": d.content, "decisions": d.decisions,
-            "emotion_tags": d.emotion_tags, "ai_feedback": d.ai_feedback,
+            "id": d.id, "title": d.title, "content": d.content,
+            "parent_folder_id": d.parent_folder_id,
+            "decisions": d.decisions, "emotion_tags": d.emotion_tags,
+            "ai_feedback": d.ai_feedback,
             "created_at": d.created_at.isoformat() if d.created_at else None,
         } for d in rows.scalars().all()]
         return {"total": total, "items": items}
@@ -98,7 +100,7 @@ class DiaryService:
         if d is None:
             return None
         if content is not _NOT_SET:
-            d.content = content
+            d.content = content or ""
         if title is not _NOT_SET:
             d.title = title
         if parent_folder_id is not _NOT_SET:
@@ -230,7 +232,8 @@ class DiaryService:
 
         llm = get_llm()
         resp = await llm.json_chat(
-            [{"role": "user", "content": _ANALYZE_PROMPT.format(content=d.content[:3000])}],
+            [{"role": "user", "content": _ANALYZE_PROMPT.format(
+                title=d.title or "", content=d.content[:3000])}],
             schema=DIARY_ANALYZE_SCHEMA,
         )
         decisions = resp.get("decisions", [])

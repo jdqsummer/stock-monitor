@@ -126,9 +126,9 @@ async def get_diary(
     d = await DiaryService.get(db, current_user.id, diary_id)
     if d is None:
         raise HTTPException(status_code=404, detail="笔记不存在")
-    return ApiResponse(data={"id": d.id, "title": d.title, "content": d.content,
-                             "decisions": d.decisions, "emotion_tags": d.emotion_tags,
-                             "ai_feedback": d.ai_feedback,
+    return ApiResponse(data={"id": d.id, "title": d.title, "parent_folder_id": d.parent_folder_id,
+                             "content": d.content, "decisions": d.decisions,
+                             "emotion_tags": d.emotion_tags, "ai_feedback": d.ai_feedback,
                              "created_at": d.created_at.isoformat() if d.created_at else None})
 
 
