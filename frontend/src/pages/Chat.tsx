@@ -304,8 +304,8 @@ export function Chat() {
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', gap: 0 }}>
-      {/* 注入流式光标 keyframes */}
-      <style>{`@keyframes chatCursorBlink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }`}</style>
+      {/* 注入流式光标 / 思考中圆圈 keyframes */}
+      <style>{`@keyframes chatCursorBlink { 0%,100% { opacity: 1 } 50% { opacity: 0 } } @keyframes chatThinkingSpin { to { transform: rotate(360deg) } }`}</style>
 
       {/* 历史侧栏（ChatSidebar，宽度由 showHistory 控制） */}
       <div style={{

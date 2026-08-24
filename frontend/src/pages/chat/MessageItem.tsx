@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import type { Signal, WatchlistBoardRow } from '@/types';
 import { TypingCursor } from './TypingCursor';
+import { ThinkingSpinner } from './ThinkingSpinner';
 import { Markdown } from './markdown';
 import { ds } from './theme';
 
@@ -86,6 +87,9 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
   const [copyFallback, setCopyFallback] = useState<string | null>(null);
   const isUser = msg.role === 'user';
   const showCursor = !isUser && isLast && loading;
+  // 思考中：助手占位、尚无文本、且无进行中的工具调用（工具卡片自带转圈，避免重复）
+  const hasRunningTool = msg.toolCalls?.some((tc) => tc.status === 'running') ?? false;
+  const showThinking = showCursor && !msg.content && !hasRunningTool;
 
   // 分层复制：writeText（安全上下文）→ execCommand（非安全上下文）→ 手动复制弹窗兜底。
   // execCommand('copy') 已废弃，现代浏览器可能返回 false 或已移除，无法保证可用，
@@ -157,8 +161,9 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
               wordBreak: 'break-word', minHeight: 22,
             }}>
               {msg.content ? <Markdown>{msg.content}</Markdown> : null}
-              {showCursor && <TypingCursor />}
-              {!msg.content && !showCursor && (loading && isLast ? <Spin size="small" /> : null)}
+              {/* 输出中：有文本流式 → 闪烁竖线；思考中：无文本等待 → 圆圈打转 */}
+              {msg.content && showCursor && <TypingCursor />}
+              {showThinking && <ThinkingSpinner />}
             </div>
           )}
 
