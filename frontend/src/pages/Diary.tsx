@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Modal, Spin, message as antMsg } from 'antd';
 import { FolderAddOutlined, FileAddOutlined, LeftOutlined } from '@ant-design/icons';
 import { diaryApi } from '@/api/client';
-import type { DiaryEntry, DiaryTree } from '@/types';
+import type { DiaryEntry, DiaryFolderNode, DiaryTree } from '@/types';
 import { DiaryFileTree } from './diary/DiaryFileTree';
 import { DiaryEditor } from './diary/DiaryEditor';
 import { DiaryReader } from './diary/DiaryReader';
@@ -103,11 +103,15 @@ export function Diary() {
       } });
   };
 
+  const containsNoteDeep = (f: DiaryFolderNode, noteId: string): boolean => {
+    if (f.notes.some((n) => n.id === noteId)) return true;
+    return f.children.some((c) => containsNoteDeep(c, noteId));
+  };
+
   const isNoteInFolder = (t: DiaryTree, folderId: string, noteId: string): boolean => {
     for (const f of t.folders) {
-      if (f.id === folderId) return f.notes.some((n) => n.id === noteId) || f.children.some((c) => isNoteInFolder({ folders: [c], root_notes: [] }, folderId, noteId));
-      const hit = isNoteInFolder({ folders: f.children, root_notes: [] }, folderId, noteId);
-      if (hit) return hit;
+      if (f.id === folderId) return containsNoteDeep(f, noteId);
+      if (isNoteInFolder({ folders: f.children, root_notes: [] }, folderId, noteId)) return true;
     }
     return false;
   };
