@@ -25,6 +25,8 @@ export function Diary() {
   const savingRef = useRef(false);
   const dirtyRef = useRef(false);
   const dirtyNoteIdRef = useRef<string | null>(null);
+  const unmountedRef = useRef(false);
+  const retryDelayRef = useRef(SAVE_DEBOUNCE_MS);
   const editRevRef = useRef(0);
   const payloadRef = useRef<{ title: string; content: string }>({ title: '', content: '' });
   const savedTitleRef = useRef<string | null>(null);
@@ -44,9 +46,9 @@ export function Diary() {
     } catch { antMsg.error('加载文件夹树失败'); }
   }, []);
 
-  const scheduleNextSave = useCallback(() => {
+  const scheduleNextSave = useCallback((delay = SAVE_DEBOUNCE_MS) => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => { void runSaveRef.current(); }, SAVE_DEBOUNCE_MS);
+    timerRef.current = window.setTimeout(() => { void runSaveRef.current(); }, delay);
   }, []);
 
   const runSave = useCallback(async () => {
@@ -67,6 +69,7 @@ export function Diary() {
       } else {
         dirtyRef.current = false;
         setSaveStatus('saved');
+        retryDelayRef.current = SAVE_DEBOUNCE_MS;
         // 仅标题变化才刷树（树只显示标题；内容变化不刷，省请求）
         if (payload.title !== (savedTitleRef.current ?? '')) {
           savedTitleRef.current = payload.title;
@@ -76,7 +79,10 @@ export function Diary() {
       }
     } catch {
       setSaveStatus('error');
-      scheduleNextSave();
+      if (unmountedRef.current) return;
+      const delay = retryDelayRef.current;
+      retryDelayRef.current = Math.min(delay * 2, 30_000);
+      scheduleNextSave(delay);
     } finally {
       savingRef.current = false;
     }
@@ -94,6 +100,7 @@ export function Diary() {
   }, []);
 
   const markDirty = useCallback(() => {
+    retryDelayRef.current = SAVE_DEBOUNCE_MS;
     dirtyNoteIdRef.current = activeIdRef.current;
     payloadRef.current = {
       title: draftTitleRef.current.trim() || '未命名笔记',
@@ -172,6 +179,7 @@ export function Diary() {
       window.removeEventListener('beforeunload', handler);
       if (timerRef.current !== null) clearTimeout(timerRef.current);
       if (dirtyRef.current) void runSaveRef.current();
+      unmountedRef.current = true;
     };
   }, []);
 
