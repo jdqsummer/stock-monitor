@@ -2,8 +2,9 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Button, Divider, Drawer, Space, Spin, Tag, Typography, message as antMsg } from 'antd';
 import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
-import { chatApi, configApi } from '@/api/client';
-import type { ChatProfile, ConversationItem, LLMModelInfo, WatchlistBoardRow } from '@/types';
+import { chatApi, configApi, diaryApi } from '@/api/client';
+import type { ChatProfile, ConversationItem, LLMModelInfo, WatchlistBoardRow, DiaryRef, DiaryFolderNode } from '@/types';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChatComposer } from './chat/ChatComposer';
 import { MessageItem, type DisplayMessage } from './chat/MessageItem';
 import { ChatSidebar } from './chat/ChatSidebar';
@@ -24,6 +25,14 @@ export function Chat() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [models, setModels] = useState<LLMModelInfo[]>([]);
   const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem('chat_model') || '');
+
+  // @ 引用状态与数据源
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [refs, setRefs] = useState<DiaryRef[]>([]);
+  const refsRef = useRef<DiaryRef[]>([]);
+  const [mentionOptions, setMentionOptions] = useState<import('./chat/ChatComposer').MentionOption[]>([]);
+  useEffect(() => { refsRef.current = refs; }, [refs]);
 
   // 加载可用模型；无本地选择时默认取配置 llm_model（provider:model_id）
   useEffect(() => {
@@ -75,6 +84,60 @@ export function Chat() {
   };
 
   useEffect(() => { loadHistory(); }, []);
+
+  // 载入日记树选项（@ 下拉）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await diaryApi.tree();
+        if (cancelled) return;
+        const tree = res.data?.data;
+        const opts: import('./chat/ChatComposer').MentionOption[] = [];
+        const walkNotes = (notes: { id: string; title: string | null }[], path: string[]) => {
+          for (const n of notes) {
+            const t = n.title ?? '未命名';
+            opts.push({ type: 'note', id: n.id, title: t, path: [...path, t].join('/') });
+          }
+        };
+        const walkFolders = (folders: DiaryFolderNode[], path: string[]) => {
+          for (const f of folders) {
+            const fp = [...path, f.name];
+            opts.push({ type: 'folder', id: f.id, title: f.name, path: fp.join('/') });
+            walkFolders(f.children, fp);
+            walkNotes(f.notes, fp);
+          }
+        };
+        walkNotes(tree?.root_notes ?? [], []);
+        walkFolders(tree?.folders ?? [], []);
+        setMentionOptions(opts);
+      } catch { /* 静默：@ 下拉降级为空 */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // URL query 预填 + 自动发送（Task 4 产出 /chat?note_id=&note_title= / ?folder_id=&folder_name=）
+  const didPrefillRef = useRef(false);
+  useEffect(() => {
+    if (didPrefillRef.current) return;
+    const noteId = searchParams.get('note_id');
+    const noteTitle = searchParams.get('note_title');
+    const folderId = searchParams.get('folder_id');
+    const folderName = searchParams.get('folder_name');
+    if ((noteId && noteTitle) || (folderId && folderName)) {
+      didPrefillRef.current = true;
+      const ref: DiaryRef = noteId
+        ? { type: 'note', id: noteId, title: noteTitle! }
+        : { type: 'folder', id: folderId!, title: folderName! };
+      refsRef.current = [ref];
+      setRefs([ref]);
+      const text = `@${ref.title} `;
+      setInputValue(text);
+      void sendMessage(text);
+      setInputValue('');
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadConversation = async (conv: ConversationItem) => {
     const msgs: DisplayMessage[] = conv.messages
@@ -228,7 +291,8 @@ export function Chat() {
     };
 
     try {
-      const streamUrl = chatApi.getStreamUrl(text, conversationId || undefined, chatModel || undefined);
+      const activeRefs = refsRef.current.filter((r) => text.includes(`@${r.title}`));
+      const streamUrl = chatApi.getStreamUrl(text, conversationId || undefined, chatModel || undefined, activeRefs);
       const response = await fetch(streamUrl, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
@@ -389,6 +453,8 @@ export function Chat() {
           models={models}
           model={chatModel}
           onModelChange={handleModelChange}
+          mentionOptions={mentionOptions}
+          onPickRef={(ref) => setRefs((prev) => [...prev, ref])}
         />
       </div>
 

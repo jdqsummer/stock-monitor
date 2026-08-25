@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryDecision, DiaryFolderNode, DiaryTree, ToolCallEvent, ChatProfile } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryDecision, DiaryFolderNode, DiaryTree, DiaryRef, ToolCallEvent, ChatProfile } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -102,18 +102,19 @@ export const portfolioApi = {
 
 // 聊天
 export const chatApi = {
-  send: (message: string, conversationId?: string, model?: string) =>
-    client.post<ApiResponse<{ content: string; conversation_id: string; model: string }>>('/chat/send', { message, conversation_id: conversationId, model }),
+  send: (message: string, conversationId?: string, model?: string, noteRefs?: DiaryRef[]) =>
+    client.post<ApiResponse<{ content: string; conversation_id: string; model: string }>>('/chat/send', { message, conversation_id: conversationId, model, note_refs: noteRefs }),
   getHistory: (limit = 20) =>
     client.get<ApiResponse<ConversationItem[]>>('/chat/history', { params: { limit } }),
   deleteConversation: (conversationId: string) =>
     client.delete<ApiResponse>(`/chat/history/${conversationId}`),
   togglePin: (conversationId: string, pinned: boolean) =>
     client.post<ApiResponse<{ id: string; pinned: boolean }>>(`/chat/history/${conversationId}/pin`, { pinned }),
-  getStreamUrl: (message: string, conversationId?: string, model?: string) => {
+  getStreamUrl: (message: string, conversationId?: string, model?: string, noteRefs?: DiaryRef[]) => {
     const params = new URLSearchParams({ message });
     if (conversationId) params.set('conversation_id', conversationId);
     if (model) params.set('model', model);
+    if (noteRefs?.length) params.set('note_refs', JSON.stringify(noteRefs));
     return `/api/chat/stream?${params.toString()}`;
   },
   getProfile: (refresh = false) =>

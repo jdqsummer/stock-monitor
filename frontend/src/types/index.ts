@@ -283,6 +283,13 @@ export interface DiaryTree {
   root_notes: DiaryNoteBrief[];
 }
 
+// ── 日记 @ 引用 ──
+export interface DiaryRef {
+  type: 'note' | 'folder';
+  id: string;
+  title: string; // 笔记名/文件夹名（仅展示，解析以 id 为准）
+}
+
 // ── 五段式分析详情（后端 snapshot_to_dict 契约）──
 
 // 近 8 期财报明细
