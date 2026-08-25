@@ -18,7 +18,8 @@ apscheduler==3.10.4
 # LLM providers
 openai==1.35.3
 anthropic==0.34.1
-litellm==1.40.7
+# litellm 1.40.7 不在腾讯 pip 镜像快照（1.40.2~1.40.19 缺档）→ 升 1.40.31（镜像可用、同 1.40 系列）
+litellm==1.40.31
 
 # Agent framework
 langgraph==0.6.7
