@@ -179,7 +179,7 @@ Expected: 4 个用例 PASS（此时只含上传用例，GET 用例在 Task 2 追
 
 ```bash
 git add backend/config.py backend/api/diary.py tests/test_api/test_diary_images.py
-git commit -m "feat(diary): 图片上传端点 + 配置（TDD）
+git commit -m "feat(diary): 图片上传端点 + 配置（TDD）"
 ```
 
 ---
@@ -267,7 +267,7 @@ Expected: 7 个用例全 PASS。
 
 ```bash
 git add backend/api/diary.py tests/test_api/test_diary_images.py
-git commit -m "feat(diary): 图片读取端点（FileResponse，防路径穿越）
+git commit -m "feat(diary): 图片读取端点（FileResponse，防路径穿越）"
 ```
 
 ---
@@ -294,7 +294,7 @@ git commit -m "feat(diary): 图片读取端点（FileResponse，防路径穿越�
 
 ```bash
 git add docker-compose.yml
-git commit -m "chore(docker): 日记图片目录指向 app_data 卷
+git commit -m "chore(docker): 日记图片目录指向 app_data 卷"
 ```
 
 ---
@@ -331,7 +331,7 @@ Expected: tsc + vite build 成功，无类型错误。
 
 ```bash
 git add frontend/src/api/client.ts
-git commit -m "feat(diary): 前端 uploadImage API
+git commit -m "feat(diary): 前端 uploadImage API"
 ```
 
 ---
@@ -450,7 +450,7 @@ Expected: tsc + vite build 通过，oxlint 无错误。
 
 ```bash
 git add frontend/package.json frontend/package-lock.json frontend/src/pages/diary/DiaryEditor.tsx
-git commit -m "feat(diary): 编辑器图片粘贴/拖放上传
+git commit -m "feat(diary): 编辑器图片粘贴/拖放上传"
 ```
 
 ---
@@ -493,7 +493,7 @@ Expected: 构建通过。
 
 ```bash
 git add frontend/src/index.css frontend/src/pages/diary/DiaryReader.tsx
-git commit -m "style(diary): 图片样式 + 阅读端渲染容器 class
+git commit -m "style(diary): 图片样式 + 阅读端渲染容器 class"
 ```
 
 ---
