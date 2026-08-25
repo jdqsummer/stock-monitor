@@ -173,6 +173,9 @@ export function Diary() {
 
   // 刷新/关闭页面前尽力保存未落盘内容（异步 best-effort）
   useEffect(() => {
+    // StrictMode dev 下 effect 会 mount→cleanup→重跑，首轮 cleanup 置位 unmountedRef；
+    // 重跑时在此复位，保证真实挂载态下失败重试不被跳过。
+    unmountedRef.current = false;
     const handler = () => { if (dirtyRef.current) void runSaveRef.current(); };
     window.addEventListener('beforeunload', handler);
     return () => {
