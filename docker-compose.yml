@@ -14,6 +14,8 @@ services:
       - DSH_ENABLED=${DSH_ENABLED:-true}
       - DSH_ENGINE_URL=${DSH_ENGINE_URL:-http://dsh-engine:8001}
       - DSH_CALC_URL=${DSH_CALC_URL:-http://dsh-engine:8002}
+      # 投资日记图片目录：复用 app_data 卷，容器重建图片不丢
+      - DIARY_IMAGE_DIR=${DIARY_IMAGE_DIR:-/app/data/diary_images}
     # 启动前先跑 alembic 迁移建表（新库无表则 API 报错），再启动 uvicorn
     command: sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
     # SQLite 数据持久化：容器重建不丢库
