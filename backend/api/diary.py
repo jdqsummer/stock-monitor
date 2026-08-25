@@ -71,6 +71,17 @@ async def upload_diary_image(
     return ApiResponse(data={"url": f"/api/diary/images/{filename}"})
 
 
+@router.get("/images/{filename}")
+async def get_diary_image(filename: str):
+    """公开读取已上传的笔记图片（<img> 无法携带 Authorization，故不鉴权）。"""
+    if Path(filename).name != filename:
+        raise HTTPException(status_code=404, detail="not found")
+    img_path = Path(settings.DIARY_IMAGE_DIR) / filename
+    if not img_path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(img_path)
+
+
 @router.post("", response_model=ApiResponse)
 async def create_diary(
     req: DiaryCreateRequest,

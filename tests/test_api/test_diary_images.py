@@ -3,6 +3,7 @@
 import base64
 
 import pytest
+from fastapi import HTTPException
 from unittest.mock import patch
 
 from tests.test_api.test_chat import _register_and_login
@@ -62,3 +63,37 @@ class TestDiaryImageUpload:
                 files={"file": ("a.png", _png_bytes(), "image/png")},
             )
         assert resp.status_code in (401, 403)
+
+
+class TestDiaryImageGet:
+    @pytest.mark.asyncio
+    async def test_get_served_image(self, client, tmp_path):
+        token = await _register_and_login(client, "img4@example.com")
+        data = _png_bytes()
+        with patch("backend.api.diary.settings.DIARY_IMAGE_DIR", str(tmp_path)):
+            up = await client.post(
+                "/api/diary/images",
+                files={"file": ("shot.png", data, "image/png")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            url = up.json()["data"]["url"]
+            resp = await client.get(url)
+        assert resp.status_code == 200
+        assert resp.content == data
+        assert resp.headers["content-type"].startswith("image/")
+
+    @pytest.mark.asyncio
+    async def test_get_missing_404(self, tmp_path):
+        from backend.api.diary import get_diary_image
+        with patch("backend.api.diary.settings.DIARY_IMAGE_DIR", str(tmp_path)):
+            with pytest.raises(HTTPException) as ei:
+                await get_diary_image("missing.png")
+        assert ei.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_traversal_rejected(self, tmp_path):
+        from backend.api.diary import get_diary_image
+        with patch("backend.api.diary.settings.DIARY_IMAGE_DIR", str(tmp_path)):
+            with pytest.raises(HTTPException) as ei:
+                await get_diary_image("../secret.txt")
+        assert ei.value.status_code == 404
