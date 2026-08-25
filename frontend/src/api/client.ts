@@ -132,6 +132,11 @@ export const diaryApi = {
   update: (id: string, patch: { content?: string; title?: string; parent_folder_id?: string | null }) =>
     client.put<ApiResponse<DiaryEntry>>(`/diary/${id}`, patch),
   remove: (id: string) => client.delete<ApiResponse>(`/diary/${id}`),
+  uploadImage: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return client.post<ApiResponse<{ url: string }>>('/diary/images', fd);
+  },
   createFolder: (name: string, parent_id?: string) =>
     client.post<ApiResponse<DiaryFolderNode>>('/diary/folders', { name, parent_id }),
   renameFolder: (id: string, patch: { name?: string; parent_id?: string | null }) =>
