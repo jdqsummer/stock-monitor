@@ -290,7 +290,9 @@ export function Chat() {
     };
 
     try {
-      const activeRefs = refsRef.current.filter((r) => text.split(/\s+/).includes(`@${r.title}`));
+      const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const activeRefs = refsRef.current.filter((r) =>
+        new RegExp(`@${esc(r.title)}(?=\\s|$)`).test(text));
       const streamUrl = chatApi.getStreamUrl(text, conversationId || undefined, chatModel || undefined, activeRefs);
       const response = await fetch(streamUrl, {
         headers: { Authorization: `Bearer ${token}` },
