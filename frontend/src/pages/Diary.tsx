@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Modal, Spin, message as antMsg } from 'antd';
-import { FolderAddOutlined, FileAddOutlined, LeftOutlined } from '@ant-design/icons';
+import { Button, Empty, Modal, Spin, message as antMsg } from 'antd';
+import { FolderAddOutlined, FileAddOutlined } from '@ant-design/icons';
 import { diaryApi } from '@/api/client';
 import type { DiaryEntry, DiaryFolderNode, DiaryTree } from '@/types';
 import { DiaryFileTree } from './diary/DiaryFileTree';
 import { DiaryEditor } from './diary/DiaryEditor';
-import { DiaryReader } from './diary/DiaryReader';
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 const SAVE_DEBOUNCE_MS = 1000;
@@ -16,7 +15,6 @@ export function Diary() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [entry, setEntry] = useState<DiaryEntry | null>(null);
   const [loadingEntry, setLoadingEntry] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
@@ -31,13 +29,11 @@ export function Diary() {
   const payloadRef = useRef<{ title: string; content: string }>({ title: '', content: '' });
   const savedTitleRef = useRef<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
-  const editingRef = useRef(false);
   const draftTitleRef = useRef('');
   const draftContentRef = useRef('');
   const runSaveRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
-  useEffect(() => { editingRef.current = editing; }, [editing]);
 
   const reloadTree = useCallback(async () => {
     try {
@@ -129,37 +125,17 @@ export function Diary() {
     setSaveStatus('idle');
   }, []);
 
-  // 退出编辑：先 flush 未落盘内容，再把草稿并入 entry（读者视图展示最新），最后退出
-  const exitEdit = useCallback(async () => {
-    await flushSave();
-    if (dirtyRef.current) {
-      // flush 失败未落盘：保留重试、不清 dirty，交给自动重试兜底
-      setSaveStatus('error');
-      antMsg.error('保存失败，已自动重试');
-      scheduleNextSave();
-    } else {
-      resetAutosave();
-    }
-    setEntry((e) => (e && e.id === activeIdRef.current
-      ? { ...e, title: draftTitleRef.current.trim() || '未命名笔记', content: draftContentRef.current }
-      : e));
-    setEditing(false);
-  }, [flushSave, resetAutosave, scheduleNextSave]);
-
   useEffect(() => { reloadTree(); }, [reloadTree]);
 
   const openNote = useCallback(async (noteId: string) => {
-    // 从编辑态切走时先 flush 旧笔记未落盘内容
-    if (editingRef.current) {
-      await flushSave();
-      if (dirtyRef.current) {
-        antMsg.warning('退出编辑时保存失败，最新改动可能未保存');
-      }
-      resetAutosave();
+    // 切换笔记前先 flush 旧笔记未落盘内容
+    await flushSave();
+    if (dirtyRef.current) {
+      antMsg.warning('切换笔记时保存失败，最新改动可能未保存');
     }
+    resetAutosave();
     setActiveId(noteId);
     setLoadingEntry(true);
-    setEditing(false);
     try {
       const res = await diaryApi.get(noteId);
       const d = res.data.data;
@@ -167,6 +143,7 @@ export function Diary() {
       savedTitleRef.current = d.title ?? '';
       draftTitleRef.current = d.title ?? '';
       draftContentRef.current = d.content;
+      setDraftTitle(d.title ?? '');
     } catch { antMsg.error('加载笔记失败'); }
     finally { setLoadingEntry(false); }
   }, [flushSave, resetAutosave]);
@@ -215,7 +192,6 @@ export function Diary() {
       draftTitleRef.current = '未命名笔记';
       draftContentRef.current = '';
       setDraftTitle('未命名笔记');
-      setEditing(true);
     } catch { antMsg.error('新建笔记失败'); }
   };
 
@@ -295,13 +271,6 @@ export function Diary() {
     catch { antMsg.error('移动失败'); return false; }
   };
 
-  const startEdit = () => {
-    draftTitleRef.current = entry?.title ?? '';
-    draftContentRef.current = entry?.content ?? '';
-    setDraftTitle(draftTitleRef.current);
-    setEditing(true);
-  };
-
   const navigate = useNavigate();
   const handleAnalyzeRef = (kind: 'note' | 'folder', id: string, title: string) => {
     navigate(kind === 'note'
@@ -341,16 +310,18 @@ export function Diary() {
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
             <Spin size="large" />
           </div>
-        ) : editing && entry ? (
+        ) : entry ? (
           <>
             <div style={{ borderBottom: '1px solid #ECECEC', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Button type="text" size="small" icon={<LeftOutlined />} onClick={() => { void exitEdit(); }}>返回</Button>
               <input
                 value={draftTitle}
                 onChange={(e) => handleDraftTitleChange(e.target.value)}
                 placeholder="笔记标题"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 18, fontWeight: 600, color: '#1A1A1A', background: 'transparent' }}
               />
+              <span style={{ fontSize: 12, color: '#8A8A8A', flexShrink: 0 }}>
+                {entry.created_at ? new Date(entry.created_at).toLocaleString('zh-CN') : ''}
+              </span>
               {saveStatus === 'dirty' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>编辑中…</span>}
               {saveStatus === 'saving' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>保存中…</span>}
               {saveStatus === 'saved' && <span style={{ fontSize: 12, color: '#52c41a' }}>已保存</span>}
@@ -361,15 +332,7 @@ export function Diary() {
             </div>
           </>
         ) : (
-          <>
-            <div style={{ padding: '10px 20px', borderBottom: '1px solid #ECECEC', display: 'flex', justifyContent: 'flex-end' }}>
-              {entry && (
-                <Button size="small" onClick={startEdit}
-                  style={{ borderColor: '#4D6EFE', color: '#4D6EFE' }}>编辑</Button>
-              )}
-            </div>
-            <DiaryReader entry={entry} />
-          </>
+          <Empty style={{ marginTop: 80 }} description="在左侧选择或新建一篇笔记" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
       </main>
     </div>

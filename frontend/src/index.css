@@ -68,6 +68,8 @@ body {
   line-height: 26px;
 }
 .diary-tree .ant-tree-treenode { padding: 1px 0; }
+/* 叶子笔记无展开箭头：隐藏 switcher 占位，让拖动按钮与笔记标题更紧凑 */
+.diary-tree .ant-tree-treenode-leaf .ant-tree-switcher-noop { display: none; }
 .diary-tree .diary-node-title {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; color: #1A1A1A; min-width: 0;
@@ -81,21 +83,29 @@ body {
   border: 1px solid #4D6EFE; border-radius: 4px; outline: none;
 }
 
-.diary-editor .tiptap { min-height: 360px; outline: none; font-size: 15px; line-height: 1.9; color: #1A1A1A; }
-.diary-editor .tiptap p { margin: 0 0 10px; }
-.diary-editor .tiptap h1, .diary-editor .tiptap h2, .diary-editor .tiptap h3 { margin: 18px 0 10px; line-height: 1.4; }
-.diary-editor .tiptap h1 { font-size: 26px; } .diary-editor .tiptap h2 { font-size: 21px; } .diary-editor .tiptap h3 { font-size: 17px; }
-.diary-editor .tiptap ul, .diary-editor .tiptap ol { padding-left: 22px; margin: 0 0 10px; }
-.diary-editor .tiptap blockquote {
+/* 编辑(EditorContent/.tiptap)与阅读(ReactMarkdown/.diary-reader)共用同一套排版，阅读只隐藏 Markdown 符号 */
+.diary-editor .tiptap, .diary-reader { font-size: 15px; line-height: 1.9; color: #1A1A1A; }
+.diary-editor .tiptap { min-height: 360px; outline: none; }
+.diary-editor .tiptap p, .diary-reader p { margin: 0 0 10px; }
+.diary-editor .tiptap h1, .diary-editor .tiptap h2, .diary-editor .tiptap h3,
+.diary-reader h1, .diary-reader h2, .diary-reader h3 { margin: 18px 0 10px; line-height: 1.4; }
+.diary-editor .tiptap h1, .diary-reader h1 { font-size: 26px; }
+.diary-editor .tiptap h2, .diary-reader h2 { font-size: 21px; }
+.diary-editor .tiptap h3, .diary-reader h3 { font-size: 17px; }
+.diary-editor .tiptap ul, .diary-editor .tiptap ol, .diary-reader ul, .diary-reader ol { padding-left: 22px; margin: 0 0 10px; }
+.diary-editor .tiptap blockquote, .diary-reader blockquote {
   border-left: 3px solid #4D6EFE; margin: 0 0 10px; padding-left: 12px; color: #555555;
 }
-.diary-editor .tiptap pre { background: #F5F7FA; border: 1px solid #ECECEC; border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
-.diary-editor .tiptap code { background: #F5F7FA; border-radius: 4px; padding: 1px 5px; font-size: 13px; font-family: 'JetBrains Mono', monospace; }
-.diary-editor .tiptap table { border-collapse: collapse; width: 100%; margin: 0 0 12px; }
-.diary-editor .tiptap th, .diary-editor .tiptap td { border: 1px solid #E0E0E0; padding: 6px 10px; }
-.diary-editor .tiptap th { background: #F5F7FA; font-weight: 600; }
+.diary-editor .tiptap pre, .diary-reader pre { background: #F5F7FA; border: 1px solid #ECECEC; border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+.diary-editor .tiptap code, .diary-reader code { background: #F5F7FA; border-radius: 4px; padding: 1px 5px; font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+.diary-editor .tiptap table, .diary-reader table { border-collapse: collapse; width: 100%; margin: 0 0 12px; }
+.diary-editor .tiptap th, .diary-editor .tiptap td, .diary-reader th, .diary-reader td { border: 1px solid #E0E0E0; padding: 6px 10px; }
+.diary-editor .tiptap th, .diary-reader th { background: #F5F7FA; font-weight: 600; }
 .diary-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 4px; }
 .diary-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 8px; }
+/* 阅读端任务列表：remark-gfm 输出 contains-task-list / task-list-item，样式与编辑端一致 */
+.diary-reader ul.contains-task-list { list-style: none; padding-left: 4px; }
+.diary-reader ul.contains-task-list li { display: flex; align-items: flex-start; gap: 8px; }
 .diary-editor .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder); float: left; color: #B5B5B5; pointer-events: none; height: 0;
 }
@@ -108,5 +118,4 @@ body {
 .diary-toolbar-divider { width: 1px; height: 16px; background: #ECECEC; margin: 0 4px; }
 
 /* 投资日记图片：自适应宽度，不溢出 */
-.diary-editor .tiptap img { max-width: 100%; height: auto; border-radius: 6px; }
-.diary-reader img { max-width: 100%; height: auto; border-radius: 6px; }
+.diary-editor .tiptap img, .diary-reader img { max-width: 100%; height: auto; border-radius: 6px; }
