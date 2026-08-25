@@ -5,16 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.models.diary import Diary, DiaryFolder
-from backend.services.diary_svc import DiaryService, DIARY_ANALYZE_SCHEMA
+from backend.services.diary_svc import DiaryService
 
 
-def _diary(id="d1", user_id="u1", content="今天买入茅台", decisions=None,
-           emotion_tags=None, ai_feedback=None):
-    d = Diary(id=id, user_id=user_id, content=content)
-    d.decisions = decisions
-    d.emotion_tags = emotion_tags
-    d.ai_feedback = ai_feedback
-    return d
+def _diary(id="d1", user_id="u1", content="今天买入茅台"):
+    return Diary(id=id, user_id=user_id, content=content)
 
 
 @pytest.mark.asyncio
@@ -32,31 +27,6 @@ async def test_create_and_list_recent():
     rows = await DiaryService.list_recent(db, "u1", limit=5)
     assert len(rows) == 1
     assert rows[0].id == "d1"
-
-
-@pytest.mark.asyncio
-async def test_analyze_extracts_decisions_and_feedback():
-    """analyze 用 LLM json_chat 提取 decisions/emotion_tags/ai_feedback 并写回"""
-    db = MagicMock()
-    db.execute = AsyncMock(return_value=MagicMock(
-        scalar_one_or_none=MagicMock(return_value=_diary("d1"))))
-    db.commit = AsyncMock()
-    llm = MagicMock()
-    llm.json_chat = AsyncMock(return_value={
-        "decisions": [{"type": "buy", "stock": "600519", "price": 1500, "reason": "低估"}],
-        "emotion_tags": ["理性"],
-        "ai_feedback": "决策基于安全边际，理性。",
-    })
-    with patch("backend.services.diary_svc.get_llm", return_value=llm), \
-         patch("backend.services.diary_svc.MemoryService") as ms:
-        ms.return_value.distill_async = MagicMock()
-        out = await DiaryService.analyze(db, "u1", "d1")
-
-    assert out["decisions"][0]["stock"] == "600519"
-    assert out["ai_feedback"] == "决策基于安全边际，理性。"
-    # schema 通过 kwarg 传给 json_chat（含 decisions 字段）
-    assert "decisions" in llm.json_chat.call_args.kwargs["schema"]["properties"]
-    ms.return_value.distill_async.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -175,3 +145,18 @@ async def test_folder_move_into_own_descendant_rejected(db_session):
     # a 是 c 的祖先 → 把 c 移入 a 是合法（向下收窄）；但把 a 移入 c 非法
     with pytest.raises(ValueError):
         await DiaryService.move_folder(db_session, "u1", a.id, c.id)
+
+
+@pytest.mark.asyncio
+async def test_list_folder_notes_recursive(db_session):
+    """list_folder_notes 递归收集子文件夹全部笔记，不含文件夹外笔记"""
+    parent = await DiaryService.create_folder(db_session, "u1", "研究")
+    child = await DiaryService.create_folder(db_session, "u1", "消费", parent_id=parent.id)
+    note_root = await DiaryService.create(db_session, "u1", "根笔记", "r", None)
+    note_parent = await DiaryService.create(db_session, "u1", "父笔记", "p", parent.id)
+    note_child = await DiaryService.create(db_session, "u1", "子笔记", "c", child.id)
+
+    got = await DiaryService.list_folder_notes(db_session, "u1", parent.id)
+    ids = {n.id for n in got}
+    assert ids == {note_parent.id, note_child.id}
+    assert note_root.id not in ids

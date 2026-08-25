@@ -1,7 +1,5 @@
 # stock-monitor/backend/api/diary.py
-"""投资笔记 API — CRUD + 文件夹树 + 一键 AI 分析"""
-import logging
-
+"""投资笔记 API — CRUD + 文件夹树"""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,8 +8,6 @@ from backend.api.deps import get_current_user, get_db
 from backend.models.user import User
 from backend.schemas.common import ApiResponse
 from backend.services.diary_svc import DiaryService
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/diary", tags=["diary"])
 
@@ -163,19 +159,3 @@ async def delete_diary(
     if not ok:
         raise HTTPException(status_code=404, detail="笔记不存在")
     return ApiResponse(data=None, message="删除成功")
-
-
-@router.post("/{diary_id}/analyze", response_model=ApiResponse)
-async def analyze_diary(
-    diary_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        result = await DiaryService.analyze(db, current_user.id, diary_id)
-        return ApiResponse(data=result)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"笔记 AI 分析失败: {e}")
-        raise HTTPException(status_code=500, detail="AI 分析失败，请稍后重试")

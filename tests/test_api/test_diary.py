@@ -27,14 +27,6 @@ class TestDiaryCRUD:
             resp = await client.get("/api/diary", headers={"Authorization": f"Bearer {token}"})
         assert resp.json()["data"]["items"][0]["id"] == "d1"
 
-        # analyze
-        with patch("backend.api.diary.DiaryService.analyze",
-                   AsyncMock(return_value={"decisions": [], "emotion_tags": ["理性"],
-                                          "ai_feedback": "不错"})):
-            resp = await client.post("/api/diary/d1/analyze",
-                                     headers={"Authorization": f"Bearer {token}"})
-        assert resp.json()["data"]["ai_feedback"] == "不错"
-
     @pytest.mark.asyncio
     async def test_update_diary_parent_folder_null(self, client):
         """PUT /{diary_id} 显式传 parent_folder_id: null → service 收到 None（清空回根）"""
