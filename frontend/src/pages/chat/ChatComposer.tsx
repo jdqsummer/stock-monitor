@@ -78,8 +78,11 @@ export function ChatComposer({
           <TextArea
             value={value}
             onChange={(e) => {
-              onChange(e.target.value);
-              setMentionOpen(inMention);
+              const v = e.target.value;
+              onChange(v);
+              const at = v.lastIndexOf('@');
+              const tail = at >= 0 ? v.slice(at + 1) : '';
+              setMentionOpen(at >= 0 && !/\s/.test(tail));
               setHl(0);
             }}
             onFocus={() => setMentionOpen(inMention)}

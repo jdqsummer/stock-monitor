@@ -4,7 +4,7 @@ import { Button, Divider, Drawer, Space, Spin, Tag, Typography, message as antMs
 import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
 import { chatApi, configApi, diaryApi } from '@/api/client';
 import type { ChatProfile, ConversationItem, LLMModelInfo, WatchlistBoardRow, DiaryRef, DiaryFolderNode } from '@/types';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { ChatComposer } from './chat/ChatComposer';
 import { MessageItem, type DisplayMessage } from './chat/MessageItem';
 import { ChatSidebar } from './chat/ChatSidebar';
@@ -27,7 +27,6 @@ export function Chat() {
   const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem('chat_model') || '');
 
   // @ 引用状态与数据源
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [refs, setRefs] = useState<DiaryRef[]>([]);
   const refsRef = useRef<DiaryRef[]>([]);
@@ -291,7 +290,7 @@ export function Chat() {
     };
 
     try {
-      const activeRefs = refsRef.current.filter((r) => text.includes(`@${r.title}`));
+      const activeRefs = refsRef.current.filter((r) => text.split(/\s+/).includes(`@${r.title}`));
       const streamUrl = chatApi.getStreamUrl(text, conversationId || undefined, chatModel || undefined, activeRefs);
       const response = await fetch(streamUrl, {
         headers: { Authorization: `Bearer ${token}` },
