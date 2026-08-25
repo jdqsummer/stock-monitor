@@ -113,6 +113,22 @@ class TestChatSend:
         # 空消息应当返回 422（校验失败）或 400
         assert resp.status_code in (400, 422)
 
+    @pytest.mark.asyncio
+    async def test_send_message_passes_note_refs(self, client):
+        token = await _register_and_login(client, "chat_refs@example.com")
+        with patch("backend.api.chat.ChatAgentLoop") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run_send = AsyncMock(return_value={
+                "content": "ok", "conversation_id": "c1", "model": "m", "job_ids": []})
+            mock_agent_cls.return_value = mock_agent
+            resp = await client.post("/api/chat/send",
+                json={"message": "分析 @复盘",
+                      "note_refs": [{"type": "note", "id": "d1", "title": "复盘"}]},
+                headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        assert mock_agent.run_send.call_args.kwargs["note_refs"] == [
+            {"type": "note", "id": "d1", "title": "复盘"}]
+
 
 class TestChatHistory:
     """GET /api/chat/history — 对话历史"""
@@ -190,7 +206,7 @@ class TestChatStream:
         """
         token = await _register_and_login(client, "chat_sse@example.com")
 
-        async def _run_stream(user_id, message, conversation_id=None):
+        async def _run_stream(user_id, message, conversation_id=None, note_refs=None):
             yield {"event": "chunk", "data": {"content": "你好"}}
             yield {"event": "done", "data": {"conversation_id": "conv1"}}
 
@@ -359,7 +375,7 @@ class TestChatModelParam:
     async def test_stream_with_model_passes_to_get_llm(self, client):
         token = await _register_and_login(client, "chat_model_stream@example.com")
 
-        async def _run_stream(user_id, message, conversation_id=None):
+        async def _run_stream(user_id, message, conversation_id=None, note_refs=None):
             yield {"event": "chunk", "data": {"content": "你好"}}
             yield {"event": "done", "data": {"conversation_id": "conv1"}}
 

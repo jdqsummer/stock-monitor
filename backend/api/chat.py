@@ -37,10 +37,17 @@ STATUS_TERMINAL = ("done", "failed", "skipped_llm_unavailable")
 
 # ── 请求/响应模型 ──
 
+class NoteRef(BaseModel):
+    type: str = Field(..., pattern="^(note|folder)$")
+    id: str
+    title: str | None = None
+
+
 class SendMessageRequest(BaseModel):
     message: str = Field(..., description="用户消息", min_length=1)
     conversation_id: Optional[str] = Field(default=None, description="对话 ID")
     model: Optional[str] = Field(default=None, description="模型 spec（provider:model_id），缺省用默认")
+    note_refs: list[NoteRef] | None = Field(default=None, description="引用的笔记/文件夹")
 
 
 class PinRequest(BaseModel):
@@ -65,7 +72,9 @@ async def send_message(
     try:
         llm = get_llm(req.model) if req.model else get_llm()
         loop = ChatAgentLoop(llm_provider=llm, db=db)
-        result = await loop.run_send(current_user.id, req.message, req.conversation_id)
+        result = await loop.run_send(
+            current_user.id, req.message, req.conversation_id,
+            note_refs=[r.model_dump() for r in (req.note_refs or [])])
         return {"code": 0, "data": result, "message": "ok"}
     except Exception as e:
         logger.error(f"聊天失败: {e}")
@@ -77,6 +86,7 @@ async def stream_message(
     message: str = Query(..., min_length=1),
     conversation_id: Optional[str] = Query(default=None),
     model: Optional[str] = Query(default=None, description="模型 spec（provider:model_id）"),
+    note_refs: str | None = Query(default=None, description="JSON 数组字符串：[{type,id,title}]"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -86,7 +96,8 @@ async def stream_message(
         try:
             llm = get_llm(model) if model else get_llm()
             loop = ChatAgentLoop(llm_provider=llm, db=db)
-            async for ev in loop.run_stream(current_user.id, message, conversation_id):
+            refs = json.loads(note_refs) if note_refs else None
+            async for ev in loop.run_stream(current_user.id, message, conversation_id, note_refs=refs):
                 yield {"event": ev["event"], "data": json.dumps(ev["data"], ensure_ascii=False)}
 
             # 轮询 run_five_stage 提交的 job → 完成后推 analysis_done（复用同一 SSE 连接）

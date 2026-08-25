@@ -405,3 +405,36 @@ async def test_run_stream_with_real_async_generator_chat_stream():
     assert "error" not in ev_types
     text = "".join(e["data"]["content"] for e in events if e["event"] == "chunk")
     assert text == "你好，我是投资小助手。"
+
+
+@pytest.mark.asyncio
+async def test_build_messages_injects_note_ref_content():
+    """note_refs 的笔记全文注入 system prompt「用户引用内容」块"""
+    from backend.models.diary import Diary
+    from backend.services.diary_svc import DiaryService
+    note = Diary(id="d1", user_id="u1", title="今日复盘", content="今天买入茅台，安全边际充足")
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(
+        scalar_one_or_none=MagicMock(return_value=note)))
+    loop = ChatAgentLoop(llm_provider=MagicMock(), db=db)
+    msgs = await loop._build_messages(
+        "u1", None, "帮我分析 @今日复盘",
+        note_refs=[{"type": "note", "id": "d1", "title": "今日复盘"}])
+    system = msgs[0]["content"]
+    assert "## 用户引用内容" in system
+    assert "今天买入茅台，安全边际充足" in system
+
+
+@pytest.mark.asyncio
+async def test_build_messages_skips_missing_note_ref():
+    """ref 失效（笔记不存在）→ 注入块注明引用失效，不阻断"""
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(
+        scalar_one_or_none=MagicMock(return_value=None)))
+    loop = ChatAgentLoop(llm_provider=MagicMock(), db=db)
+    msgs = await loop._build_messages(
+        "u1", None, "分析 @不存在",
+        note_refs=[{"type": "note", "id": "gone", "title": "不存在"}])
+    system = msgs[0]["content"]
+    assert "## 用户引用内容" in system
+    assert "引用失效" in system

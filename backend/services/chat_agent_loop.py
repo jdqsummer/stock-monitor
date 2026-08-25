@@ -22,6 +22,7 @@ from backend.models.memory import Conversation
 from backend.services.chat_context import build_chat_context
 from backend.services.chat_persona import load_chat_persona
 from backend.services.chat_tools import TOOL_SCHEMAS, execute_tool
+from backend.services.diary_svc import DiaryService
 from backend.services.memory_svc import MemoryService
 
 logger = logging.getLogger(__name__)
@@ -127,9 +128,10 @@ class ChatAgentLoop:
         user_id: str,
         message: str,
         conversation_id: Optional[str] = None,
+        note_refs: Optional[list[dict]] = None,
     ) -> AsyncIterator[dict]:
         """产出事件：chunk / tool_call / tool_result / analysis_submitted / done / error"""
-        messages = await self._build_messages(user_id, conversation_id, message)
+        messages = await self._build_messages(user_id, conversation_id, message, note_refs)
         assistant_text = ""
         try:
             for _ in range(MAX_TOOL_ROUNDS):
@@ -205,12 +207,13 @@ class ChatAgentLoop:
         user_id: str,
         message: str,
         conversation_id: Optional[str] = None,
+        note_refs: Optional[list[dict]] = None,
     ) -> dict:
         """聚合流式事件，返回 {content, conversation_id, model, job_ids}。"""
         content_parts: list[str] = []
         conv_id = conversation_id
         model = ""
-        async for ev in self.run_stream(user_id, message, conversation_id):
+        async for ev in self.run_stream(user_id, message, conversation_id, note_refs):
             if ev["event"] == "chunk":
                 content_parts.append(ev["data"]["content"])
             elif ev["event"] == "done":
@@ -226,7 +229,8 @@ class ChatAgentLoop:
 
     # ── 内部方法 ──
 
-    async def _build_messages(self, user_id, conversation_id, new_message) -> list[dict]:
+    async def _build_messages(self, user_id, conversation_id, new_message,
+                              note_refs: Optional[list[dict]] = None) -> list[dict]:
         # Task 2 Minor①（controller 定案）：persona 正文含 [NO_COMPRESS_START]/[NO_COMPRESS_END]
         # 字面标记（DSH 技能规范），注入 system prompt 时必须剥离这两行标记。
         persona = self._strip_no_compress_markers(load_chat_persona())
@@ -247,6 +251,13 @@ class ChatAgentLoop:
                 messages[0]["content"] += "\n\n## 用户上下文（紧凑摘要）\n" + compact
         except Exception as e:
             logger.warning(f"紧凑摘要注入失败（非致命）: {e}")
+        # 注入用户 @ 引用的笔记/文件夹内容
+        try:
+            ref_block = await self._render_note_refs(user_id, note_refs)
+            if ref_block:
+                messages[0]["content"] += "\n\n" + ref_block
+        except Exception as e:
+            logger.warning(f"引用内容注入失败（非致命）: {e}")
         messages.append({"role": "user", "content": new_message})
         return messages
 
@@ -273,6 +284,47 @@ class ChatAgentLoop:
         for m in mem.get("L1", [])[:5]:
             parts.append(f"【偏好】[{m.get('category','')}] {m['content']}")
         return "\n\n".join(parts)
+
+    async def _render_note_refs(self, user_id: str, note_refs: Optional[list[dict]]) -> str:
+        """把 note_refs 解析为「用户引用内容」注入块；空/全部失效返回空串。"""
+        if not note_refs:
+            return ""
+        MAX_NOTES_PER_FOLDER = 10
+        MAX_NOTE_CHARS = 3000
+        MAX_TOTAL_CHARS = 6000
+        blocks: list[str] = []
+        used = 0
+        for ref in note_refs:
+            rtype = ref.get("type")
+            rid = ref.get("id")
+            title = ref.get("title") or "未命名"
+            if used > MAX_TOTAL_CHARS:
+                blocks.append("… 引用内容较多，已截断")
+                break
+            if rtype == "note":
+                d = await DiaryService.get(self.db, user_id, rid)
+                if d is None:
+                    blocks.append(f"- [笔记] {title}（引用失效）")
+                    continue
+                body = d.content or ""
+                blocks.append(f"- [笔记] {title}：\n{body[:MAX_NOTE_CHARS]}")
+                used += len(body)
+            elif rtype == "folder":
+                notes = await DiaryService.list_folder_notes(self.db, user_id, rid)
+                if not notes:
+                    blocks.append(f"- [文件夹] {title}（引用失效或为空）")
+                    continue
+                lines = [f"- [文件夹] {title}："]
+                for n in notes[:MAX_NOTES_PER_FOLDER]:
+                    lines.append(f"  - {n.title or '未命名'}：{(n.content or '')[:MAX_NOTE_CHARS]}")
+                if len(notes) > MAX_NOTES_PER_FOLDER:
+                    lines.append(f"  … 另有 {len(notes) - MAX_NOTES_PER_FOLDER} 篇未列出")
+                blocks.append("\n".join(lines))
+                used += sum(len(n.content or "") for n in notes)
+        if not blocks:
+            return ""
+        header = "## 用户引用内容\n用户 @ 引用了以下笔记/文件夹，请阅读并基于这些内容给出投资分析与点评："
+        return header + "\n" + "\n".join(blocks)
 
     @staticmethod
     def _extract_tool_calls(resp: LLMResponse) -> list[dict]:
