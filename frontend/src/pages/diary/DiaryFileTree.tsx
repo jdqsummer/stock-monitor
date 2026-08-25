@@ -17,6 +17,7 @@ interface DiaryFileTreeProps {
   onRenameFolder: (folderId: string, newName: string) => Promise<void>;
   onDeleteFolder: (folderId: string) => void;
   onMoveFolder: (folderId: string, targetFolderId: string | null) => Promise<boolean>;
+  onAnalyzeRef: (kind: 'note' | 'folder', id: string, title: string) => void;
 }
 
 interface RenameState {
@@ -92,6 +93,7 @@ export function DiaryFileTree({
   onRenameFolder,
   onDeleteFolder,
   onMoveFolder,
+  onAnalyzeRef,
 }: DiaryFileTreeProps) {
   const [renaming, setRenaming] = useState<RenameState | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -221,7 +223,8 @@ export function DiaryFileTree({
     const currentName =
       kind === 'note' ? (findNote(tree, id)?.title ?? '未命名') : (findFolder(tree, id)?.name ?? '');
     setContextMenu(null);
-    if (actionKey === 'new-note') onNewNote(id);
+    if (actionKey === 'ai-analyze') onAnalyzeRef(kind, id, currentName);
+    else if (actionKey === 'new-note') onNewNote(id);
     else if (actionKey === 'new-folder') onNewFolder(id);
     else if (actionKey === 'rename') startRename(key, currentName, kind);
     else if (actionKey === 'delete') {
@@ -232,6 +235,7 @@ export function DiaryFileTree({
 
   const menuItems: MenuProps['items'] = contextMenu
     ? [
+        { key: 'ai-analyze', label: '🤖 AI 分析' },
         ...(contextMenu.kind === 'folder'
           ? [
               { key: 'new-note', label: '在此新建笔记' },

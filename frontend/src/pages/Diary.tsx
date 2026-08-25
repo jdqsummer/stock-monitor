@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Modal, Spin, message as antMsg } from 'antd';
 import { FolderAddOutlined, FileAddOutlined, LeftOutlined } from '@ant-design/icons';
 import { diaryApi } from '@/api/client';
@@ -18,7 +19,6 @@ export function Diary() {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const [analyzing, setAnalyzing] = useState(false);
 
   // ── 自动保存：防抖 + 单飞 + revision 防竞态 ──
   const timerRef = useRef<number | null>(null);
@@ -302,15 +302,11 @@ export function Diary() {
     setEditing(true);
   };
 
-  const analyze = async () => {
-    if (!activeId) return;
-    setAnalyzing(true);
-    try {
-      const res = await diaryApi.analyze(activeId);
-      setEntry((e) => e ? { ...e, ...res.data.data, id: e.id } : e);
-      await reloadTree();
-    } catch { antMsg.error('AI 分析失败'); }
-    finally { setAnalyzing(false); }
+  const navigate = useNavigate();
+  const handleAnalyzeRef = (kind: 'note' | 'folder', id: string, title: string) => {
+    navigate(kind === 'note'
+      ? `/chat?note_id=${encodeURIComponent(id)}&note_title=${encodeURIComponent(title)}`
+      : `/chat?folder_id=${encodeURIComponent(id)}&folder_name=${encodeURIComponent(title)}`);
   };
 
   return (
@@ -334,6 +330,7 @@ export function Diary() {
             onRenameFolder={renameFolder}
             onDeleteFolder={deleteFolder}
             onMoveFolder={moveFolder}
+            onAnalyzeRef={handleAnalyzeRef}
           />
         </div>
       </aside>
@@ -371,7 +368,7 @@ export function Diary() {
                   style={{ borderColor: '#4D6EFE', color: '#4D6EFE' }}>编辑</Button>
               )}
             </div>
-            <DiaryReader entry={entry} analyzing={analyzing} onAnalyze={analyze} />
+            <DiaryReader entry={entry} />
           </>
         )}
       </main>

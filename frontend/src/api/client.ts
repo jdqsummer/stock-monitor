@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryDecision, DiaryFolderNode, DiaryTree, DiaryRef, ToolCallEvent, ChatProfile } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryFolderNode, DiaryTree, DiaryRef, ToolCallEvent, ChatProfile } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -132,7 +132,6 @@ export const diaryApi = {
   update: (id: string, patch: { content?: string; title?: string; parent_folder_id?: string | null }) =>
     client.put<ApiResponse<DiaryEntry>>(`/diary/${id}`, patch),
   remove: (id: string) => client.delete<ApiResponse>(`/diary/${id}`),
-  analyze: (id: string) => client.post<ApiResponse<{ decisions: DiaryDecision[] | null; emotion_tags: string[] | null; ai_feedback: string | null }>>(`/diary/${id}/analyze`),
   createFolder: (name: string, parent_id?: string) =>
     client.post<ApiResponse<DiaryFolderNode>>('/diary/folders', { name, parent_id }),
   renameFolder: (id: string, patch: { name?: string; parent_id?: string | null }) =>

@@ -251,17 +251,7 @@ export interface DiaryEntry {
   title: string | null;
   content: string;
   parent_folder_id: string | null;
-  decisions: DiaryDecision[] | null;
-  emotion_tags: string[] | null;
-  ai_feedback: string | null;
   created_at: string;
-}
-
-export interface DiaryDecision {
-  type: 'buy' | 'sell' | 'watch';
-  stock?: string;
-  price?: number;
-  reason?: string;
 }
 
 export interface DiaryNoteBrief {
