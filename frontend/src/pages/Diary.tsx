@@ -17,7 +17,6 @@ export function Diary() {
   const [loadingEntry, setLoadingEntry] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
-  const [draftContent, setDraftContent] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [analyzing, setAnalyzing] = useState(false);
 
@@ -25,6 +24,7 @@ export function Diary() {
   const timerRef = useRef<number | null>(null);
   const savingRef = useRef(false);
   const dirtyRef = useRef(false);
+  const dirtyNoteIdRef = useRef<string | null>(null);
   const editRevRef = useRef(0);
   const payloadRef = useRef<{ title: string; content: string }>({ title: '', content: '' });
   const savedTitleRef = useRef<string | null>(null);
@@ -51,13 +51,14 @@ export function Diary() {
 
   const runSave = useCallback(async () => {
     timerRef.current = null;
-    if (savingRef.current || !dirtyRef.current || !activeIdRef.current || !editingRef.current) return;
+    if (savingRef.current || !dirtyRef.current || !dirtyNoteIdRef.current) return;
     savingRef.current = true;
     const savedRev = editRevRef.current;
     const payload = { ...payloadRef.current };
+    const noteId = dirtyNoteIdRef.current;
     setSaveStatus('saving');
     try {
-      await diaryApi.update(activeIdRef.current, payload);
+      await diaryApi.update(noteId, payload);
       if (editRevRef.current !== savedRev) {
         // 保存期间有新编辑 → 置回 dirty 并再次调度（串行化兜底）
         dirtyRef.current = true;
@@ -93,6 +94,7 @@ export function Diary() {
   }, []);
 
   const markDirty = useCallback(() => {
+    dirtyNoteIdRef.current = activeIdRef.current;
     payloadRef.current = {
       title: draftTitleRef.current.trim() || '未命名笔记',
       content: draftContentRef.current,
@@ -111,7 +113,6 @@ export function Diary() {
 
   const handleDraftContentChange = (v: string) => {
     draftContentRef.current = v;
-    setDraftContent(v);
     markDirty();
   };
 
@@ -124,12 +125,19 @@ export function Diary() {
   // 退出编辑：先 flush 未落盘内容，再把草稿并入 entry（读者视图展示最新），最后退出
   const exitEdit = useCallback(async () => {
     await flushSave();
-    resetAutosave();
+    if (dirtyRef.current) {
+      // flush 失败未落盘：保留重试、不清 dirty，交给自动重试兜底
+      setSaveStatus('error');
+      antMsg.error('保存失败，已自动重试');
+      scheduleNextSave();
+    } else {
+      resetAutosave();
+    }
     setEntry((e) => (e && e.id === activeIdRef.current
       ? { ...e, title: draftTitleRef.current.trim() || '未命名笔记', content: draftContentRef.current }
       : e));
     setEditing(false);
-  }, [flushSave, resetAutosave]);
+  }, [flushSave, resetAutosave, scheduleNextSave]);
 
   useEffect(() => { reloadTree(); }, [reloadTree]);
 
@@ -137,6 +145,9 @@ export function Diary() {
     // 从编辑态切走时先 flush 旧笔记未落盘内容
     if (editingRef.current) {
       await flushSave();
+      if (dirtyRef.current) {
+        antMsg.warning('退出编辑时保存失败，最新改动可能未保存');
+      }
       resetAutosave();
     }
     setActiveId(noteId);
@@ -193,7 +204,6 @@ export function Diary() {
       draftTitleRef.current = '未命名笔记';
       draftContentRef.current = '';
       setDraftTitle('未命名笔记');
-      setDraftContent('');
       setEditing(true);
     } catch { antMsg.error('新建笔记失败'); }
   };
@@ -206,7 +216,20 @@ export function Diary() {
   };
 
   const renameNote = async (noteId: string, newName: string) => {
-    try { await diaryApi.update(noteId, { title: newName }); await reloadTree(); if (activeId === noteId) setEntry((e) => e ? { ...e, title: newName } : e); }
+    try {
+      await diaryApi.update(noteId, { title: newName });
+      await reloadTree();
+      if (activeId === noteId) {
+        setEntry((e) => e ? { ...e, title: newName } : e);
+        // 编辑态下重命名当前笔记：同步草稿，防止自动保存用旧标题覆盖新标题
+        if (activeIdRef.current === noteId) {
+          savedTitleRef.current = newName;
+          draftTitleRef.current = newName;
+          setDraftTitle(newName);
+          payloadRef.current = { ...payloadRef.current, title: newName };
+        }
+      }
+    }
     catch { antMsg.error('重命名失败'); }
   };
 
@@ -265,7 +288,6 @@ export function Diary() {
     draftTitleRef.current = entry?.title ?? '';
     draftContentRef.current = entry?.content ?? '';
     setDraftTitle(draftTitleRef.current);
-    setDraftContent(draftContentRef.current);
     setEditing(true);
   };
 
