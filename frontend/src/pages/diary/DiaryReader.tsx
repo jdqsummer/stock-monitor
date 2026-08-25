@@ -21,7 +21,7 @@ export function DiaryReader({ entry }: DiaryReaderProps) {
       <p style={{ textAlign: 'center', color: '#8A8A8A', fontSize: 13, margin: '6px 0 32px' }}>
         {entry.created_at ? new Date(entry.created_at).toLocaleString('zh-CN') : ''}
       </p>
-      <div style={{ fontSize: 15.5, lineHeight: 2, color: '#2A2A2A' }}>
+      <div className="diary-reader" style={{ fontSize: 15.5, lineHeight: 2, color: '#2A2A2A' }}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.content}</ReactMarkdown>
       </div>
     </div>

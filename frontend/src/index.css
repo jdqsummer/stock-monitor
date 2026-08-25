@@ -106,3 +106,7 @@ body {
 .diary-toolbar-btn:hover { background: #F2F2F2; color: #1A1A1A; }
 .diary-toolbar-btn.is-active { background: #E8EEFF; color: #4D6EFE; }
 .diary-toolbar-divider { width: 1px; height: 16px; background: #ECECEC; margin: 0 4px; }
+
+/* 投资日记图片：自适应宽度，不溢出 */
+.diary-editor .tiptap img { max-width: 100%; height: auto; border-radius: 6px; }
+.diary-reader img { max-width: 100%; height: auto; border-radius: 6px; }
