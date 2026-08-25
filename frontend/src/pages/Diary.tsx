@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Modal, Spin, message as antMsg } from 'antd';
 import { FolderAddOutlined, FileAddOutlined, LeftOutlined } from '@ant-design/icons';
 import { diaryApi } from '@/api/client';
@@ -6,6 +6,9 @@ import type { DiaryEntry, DiaryFolderNode, DiaryTree } from '@/types';
 import { DiaryFileTree } from './diary/DiaryFileTree';
 import { DiaryEditor } from './diary/DiaryEditor';
 import { DiaryReader } from './diary/DiaryReader';
+
+type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+const SAVE_DEBOUNCE_MS = 1000;
 
 export function Diary() {
   const [tree, setTree] = useState<DiaryTree>({ folders: [], root_notes: [] });
@@ -15,8 +18,24 @@ export function Diary() {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [analyzing, setAnalyzing] = useState(false);
+
+  // ── 自动保存：防抖 + 单飞 + revision 防竞态 ──
+  const timerRef = useRef<number | null>(null);
+  const savingRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const editRevRef = useRef(0);
+  const payloadRef = useRef<{ title: string; content: string }>({ title: '', content: '' });
+  const savedTitleRef = useRef<string | null>(null);
+  const activeIdRef = useRef<string | null>(null);
+  const editingRef = useRef(false);
+  const draftTitleRef = useRef('');
+  const draftContentRef = useRef('');
+  const runSaveRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  useEffect(() => { editingRef.current = editing; }, [editing]);
 
   const reloadTree = useCallback(async () => {
     try {
@@ -25,18 +44,132 @@ export function Diary() {
     } catch { antMsg.error('加载文件夹树失败'); }
   }, []);
 
+  const scheduleNextSave = useCallback(() => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => { void runSaveRef.current(); }, SAVE_DEBOUNCE_MS);
+  }, []);
+
+  const runSave = useCallback(async () => {
+    timerRef.current = null;
+    if (savingRef.current || !dirtyRef.current || !activeIdRef.current || !editingRef.current) return;
+    savingRef.current = true;
+    const savedRev = editRevRef.current;
+    const payload = { ...payloadRef.current };
+    setSaveStatus('saving');
+    try {
+      await diaryApi.update(activeIdRef.current, payload);
+      if (editRevRef.current !== savedRev) {
+        // 保存期间有新编辑 → 置回 dirty 并再次调度（串行化兜底）
+        dirtyRef.current = true;
+        setSaveStatus('dirty');
+        scheduleNextSave();
+      } else {
+        dirtyRef.current = false;
+        setSaveStatus('saved');
+        // 仅标题变化才刷树（树只显示标题；内容变化不刷，省请求）
+        if (payload.title !== (savedTitleRef.current ?? '')) {
+          savedTitleRef.current = payload.title;
+          void reloadTree();
+        }
+        // 不 setEntry 更新 content：避免 initialMarkdown 变化触发编辑器 setContent 重置/光标跳动
+      }
+    } catch {
+      setSaveStatus('error');
+      scheduleNextSave();
+    } finally {
+      savingRef.current = false;
+    }
+  }, [reloadTree, scheduleNextSave]);
+  runSaveRef.current = runSave;
+
+  const flushSave = useCallback(async () => {
+    if (timerRef.current !== null) { clearTimeout(timerRef.current); timerRef.current = null; }
+    // 等待 in-flight 保存完成（最多 5s），再补存期间产生的新编辑
+    for (let i = 0; i < 50 && savingRef.current; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (dirtyRef.current) await runSaveRef.current();
+    if (dirtyRef.current) await runSaveRef.current();
+  }, []);
+
+  const markDirty = useCallback(() => {
+    payloadRef.current = {
+      title: draftTitleRef.current.trim() || '未命名笔记',
+      content: draftContentRef.current,
+    };
+    editRevRef.current += 1;
+    dirtyRef.current = true;
+    setSaveStatus('dirty');
+    scheduleNextSave();
+  }, [scheduleNextSave]);
+
+  const handleDraftTitleChange = (v: string) => {
+    draftTitleRef.current = v;
+    setDraftTitle(v);
+    markDirty();
+  };
+
+  const handleDraftContentChange = (v: string) => {
+    draftContentRef.current = v;
+    setDraftContent(v);
+    markDirty();
+  };
+
+  const resetAutosave = useCallback(() => {
+    if (timerRef.current !== null) { clearTimeout(timerRef.current); timerRef.current = null; }
+    dirtyRef.current = false;
+    setSaveStatus('idle');
+  }, []);
+
+  // 退出编辑：先 flush 未落盘内容，再把草稿并入 entry（读者视图展示最新），最后退出
+  const exitEdit = useCallback(async () => {
+    await flushSave();
+    resetAutosave();
+    setEntry((e) => (e && e.id === activeIdRef.current
+      ? { ...e, title: draftTitleRef.current.trim() || '未命名笔记', content: draftContentRef.current }
+      : e));
+    setEditing(false);
+  }, [flushSave, resetAutosave]);
+
   useEffect(() => { reloadTree(); }, [reloadTree]);
 
   const openNote = useCallback(async (noteId: string) => {
+    // 从编辑态切走时先 flush 旧笔记未落盘内容
+    if (editingRef.current) {
+      await flushSave();
+      resetAutosave();
+    }
     setActiveId(noteId);
     setLoadingEntry(true);
     setEditing(false);
     try {
       const res = await diaryApi.get(noteId);
-      setEntry(res.data.data);
+      const d = res.data.data;
+      setEntry(d);
+      savedTitleRef.current = d.title ?? '';
+      draftTitleRef.current = d.title ?? '';
+      draftContentRef.current = d.content;
     } catch { antMsg.error('加载笔记失败'); }
     finally { setLoadingEntry(false); }
+  }, [flushSave, resetAutosave]);
+
+  // 刷新/关闭页面前尽力保存未落盘内容（异步 best-effort）
+  useEffect(() => {
+    const handler = () => { if (dirtyRef.current) void runSaveRef.current(); };
+    window.addEventListener('beforeunload', handler);
+    return () => {
+      window.removeEventListener('beforeunload', handler);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      if (dirtyRef.current) void runSaveRef.current();
+    };
   }, []);
+
+  // 「已保存」提示 2s 后回落 idle
+  useEffect(() => {
+    if (saveStatus !== 'saved') return;
+    const t = window.setTimeout(() => setSaveStatus((s) => (s === 'saved' ? 'idle' : s)), 2000);
+    return () => clearTimeout(t);
+  }, [saveStatus]);
 
   const currentFolderId = useMemo(() => {
     if (!activeId) return null;
@@ -57,9 +190,11 @@ export function Diary() {
       const id = res.data.data.id;
       await reloadTree();
       await openNote(id);
-      setEditing(true);
+      draftTitleRef.current = '未命名笔记';
+      draftContentRef.current = '';
       setDraftTitle('未命名笔记');
       setDraftContent('');
+      setEditing(true);
     } catch { antMsg.error('新建笔记失败'); }
   };
 
@@ -126,17 +261,12 @@ export function Diary() {
     catch { antMsg.error('移动失败'); return false; }
   };
 
-  const save = async () => {
-    if (!activeId) return;
-    setSaving(true);
-    try {
-      await diaryApi.update(activeId, { title: draftTitle.trim() || '未命名笔记', content: draftContent });
-      antMsg.success('已保存');
-      setEditing(false);
-      await openNote(activeId);
-      await reloadTree();
-    } catch { antMsg.error('保存失败'); }
-    finally { setSaving(false); }
+  const startEdit = () => {
+    draftTitleRef.current = entry?.title ?? '';
+    draftContentRef.current = entry?.content ?? '';
+    setDraftTitle(draftTitleRef.current);
+    setDraftContent(draftContentRef.current);
+    setEditing(true);
   };
 
   const analyze = async () => {
@@ -184,29 +314,27 @@ export function Diary() {
         ) : editing && entry ? (
           <>
             <div style={{ borderBottom: '1px solid #ECECEC', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Button type="text" size="small" icon={<LeftOutlined />} onClick={() => { setEditing(false); }}>返回</Button>
+              <Button type="text" size="small" icon={<LeftOutlined />} onClick={() => { void exitEdit(); }}>返回</Button>
               <input
                 value={draftTitle}
-                onChange={(e) => setDraftTitle(e.target.value)}
+                onChange={(e) => handleDraftTitleChange(e.target.value)}
                 placeholder="笔记标题"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 18, fontWeight: 600, color: '#1A1A1A', background: 'transparent' }}
               />
+              {saveStatus === 'dirty' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>编辑中…</span>}
+              {saveStatus === 'saving' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>保存中…</span>}
+              {saveStatus === 'saved' && <span style={{ fontSize: 12, color: '#52c41a' }}>已保存</span>}
+              {saveStatus === 'error' && <span style={{ fontSize: 12, color: '#ff4d4f' }}>保存失败，自动重试</span>}
             </div>
             <div style={{ padding: '16px 20px' }}>
-              <DiaryEditor
-                initialMarkdown={entry.content}
-                onChange={setDraftContent}
-                onSave={save}
-                onCancel={() => setEditing(false)}
-                saving={saving}
-              />
+              <DiaryEditor initialMarkdown={entry.content} onChange={handleDraftContentChange} />
             </div>
           </>
         ) : (
           <>
             <div style={{ padding: '10px 20px', borderBottom: '1px solid #ECECEC', display: 'flex', justifyContent: 'flex-end' }}>
               {entry && (
-                <Button size="small" onClick={() => { setDraftTitle(entry.title ?? ''); setDraftContent(entry.content); setEditing(true); }}
+                <Button size="small" onClick={startEdit}
                   style={{ borderColor: '#4D6EFE', color: '#4D6EFE' }}>编辑</Button>
               )}
             </div>
