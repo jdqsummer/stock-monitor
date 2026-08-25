@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Button, Space, Tooltip } from 'antd';
-import { useEditor, EditorContent, type Editor } from '@tiptap/react';
+import { Tooltip } from 'antd';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
@@ -17,9 +17,6 @@ import { Markdown } from '@tiptap/markdown';
 interface DiaryEditorProps {
   initialMarkdown: string;
   onChange: (markdown: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  saving: boolean;
 }
 
 interface TbProps {
@@ -45,7 +42,7 @@ function Tb({ title, active, onClick, children }: TbProps) {
   );
 }
 
-export function DiaryEditor({ initialMarkdown, onChange, onSave, onCancel, saving }: DiaryEditorProps) {
+export function DiaryEditor({ initialMarkdown, onChange }: DiaryEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -133,10 +130,6 @@ export function DiaryEditor({ initialMarkdown, onChange, onSave, onCancel, savin
       >
         <EditorContent editor={editor} />
       </div>
-      <Space style={{ marginTop: 12 }}>
-        <Button type="primary" loading={saving} onClick={onSave} style={{ background: '#4D6EFE', borderColor: '#4D6EFE' }}>保存</Button>
-        <Button onClick={onCancel}>取消</Button>
-      </Space>
     </div>
   );
 }
