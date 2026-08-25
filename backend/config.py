@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 180.0          # 单轮对话 LLM 调用超时
     CHAT_PERSONA_PATH: str = "./.dsh/skills/invest-chat/SKILL.md"  # 聊天 persona（热更新）
 
+    # 投资日记图片
+    DIARY_IMAGE_DIR: str = "./uploads/diary"      # 图片存储目录
+    DIARY_IMAGE_MAX_SIZE_MB: int = 10             # 单图大小上限（MB）
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

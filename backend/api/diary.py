@@ -1,10 +1,15 @@
 # stock-monitor/backend/api/diary.py
-"""投资笔记 API — CRUD + 文件夹树"""
-from fastapi import APIRouter, Depends, HTTPException
+"""投资笔记 API — CRUD + 文件夹树 + 图片"""
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user, get_db
+from backend.config import settings
 from backend.models.user import User
 from backend.schemas.common import ApiResponse
 from backend.services.diary_svc import DiaryService
@@ -36,6 +41,34 @@ class FolderUpdateRequest(BaseModel):
 
 def _folder_dict(f):
     return {"id": f.id, "name": f.name, "parent_id": f.parent_id}
+
+
+_IMAGE_EXTS = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+
+
+@router.post("/images", response_model=ApiResponse)
+async def upload_diary_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """上传投资笔记图片 → 返回可引用的 URL（markdown 中存 ![](url)）。"""
+    ext = _IMAGE_EXTS.get(file.content_type or "")
+    if ext is None:
+        raise HTTPException(status_code=400, detail="仅支持 PNG/JPEG/GIF/WebP 图片")
+    data = await file.read()
+    if len(data) > settings.DIARY_IMAGE_MAX_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=400,
+                            detail=f"图片超过 {settings.DIARY_IMAGE_MAX_SIZE_MB}MB 上限")
+    img_dir = Path(settings.DIARY_IMAGE_DIR)
+    img_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    (img_dir / filename).write_bytes(data)
+    return ApiResponse(data={"url": f"/api/diary/images/{filename}"})
 
 
 @router.post("", response_model=ApiResponse)
