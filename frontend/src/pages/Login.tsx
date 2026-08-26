@@ -84,7 +84,15 @@ export function Login() {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
-      <Card title="📈 股票监控系统" style={{ width: 420 }}>
+      <Card
+        title={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <img src="/logo.png" alt="logo" style={{ width: 24, height: 24, borderRadius: 5 }} />
+            股票监控系统
+          </span>
+        }
+        style={{ width: 420 }}
+      >
         <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
           {
             key: 'login', label: '登录',

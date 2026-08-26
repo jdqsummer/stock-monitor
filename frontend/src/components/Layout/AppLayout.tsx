@@ -33,8 +33,9 @@ export function AppLayout() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider width={200} theme="light">
-        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 16 }}>
-          📈 股票监控
+        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 'bold', fontSize: 16 }}>
+          <img src="/logo.png" alt="logo" style={{ width: 28, height: 28, borderRadius: 6 }} />
+          股票监控
         </div>
         <Sidebar />
       </Sider>
