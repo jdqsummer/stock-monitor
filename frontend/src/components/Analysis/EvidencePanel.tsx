@@ -9,16 +9,16 @@ const CONFIDENCE_META: Record<ConfidenceLevel, { color: string; label: string; t
   low: { color: 'default', label: '低置信度', tooltip: '该结论数据支撑不足，建议人工验证' },
 };
 
-// 数值列：number 用千分位，null/undefined 显示 —，其余原样
+// 数值列：number 用千分位，null/undefined 显示 -，其余原样
 const fmtValue = (v: EvidenceItem['value']) => {
-  if (v == null) return '—';
+  if (v == null) return '-';
   if (typeof v === 'number') return v.toLocaleString('zh-CN');
   return String(v);
 };
 
 const evidenceColumns: ColumnsType<EvidenceItem> = [
-  { title: '来源', dataIndex: 'source', key: 'source', width: 160, render: (v: string) => v || '—' },
-  { title: '字段', dataIndex: 'field', key: 'field', width: 160, render: (v: string) => v || '—' },
+  { title: '来源', dataIndex: 'source', key: 'source', width: 160, render: (v: string) => v || '-' },
+  { title: '字段', dataIndex: 'field', key: 'field', width: 160, render: (v: string) => v || '-' },
   { title: '数值', dataIndex: 'value', key: 'value', render: fmtValue },
 ];
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Button, message, Tabs } from 'antd';
 import { MailOutlined, LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { authApi } from '@/api/client';
+import { surface } from '@/theme';
 import { getErrorMessage } from '@/utils/error';
 import { ForgotPasswordModal } from '@/components/ForgotPasswordModal';
 
@@ -83,11 +84,11 @@ export function Login() {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: surface.soft }}>
       <Card
         title={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <img src="/logo.png" alt="logo" style={{ width: 24, height: 24, borderRadius: 5 }} />
+            <img src="/logo.png" alt="logo" style={{ width: 24, height: 24, borderRadius: 6 }} />
             股票监控系统
           </span>
         }

@@ -1,5 +1,6 @@
 import { Alert, Card, List } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
+import { text } from '@/theme';
 import { EvidencePanel } from './EvidencePanel';
 
 const CONCLUSION_LABELS = [
@@ -27,7 +28,7 @@ export function StageReverse({ snap }: { snap: WatchlistBoardRow }) {
           {CONCLUSION_LABELS.map(([key, label]) => (
             <div key={key} style={{ marginBottom: 12 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-              <div style={{ color: '#666', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+              <div style={{ color: text.secondary, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
                 {rev.conclusions?.[key] || '（未评估）'}
               </div>
             </div>
@@ -40,12 +41,12 @@ export function StageReverse({ snap }: { snap: WatchlistBoardRow }) {
             renderItem={(r: string) => <List.Item>{r}</List.Item>}
           />
           {rev.overall_assessment && (
-            <div style={{ marginTop: 8, color: '#666', lineHeight: 1.8 }}>综合判断：{rev.overall_assessment}</div>
+            <div style={{ marginTop: 8, color: text.secondary, lineHeight: 1.8 }}>综合判断：{rev.overall_assessment}</div>
           )}
           <EvidencePanel confidence={rev.confidence} evidence={rev.evidence} />
         </>
       ) : (
-        <div style={{ color: '#999' }}>（该阶段未产生结果）</div>
+        <div style={{ color: text.tertiary }}>（该阶段未产生结果）</div>
       )}
     </Card>
   );

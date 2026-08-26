@@ -1,5 +1,6 @@
 import { Card, Descriptions, List, Tag, Space } from 'antd';
 import type { WatchlistBoardRow, StageResult } from '@/types';
+import { text } from '@/theme';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 
 const PRINCIPLE_LABEL: Record<string, string> = {
@@ -17,12 +18,12 @@ export function StageSellAnalysis({ snap }: { snap: WatchlistBoardRow }) {
     ?? snap.stage_results?.sell_analysis
     ?? ({} as StageResult);
   if (!sell || Object.keys(sell).length === 0) {
-    return <Card title="④ 卖出分析" size="small">（该阶段未产生结果）</Card>;
+    return <Card title="4. 卖出分析" size="small">（该阶段未产生结果）</Card>;
   }
   const action = ACTION_TAG[sell.sell_action ?? 'hold'] ?? ACTION_TAG.hold;
   const principles = sell.principles ?? {};
   return (
-    <Card title="④ 卖出分析" size="small">
+    <Card title="4. 卖出分析" size="small">
       <Space style={{ marginBottom: 12 }}>
         <Tag color={action.color}>{action.text}</Tag>
         {snap.sell_signal ? <SignalBadge signal={snap.sell_signal} distancePct={snap.sell_distance_pct ?? null} sell /> : null}
@@ -49,7 +50,7 @@ export function StageSellAnalysis({ snap }: { snap: WatchlistBoardRow }) {
           </List.Item>
         )} />
       {sell.avoid_traps ? (
-        <div style={{ marginTop: 8, color: '#888' }}>规避陷阱：{sell.avoid_traps}</div>
+        <div style={{ marginTop: 8, color: text.tertiary }}>规避陷阱：{sell.avoid_traps}</div>
       ) : null}
     </Card>
   );

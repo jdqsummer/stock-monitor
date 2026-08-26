@@ -1,13 +1,13 @@
 import { Card, List, Space, Tag } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
-import { status } from '@/theme';
+import { status, text as textColor } from '@/theme';
 import { EvidencePanel } from './EvidencePanel';
 
 function Block({ title, text }: { title: string; text?: string }) {
   return (
     <div>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
-      <div style={{ color: '#666', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{text || '（未评估）'}</div>
+      <div style={{ color: textColor.secondary, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{text || '（未评估）'}</div>
     </div>
   );
 }
@@ -33,7 +33,7 @@ export function StageQualitative({ snap }: { snap: WatchlistBoardRow }) {
             )}
           </div>
           {/* text 已含：利润质量结论 + 增长趋势 + 定性判断 */}
-          <div style={{ color: '#666', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{opText || '（未评估）'}</div>
+          <div style={{ color: textColor.secondary, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{opText || '（未评估）'}</div>
           {op?.profit_quality_warnings && op.profit_quality_warnings.length > 0 && (
             <List
               size="small"

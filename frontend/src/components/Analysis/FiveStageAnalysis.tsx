@@ -1,6 +1,6 @@
 import { Card, Descriptions, Space, Tag } from 'antd';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
-import { status } from '@/theme';
+import { status, text } from '@/theme';
 import type { WatchlistBoardRow } from '@/types';
 import { StageData } from './StageData';
 import { StageQualitative } from './StageQualitative';
@@ -16,10 +16,10 @@ function LegacyView({ snap }: { snap: WatchlistBoardRow }) {
     <>
       <Card title="安全边际" style={{ marginBottom: 16 }}>
         <Descriptions column={2} size="small" bordered>
-          <Descriptions.Item label="年化净利">{snap.annual_profit || '—'}</Descriptions.Item>
-          <Descriptions.Item label="击球区PE">{snap.swing_pe || '—'}</Descriptions.Item>
-          <Descriptions.Item label="击球区市值">{snap.swing_market_cap || '—'}</Descriptions.Item>
-          <Descriptions.Item label="对应股价">{snap.swing_price || '—'}</Descriptions.Item>
+          <Descriptions.Item label="年化净利">{snap.annual_profit || '-'}</Descriptions.Item>
+          <Descriptions.Item label="击球区PE">{snap.swing_pe || '-'}</Descriptions.Item>
+          <Descriptions.Item label="击球区市值">{snap.swing_market_cap || '-'}</Descriptions.Item>
+          <Descriptions.Item label="对应股价">{snap.swing_price || '-'}</Descriptions.Item>
           <Descriptions.Item label="距击球区">
             <SignalBadge signal={snap.signal} distancePct={snap.distance_pct} />
           </Descriptions.Item>
@@ -27,14 +27,14 @@ function LegacyView({ snap }: { snap: WatchlistBoardRow }) {
         </Descriptions>
       </Card>
       <Card title="定性分析" style={{ marginBottom: 16 }}>
-        <p style={{ color: '#666', lineHeight: 1.8 }}>{snap.moat_assessment || '（未评估）'}</p>
-        <p style={{ color: '#666', lineHeight: 1.8 }}>PE 设定理由：{snap.pe_rationale || '（未说明）'}</p>
+        <p style={{ color: text.secondary, lineHeight: 1.8 }}>{snap.moat_assessment || '（未评估）'}</p>
+        <p style={{ color: text.secondary, lineHeight: 1.8 }}>PE 设定理由：{snap.pe_rationale || '（未说明）'}</p>
       </Card>
       <Card title="结论与建议">
         {snap.unassessable_risk && (
           <div style={{ color: status.error, fontWeight: 600, marginBottom: 8 }}>⚠️ 安全边际无法评估，坚决放弃</div>
         )}
-        {snap.conclusion && <p style={{ color: '#666', lineHeight: 1.8 }}>{snap.conclusion}</p>}
+        {snap.conclusion && <p style={{ color: text.secondary, lineHeight: 1.8 }}>{snap.conclusion}</p>}
         <p style={{ fontSize: 16 }}>{snap.recommendation || '（未给出）'}</p>
       </Card>
     </>

@@ -368,7 +368,7 @@ export function Chat() {
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 120px)', gap: 0 }}>
+    <div style={{ display: 'flex', height: '100%', gap: 0 }}>
       {/* 注入流式光标 / 思考中圆圈 keyframes */}
       <style>{`@keyframes chatCursorBlink { 0%,100% { opacity: 1 } 50% { opacity: 0 } } @keyframes chatThinkingSpin { to { transform: rotate(360deg) } }`}</style>
 
@@ -424,7 +424,7 @@ export function Chat() {
                 color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 24, fontWeight: 600, boxShadow: '0 2px 8px rgba(77,111,254,0.3)',
               }}>投</div>
-              <div style={{ color: ds.textPrimary, fontSize: 18, fontWeight: 600 }}>价值投资助手</div>
+              <div style={{ color: ds.textPrimary, fontSize: 18, fontWeight: 600 }}>投资小助手</div>
               <div style={{ color: ds.textTertiary, fontSize: 13, marginTop: 6 }}>基于安全边际框架，帮你分析企业价值和投资时机</div>
             </div>
           ) : (

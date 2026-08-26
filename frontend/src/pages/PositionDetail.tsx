@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Button, Card, Descriptions, Spin, message } from 'antd';
+import { Button, Card, Descriptions, message } from 'antd';
 import type { AxiosError } from 'axios';
 import { portfolioApi } from '@/api/client';
 import { PositionFiveStageAnalysis } from '@/components/Analysis/FiveStageAnalysis';
+import { Loading } from '@/components/Common/Loading';
+import { getErrorMessage } from '@/utils/error';
 import { currencyOf } from '@/utils/market';
 import type { PositionDetail as PositionDetailType } from '@/types';
 
@@ -12,6 +14,7 @@ export function PositionDetail() {
   const [detail, setDetail] = useState<PositionDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -46,7 +49,7 @@ export function PositionDetail() {
 
   useEffect(() => { fetchDetail(); }, [fetchDetail]);
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
+  if (loading) return <Loading tip="加载持仓详情..." />;
   if (loadError) return <Card>{loadError}</Card>;
   if (!detail) return <Card>持仓不存在</Card>;
   const { position: p, snapshot } = detail;
@@ -70,9 +73,16 @@ export function PositionDetail() {
       ) : (
         <Card style={{ marginTop: 12 }}>
           <p>该持仓尚未分析。</p>
-          <Button type="primary" onClick={async () => {
-            await portfolioApi.analyze([p.id]);
-            message.success('已提交分析，稍后刷新查看');
+          <Button type="primary" loading={submitting} onClick={async () => {
+            setSubmitting(true);
+            try {
+              await portfolioApi.analyze([p.id]);
+              message.success('已提交分析，稍后刷新查看');
+            } catch (err) {
+              message.error(getErrorMessage(err, '提交分析失败'));
+            } finally {
+              setSubmitting(false);
+            }
           }}>立即分析</Button>
         </Card>
       )}

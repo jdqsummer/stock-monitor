@@ -16,7 +16,7 @@ const changeColor = (v: number) => (v > 0 ? marketColor.up : v < 0 ? marketColor
 const formatCap = (v: number) => (v >= 10000 ? `${(v / 10000).toFixed(2)} 万亿` : `${v.toFixed(2)} 亿`);
 
 const formatChangeAmount = (v: number | null) => {
-  if (v == null) return '—';
+  if (v == null) return '-';
   return `${v > 0 ? '+' : ''}${v.toFixed(2)} 元`;
 };
 
@@ -118,10 +118,10 @@ export function StockSearchSelect({ onSelect, onClear }: Props) {
               </span>
             </Descriptions.Item>
             <Descriptions.Item label="换手率">
-              {selected.turnover_rate != null ? `${selected.turnover_rate.toFixed(2)}%` : '—'}
+              {selected.turnover_rate != null ? `${selected.turnover_rate.toFixed(2)}%` : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="总市值">{formatCap(selected.total_market_cap)}</Descriptions.Item>
-            <Descriptions.Item label="动态PE">{selected.pe_dynamic != null ? selected.pe_dynamic.toFixed(2) : '—'}</Descriptions.Item>
+            <Descriptions.Item label="动态PE">{selected.pe_dynamic != null ? selected.pe_dynamic.toFixed(2) : '-'}</Descriptions.Item>
           </Descriptions>
         </Card>
       )}

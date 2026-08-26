@@ -79,7 +79,10 @@ export function Watchlist() {
           pollTimer.current = null;
           setAnalyzing(false);
           setProgress('');
-          message.success('分析完成');
+          // 部分失败不再一律报成功：按结果分级提示（对齐 Analysis 页口径）
+          if (st.done === 0 && st.failed > 0) message.error(`分析失败（${st.failed} 只）`);
+          else if (st.failed > 0) message.warning(`分析完成：${st.done} 成功，${st.failed} 失败${st.skipped ? `，${st.skipped} 跳过` : ''}`);
+          else message.success(`分析完成（${st.done} 只）`);
           fetchList();
         }
       } catch {
@@ -119,14 +122,14 @@ export function Watchlist() {
       const selectedCodes = data.filter(d => selectedKeys.includes(d.id)).map(d => d.stock_code);
       const res = await analysisApi.analyzeWatchlist(selectedCodes, model);
       startPolling(res.data.data.job_id);
-    } catch {
+    } catch (err) {
       if (pollTimer.current) {
         window.clearInterval(pollTimer.current);
         pollTimer.current = null;
       }
       setAnalyzing(false);
       setProgress('');
-      message.error('提交分析失败');
+      message.error(getErrorMessage(err, '提交分析失败'));
     }
   };
 
@@ -151,9 +154,13 @@ export function Watchlist() {
   };
 
   const handleRemove = async (id: string) => {
-    await watchlistApi.remove(id);
-    message.success('已删除');
-    fetchList();
+    try {
+      await watchlistApi.remove(id);
+      message.success('已删除');
+      fetchList();
+    } catch (err) {
+      message.error(getErrorMessage(err, '删除失败，请重试'));
+    }
   };
 
   const handleAutoClassify = async () => {
@@ -162,8 +169,8 @@ export function Watchlist() {
       const res = await watchlistApi.autoClassify();
       message.success(`智能分类完成，更新 ${res.data.data?.updated ?? 0} 只`);
       fetchList();
-    } catch {
-      message.error('分类失败');
+    } catch (err) {
+      message.error(getErrorMessage(err, '分类失败，请重试'));
     } finally {
       setLoading(false);
     }
@@ -172,7 +179,9 @@ export function Watchlist() {
   const columns: ColumnsType<WatchlistItem> = [
     { title: '股票代码', dataIndex: 'stock_code', width: 100 },
     { title: '股票名称', dataIndex: 'stock_name', width: 120,
-      render: (text: string, record: WatchlistItem) => <a href={`/stock/${record.stock_code}`}>{text}</a> },
+      render: (text: string, record: WatchlistItem) => (
+        <Link to={`/stock/${record.stock_code}`}>{text}</Link>
+      ) },
     { title: '行业', dataIndex: 'industry', width: 160, ellipsis: true,
       render: (v: string | null) => v || '-' },
     { title: '击球区市值', dataIndex: 'swing_market_cap', width: 130,
@@ -200,7 +209,7 @@ export function Watchlist() {
       } },
     { title: '操作', key: 'action', width: 80,
       render: (_: unknown, record: WatchlistItem) => (
-        <Popconfirm title="确定删除？" onConfirm={() => handleRemove(record.id)}>
+        <Popconfirm title="确定删除该自选股？" okText="删除" okButtonProps={{ danger: true }} onConfirm={() => handleRemove(record.id)}>
           <Button type="link" danger>删除</Button>
         </Popconfirm>
       ) },
@@ -208,7 +217,7 @@ export function Watchlist() {
 
   return (
     <div>
-      <h2>⭐ 自选股管理</h2>
+      <h2>自选股管理</h2>
       <Space style={{ marginBottom: 16 }} wrap>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>添加自选股</Button>
         <Button icon={<ThunderboltOutlined />} onClick={handleAutoClassify} loading={loading}>智能一键分类</Button>

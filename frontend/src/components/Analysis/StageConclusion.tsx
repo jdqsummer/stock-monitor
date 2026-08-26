@@ -1,6 +1,6 @@
 import { Alert, Card, List } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
-import { signal } from '@/theme';
+import { signal, text } from '@/theme';
 import { EvidencePanel } from './EvidencePanel';
 
 const RATING_COLOR: Record<string, string> = {
@@ -20,18 +20,18 @@ export function StageConclusion({ snap }: { snap: WatchlistBoardRow }) {
         <Alert type="error" showIcon message="安全边际无法评估" description="即使价格低廉也坚决放弃" style={{ marginBottom: 12 }} />
       )}
       {stage?.final_rating && (
-        <div style={{ fontSize: 28, fontWeight: 700, color: RATING_COLOR[stage.final_rating] || '#999', marginBottom: 8 }}>
+        <div style={{ fontSize: 28, fontWeight: 700, color: RATING_COLOR[stage.final_rating] || text.tertiary, marginBottom: 8 }}>
           {stage.final_rating}
         </div>
       )}
       <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>{recommendation || '（未给出）'}</div>
-      {conclusion && <p style={{ color: '#666', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{conclusion}</p>}
+      {conclusion && <p style={{ color: text.secondary, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{conclusion}</p>}
       {stage?.loss_exception_rationale && (
         <Alert
           type="warning"
           showIcon
           message="亏损特例：评级上调理由"
-          description={`${stage.loss_exception_rationale}\n\n远期估值依据：${stage.forward_valuation_basis ?? '—'}`}
+          description={`${stage.loss_exception_rationale}\n\n远期估值依据：${stage.forward_valuation_basis ?? '-'}`}
           style={{ marginBottom: 12 }}
         />
       )}

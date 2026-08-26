@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Empty, Modal, Spin, message as antMsg } from 'antd';
+import { Button, Empty, Modal, message as antMsg } from 'antd';
 import { FolderAddOutlined, FileAddOutlined } from '@ant-design/icons';
 import { diaryApi } from '@/api/client';
-import { status } from '@/theme';
+import { border, status, surface, text } from '@/theme';
+import { Loading } from '@/components/Common/Loading';
 import type { DiaryEntry, DiaryFolderNode, DiaryTree } from '@/types';
 import { DiaryFileTree } from './diary/DiaryFileTree';
 import { DiaryEditor } from './diary/DiaryEditor';
@@ -280,10 +281,10 @@ export function Diary() {
   };
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 130px)', border: '1px solid #ECECEC', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* 文件树侧栏 */}
-      <aside style={{ width: 240, flexShrink: 0, borderRight: '1px solid #ECECEC', background: '#FAFAFA', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', gap: 4, padding: 8, borderBottom: '1px solid #ECECEC' }}>
+      <aside style={{ width: 240, flexShrink: 0, borderRight: `1px solid ${border.light}`, background: surface.sidebar, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', gap: 4, padding: 8, borderBottom: `1px solid ${border.light}` }}>
           <Button size="small" icon={<FileAddOutlined />} onClick={() => createNote(currentFolderId)}>新建笔记</Button>
           <Button size="small" icon={<FolderAddOutlined />} onClick={() => createFolder(currentFolderId)}>新建文件夹</Button>
         </div>
@@ -306,25 +307,23 @@ export function Diary() {
       </aside>
 
       {/* 主区 */}
-      <main style={{ flex: 1, overflowY: 'auto', background: '#fff' }}>
+      <main style={{ flex: 1, overflowY: 'auto', background: surface.app }}>
         {loadingEntry ? (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-            <Spin size="large" />
-          </div>
+          <Loading />
         ) : entry ? (
           <>
-            <div style={{ borderBottom: '1px solid #ECECEC', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ borderBottom: `1px solid ${border.light}`, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <input
                 value={draftTitle}
                 onChange={(e) => handleDraftTitleChange(e.target.value)}
                 placeholder="笔记标题"
-                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 18, fontWeight: 600, color: '#1A1A1A', background: 'transparent' }}
+                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 18, fontWeight: 600, color: text.primary, background: 'transparent' }}
               />
-              <span style={{ fontSize: 12, color: '#8A8A8A', flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: text.tertiary, flexShrink: 0 }}>
                 {entry.created_at ? new Date(entry.created_at).toLocaleString('zh-CN') : ''}
               </span>
-              {saveStatus === 'dirty' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>编辑中…</span>}
-              {saveStatus === 'saving' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>保存中…</span>}
+              {saveStatus === 'dirty' && <span style={{ fontSize: 12, color: text.tertiary }}>编辑中…</span>}
+              {saveStatus === 'saving' && <span style={{ fontSize: 12, color: text.tertiary }}>保存中…</span>}
               {saveStatus === 'saved' && <span style={{ fontSize: 12, color: status.success }}>已保存</span>}
               {saveStatus === 'error' && <span style={{ fontSize: 12, color: status.error }}>保存失败，自动重试</span>}
             </div>

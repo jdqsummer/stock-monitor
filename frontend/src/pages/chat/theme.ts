@@ -1,7 +1,7 @@
 // frontend/src/pages/chat/theme.ts
 /** DeepSeek 浅色设计 token — 映射参考 deepseek-chat-replica.html 的 :root 变量。
- *  品牌色自全局 token（@/theme）取值，chat 专属的面板/文字/边框灰阶仍在此定义。 */
-import { brand } from '@/theme';
+ *  全部取值来自全局 token（@/theme），此处仅做 chat 惯用的扁平命名映射。 */
+import { border as borders, brand, surface, text as texts } from '@/theme';
 
 export const ds = {
   // Brand（单一来源：@/theme）
@@ -10,22 +10,22 @@ export const ds = {
   gradientEnd: '#7B5BFF',
 
   // Surfaces
-  bgApp: '#FFFFFF',
-  bgSidebar: '#F9F9F9',
-  bgHover: '#F3F3F3',
-  bgInput: '#F7F8FA',
-  bgCard: '#FFFFFF',
-  bgSoft: '#F5F7FA',
+  bgApp: surface.app,
+  bgSidebar: surface.sidebar,
+  bgHover: surface.hover,
+  bgInput: surface.input,
+  bgCard: surface.card,
+  bgSoft: surface.soft,
 
   // Text
-  textPrimary: '#1A1A1A',
-  textSecondary: '#555555',
-  textTertiary: '#8A8A8A',
-  textQuaternary: '#B5B5B5',
+  textPrimary: texts.primary,
+  textSecondary: texts.secondary,
+  textTertiary: texts.tertiary,
+  textQuaternary: texts.quaternary,
   textOnBrand: '#FFFFFF',
 
   // Borders
-  borderLight: '#ECECEC',
-  borderMedium: '#E0E0E0',
-  borderInput: '#E5E7EB',
+  borderLight: borders.light,
+  borderMedium: borders.medium,
+  borderInput: borders.input,
 } as const;

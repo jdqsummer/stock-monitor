@@ -31,6 +31,31 @@ export const status = {
   error: '#ff4d4f',
 } as const;
 
+/** 中性面（DeepSeek 浅色灰阶） */
+export const surface = {
+  app: '#FFFFFF',
+  sidebar: '#F9F9F9',
+  hover: '#F3F3F3',
+  input: '#F7F8FA',
+  card: '#FFFFFF',
+  soft: '#F5F7FA',
+} as const;
+
+/** 中性文字灰阶（正文/辅助/占位） */
+export const text = {
+  primary: '#1A1A1A',
+  secondary: '#555555',
+  tertiary: '#8A8A8A',
+  quaternary: '#B5B5B5',
+} as const;
+
+/** 中性边框 */
+export const border = {
+  light: '#ECECEC',
+  medium: '#E0E0E0',
+  input: '#E5E7EB',
+} as const;
+
 import type { CSSProperties } from 'react';
 
 /** 品牌色软底 Tag 样式：替代 Tag 预设 'blue'（antd 固定调色板蓝 #1677ff，与品牌主色冲突） */

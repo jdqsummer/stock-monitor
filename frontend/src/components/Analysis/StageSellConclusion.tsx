@@ -11,7 +11,7 @@ export function StageSellConclusion({ snap }: { snap: WatchlistBoardRow }) {
     ?? ({} as StageResult);
   const rec = concl.recommendation ?? snap.recommendation ?? '';
   return (
-    <Card title="⑤ 总结与建议" size="small">
+    <Card title="5. 总结与建议" size="small">
       <Tag color={RECO_TAG[rec] ?? 'default'}>{rec || '-'}</Tag>
       <p style={{ marginTop: 12 }}>{concl.conclusion ?? snap.conclusion ?? '-'}</p>
       {(concl.action_items ?? []).length > 0 && (

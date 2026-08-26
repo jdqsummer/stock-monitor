@@ -7,6 +7,8 @@ import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { FiveStageAnalysis } from '@/components/Analysis/FiveStageAnalysis';
 import { analysisApi, configApi, watchlistApi } from '@/api/client';
 import { getErrorMessage } from '@/utils/error';
+import { brandTagStyle, text } from '@/theme';
+import { DegradedAlert } from '@/components/Common/DegradedAlert';
 import type { LLMModelInfo, StockQuote, UserConfig, WatchlistBoardRow } from '@/types';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -199,19 +201,15 @@ export function Analysis() {
               <SignalBadge signal={snap.signal} distancePct={snap.distance_pct} />
               <Tag>{SOURCE_LABEL[snap.analysis_source || 'manual'] || snap.analysis_source}</Tag>
               {snap.analysis_source === 'dsh-llm' && (
-                <Tag color="blue">DSH · {snap.analysis_model || 'deepseek-v4-flash'}</Tag>
+                <Tag style={brandTagStyle}>DSH · {snap.analysis_model || 'deepseek-v4-flash'}</Tag>
               )}
               {snap.analysis_completed_at && (
-                <span style={{ color: '#999', fontSize: 12 }}>
+                <span style={{ color: text.tertiary, fontSize: 12 }}>
                   {new Date(snap.analysis_completed_at).toLocaleString()}
                 </span>
               )}
             </Space>
-            {(degraded || snap.analysis_degraded) && (
-              <div style={{ background: '#fff7e6', border: '1px solid #ffd591', padding: '8px 12px', borderRadius: 6, marginBottom: 12 }}>
-                ⚠️ 本次为纯规则降级分析（无 LLM 参与），只做了确定性计算与规则校验，不含定性/逆向/估值 LLM 判断。结论仅供参考，建议人工复核后再决策。
-              </div>
-            )}
+            {(degraded || snap.analysis_degraded) && <DegradedAlert style={{ marginBottom: 12 }} />}
             <FiveStageAnalysis snap={snap} />
             <Divider />
             <Space>

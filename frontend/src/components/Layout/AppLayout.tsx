@@ -35,19 +35,19 @@ export function AppLayout() {
       <Sider width={200} theme="light">
         <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 'bold', fontSize: 16 }}>
           <img src="/logo.png" alt="logo" style={{ width: 28, height: 28, borderRadius: 6 }} />
-          股票监控
+          股票监控系统
         </div>
         <Sidebar />
       </Sider>
-      <Layout>
-        <Header style={{ background: '#fff', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0 24px', gap: 12 }}>
+      <Layout style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <Header style={{ background: '#fff', flexShrink: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '0 24px', gap: 12 }}>
           <ReminderBell items={items} enabled={enabled} markAllRead={markAllRead} />
           <Dropdown menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: handleLogout }] }}>
             <Button icon={<UserOutlined />}>{user?.email || user?.username || '用户'}</Button>
           </Dropdown>
         </Header>
         <HeaderTicker items={items} enabled={enabled} />
-        <Content style={{ margin: 16, padding: 24, background: '#fff', borderRadius: 8 }}>
+        <Content style={{ flex: 1, minHeight: 0, overflow: 'auto', margin: 16, padding: 24, background: '#fff', borderRadius: 8 }}>
           <Outlet />
         </Content>
       </Layout>

@@ -189,10 +189,10 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
               border: `1px solid ${ds.borderLight}`,
             }}>
               <Tag color={signalColor(msg.analysisResult.signal)}>
-                {msg.analysisResult.signal_label ?? msg.analysisResult.signal ?? '—'}
+                {msg.analysisResult.signal_label ?? msg.analysisResult.signal ?? '-'}
               </Tag>
               <div style={{ color: ds.textPrimary, fontSize: 13, marginTop: 4 }}>
-                击球区：{msg.analysisResult.swing_price ?? '—'}　距击球区：{msg.analysisResult.distance_pct ?? '—'}%
+                击球区：{msg.analysisResult.swing_price ?? '-'}　距击球区：{msg.analysisResult.distance_pct ?? '-'}%
               </div>
               {msg.analysisResult.conclusion != null && msg.analysisResult.conclusion !== '' && (
                 <div style={{ fontSize: 12, color: ds.textSecondary, marginTop: 4 }}>{msg.analysisResult.conclusion}</div>

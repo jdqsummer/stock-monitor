@@ -10,7 +10,7 @@ import { EditableCell } from '@/components/Portfolio/EditableCell';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
 import { currencyOf } from '@/utils/market';
-import { market } from '@/theme';
+import { market, text } from '@/theme';
 import type { LLMModelInfo, PositionInfo, StockQuote, UserConfig } from '@/types';
 
 export function Portfolio() {
@@ -64,7 +64,11 @@ export function Portfolio() {
         if (st.done + st.failed + st.skipped >= st.total) {
           if (pollTimer.current) window.clearInterval(pollTimer.current);
           pollTimer.current = null; setAnalyzing(false); setProgress('');
-          message.success('持仓分析完成'); fetchList();
+          // 部分失败不再一律报成功：按结果分级提示（对齐 Analysis 页口径）
+          if (st.done === 0 && st.failed > 0) message.error(`持仓分析失败（${st.failed} 只）`);
+          else if (st.failed > 0) message.warning(`持仓分析完成：${st.done} 成功，${st.failed} 失败${st.skipped ? `，${st.skipped} 跳过` : ''}`);
+          else message.success(`持仓分析完成（${st.done} 只）`);
+          fetchList();
         }
       } catch { /* 忽略 */ }
     }, 3000);
@@ -88,9 +92,9 @@ export function Portfolio() {
     try {
       const res = await portfolioApi.analyze(selectedKeys.map(String), model);
       startPolling(res.data.data.job_id);
-    } catch {
+    } catch (err) {
       if (pollTimer.current) { window.clearInterval(pollTimer.current); pollTimer.current = null; }
-      setAnalyzing(false); setProgress(''); message.error('提交分析失败');
+      setAnalyzing(false); setProgress(''); message.error(getErrorMessage(err, '提交分析失败'));
     }
   };
 
@@ -117,8 +121,12 @@ export function Portfolio() {
   };
 
   const handleRemove = async (id: string) => {
-    await portfolioApi.remove(id);
-    message.success('已删除'); fetchList();
+    try {
+      await portfolioApi.remove(id);
+      message.success('已删除'); fetchList();
+    } catch (err) {
+      message.error(getErrorMessage(err, '删除失败，请重试'));
+    }
   };
 
   const modelProvider = models.find(m => m.model_id === model)?.provider;
@@ -173,7 +181,7 @@ export function Portfolio() {
       render: (_: unknown, r: PositionInfo) => (
         <Space size={0}>
           <Link to={`/portfolio/${r.id}`}><Button type="link" size="small">详情</Button></Link>
-          <Popconfirm title="确定删除？不影响自选股" onConfirm={() => handleRemove(r.id)}>
+          <Popconfirm title="确定删除该持仓？不影响自选股" okText="删除" okButtonProps={{ danger: true }} onConfirm={() => handleRemove(r.id)}>
             <Button type="link" danger size="small">删除</Button>
           </Popconfirm>
         </Space>
@@ -182,13 +190,13 @@ export function Portfolio() {
 
   return (
     <div>
-      <h2>💼 持仓股</h2>
+      <h2>持仓股</h2>
       <Space style={{ marginBottom: 16 }} wrap>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>添加持仓股</Button>
         <Divider type="vertical" />
         <Select value={model} onChange={setModel} style={{ width: 200 }}
           options={models.length ? models.map(m => ({ value: m.model_id, label: m.display_name }))
-            : [{ value: 'deepseek-v4-flash', label: 'V4-Flash（默认）' }]} />
+            : [{ value: 'deepseek-v4-flash', label: 'V4-Flash（省成本·默认）' }]} />
         <Button type="primary" disabled={selectedKeys.length === 0 || analyzing}
           loading={analyzing} onClick={handleAnalyze}>
           {analyzing ? progress || '分析中...' : `分析持仓${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}
@@ -213,7 +221,7 @@ export function Portfolio() {
           </Button>,
         ]}>
         <StockSearchSelect onSelect={setSelectedStock} onClear={() => setSelectedStock(null)} />
-        <p style={{ color: '#888', marginTop: 12 }}>添加后请在列表中编辑持有数量、成本价、开始时间。</p>
+        <p style={{ color: text.tertiary, marginTop: 12 }}>添加后请在列表中编辑持有数量、成本价、开始时间。</p>
       </Modal>
     </div>
   );

@@ -15,6 +15,7 @@ import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from '@tiptap/markdown';
 import { diaryApi } from '@/api/client';
+import { border, surface } from '@/theme';
 
 interface DiaryEditorProps {
   initialMarkdown: string;
@@ -132,9 +133,9 @@ export function DiaryEditor({ initialMarkdown, onChange }: DiaryEditorProps) {
           gap: 2,
           flexWrap: 'wrap',
           padding: '6px 8px',
-          border: '1px solid #ECECEC',
+          border: `1px solid ${border.light}`,
           borderRadius: '8px 8px 0 0',
-          background: '#FAFAFA',
+          background: surface.sidebar,
         }}
       >
         <Tb title="标题 1" active={isActive('heading', { level: 1 })} onClick={() => chain().toggleHeading({ level: 1 }).run()}><span style={{ fontWeight: 700 }}>H1</span></Tb>
@@ -158,11 +159,11 @@ export function DiaryEditor({ initialMarkdown, onChange }: DiaryEditorProps) {
       </div>
       <div
         style={{
-          border: '1px solid #ECECEC',
+          border: `1px solid ${border.light}`,
           borderTop: 'none',
           borderRadius: '0 0 8px 8px',
           padding: '16px 20px',
-          background: '#fff',
+          background: surface.app,
         }}
       >
         <EditorContent editor={editor} />

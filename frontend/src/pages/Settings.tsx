@@ -84,14 +84,14 @@ export function Settings() {
 
   return (
     <div>
-      <h2>⚙️ 系统设置</h2>
+      <h2>系统设置</h2>
 
       <Card title="分析引擎状态" style={{ marginBottom: 16 }} size="small">
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           <div>
             当前默认模型：{ready
               ? <Tag style={brandTagStyle}>{models.find(m => m.model_id === defaultModel)?.display_name || defaultModel}</Tag>
-              : '—'}
+              : '-'}
           </div>
           {ready && (llmReady
             ? <div style={{ color: status.success }}>✅ {defaultProvider} API Key 已配置，LLM 深度分析可用</div>
