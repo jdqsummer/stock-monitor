@@ -4,6 +4,8 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 
 分析主路径为 **DSH 五段式分析**（DeepSeek DSH 引擎），后端采集数据注入只读 context，HTTP 触发 dsh-engine 执行 LLM 五段定性，确定性计算节点（击球区/安全边际/卖出区）走 `invest-calc` TS 纯函数；DSH 不可用时自动降级纯规则链（`analysis_degraded` 标记）。
 
+> 系统设计全貌见 [docs/技术白皮书.md](docs/技术白皮书.md)。
+
 ## 架构（一行一模块）
 
 | 模块 | 职责 |
@@ -20,6 +22,9 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 | `backend/agents/state.py` | 共享 TypedDict：AnalysisState / DataCollectionState |
 | `backend/agents/memory_workflow.py` | 蒸馏管道：L1→L2→L3→冲突检测 |
 | `backend/agents/chat_agent.py` | Chat Agent：SSE 流式对话 + 记忆检索注入 + 多轮会话 |
+| `backend/services/chat_agent_loop.py` | 聊天 Agent Loop（方案C）：function calling 编排（max 5 轮）+ SSE 事件 + DeepSeek 伪工具调用 XML 过滤；工具见 `chat_tools.py`（get_stock_snapshot/get_financials/search_stock/get_industry_pe/run_five_stage） |
+| `backend/services/diary_svc.py` | 投资笔记服务：CRUD + 文件夹树（自引用任意嵌套）+ 递归聚合 |
+| `backend/models/diary.py` | Diary / DiaryFolder ORM（笔记正文 + 文件夹） |
 | `backend/agents/skills/` | 后端分析技能（五段：qualitative/reverse-checklist/swing-zone/sell-analysis/sell-conclusion + investment-framework） |
 | `backend/llm/provider.py` | LLMProvider 抽象 + 6 实现（OpenAI/Anthropic/DeepSeek/Ollama/LiteLLM/Mock） |
 | `backend/memory/store.py` | L0-L3 CRUD（所有方法需 AsyncSession） |
@@ -44,11 +49,12 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 | `backend/api/dashboard.py` | 仪表盘三端点（overview / watchlist-status / positions） |
 | `backend/api/reminders.py` | 击球区提醒（unread / read / read-all） |
 | `backend/api/auth.py` | 认证 API：注册/登录/邮箱验证码/密码重置（JWT） |
-| `backend/api/chat.py` | Chat API：send / stream(SSE) / history |
+| `backend/api/chat.py` | Chat API：send / stream(SSE) / history（支持 note_refs @ 引用笔记注入全文） |
+| `backend/api/diary.py` | 笔记 API：CRUD + tree + folders + 图片上传/读取 |
 | `backend/api/config.py` | 用户配置（含分析类型 watchlist/position 等） |
 | `backend/api/deps.py` | 依赖注入：get_db / get_current_user |
 | `dsh-engine/` | DSH SDK 宿主容器：sdk_host（8001 `/trigger`）+ calc_host（8002 `/calc`）+ 会话日志清理 |
-| `.dsh/` | DSH 资产：7 方法论 skills（含 sell-analysis/sell-conclusion）+ 6 plugins（invest-calc/five-stage/guard/schema/telemetry/data-tool）+ agent-presets + invest-data 红线/PE 参照 |
+| `.dsh/` | DSH 资产：8 skills（7 方法论 analyze-qualitative/anchor-industry-pe/run-reverse-checklist/output-conclusion/sell-analysis/sell-conclusion/investment-framework + invest-chat 聊天 persona）+ 6 plugins（invest-calc/five-stage/guard/schema/telemetry/data-tool）+ agent-presets + invest-data 红线/PE 参照（含港股 pe-reference-hk） |
 
 ## 投资框架（详见 `docs/股票WEB监控系统/投资分析框架.md`）
 
@@ -70,6 +76,8 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 6. **DSH 插件 bundle（`.dsh/plugins/invest-*/index.mjs`）是手工维护产物**，不能 rolldown 重建，须按 P3 文档手工同步单行
 7. **compose 网络别名 `backend`**：DSH invest-data-mcp 连 `http://backend:8000/mcp/investdata`，service 名是 `app`，缺别名则 MCP 通道建立失败
 8. **`save_snapshot` 按模式隔离写字段组**：`analysis_snapshots` 每 `(user_id, stock_code)` 一行，watchlist/sell 双组共存。position 保存只写 sell 组、watchlist 保存只写 watchlist 组，**互不覆盖**（否则持仓分析会清空自选安全边际结果）。`analysis_mode` 记最近一次模式；前端 `FiveStageAnalysis` 按 `stage_results` 是否含 `anchor_industry_pe` 段判定安全边际视图，不依赖单值 `analysis_mode`
+9. **DSH session_id 必须唯一**（`{code}-{date}-{uuid8}`）：code-date 复用会触发 harness 恢复空会话（持久化只剩 header）→ turn 秒结束 →「未找到 invest-five-stage 工具输出」→ 静默降级规则链
+10. **DeepSeek 聊天流式会泄漏伪工具调用 XML**（`<tool_calls>/<invoke>`，含全角竖线变体且被拆成跨 chunk 微块）→ `chat_agent_loop.py` 的 `_ToolCallXmlStripper` 有状态过滤，勿绕过
 
 ## 设计原则
 
@@ -89,15 +97,16 @@ AI 驱动的 A 股安全边际分析平台。核心：**好价格下的好公司
 
 | 已完成 | 待实现 |
 |:--|:--|
-| Plan-1~5：平台/缓存/前端/Agent/记忆 | Diary Agent（后端 CRUD + 行为点评；前端为占位页） |
-| Chat Agent：SSE 对话 + 记忆注入 + 前端聊天页 | 北交所 secid 完善（东财 secid 映射） |
-| 忘记密码/重置密码：邮箱验证码全链路 | |
+| Plan-1~5：平台/缓存/前端/Agent/记忆 | DSH 上游版本升级（社区最新版跟进） |
+| Chat Agent：SSE 对话 + 记忆注入 + @ 引用笔记分析 + 前端聊天页 | 多租户增强：用户权限管理、租户级配置与画像隔离（需求文档规划中） |
+| 忘记密码/重置密码：邮箱验证码全链路 | 北交所 secid 完善（东财 secid 映射） |
 | 自选股管理：搜索添加 + CRUD + 智能分类 | |
 | 仪表盘数据链路：A/B 双层 + 定时刷新 + 三端点 + 未分析显示 + 持仓面板 | |
-| 多渠道数据源：腾讯/东财公开 HTTP provider 链 + mock 兜底 | |
-| DSH 五段分析：dsh-engine 双容器（sdk_host/trigger + calc_host/calc）、7 方法论 skills、invest-five-stage 插件、HTTP 触发契约、熔断降级 | |
+| 多渠道数据源：腾讯/东财公开 HTTP provider 链 + mock 兜底（港股/AH 支持） | |
+| DSH 五段分析：dsh-engine 双容器（sdk_host/trigger + calc_host/calc）、方法论 skills、invest-five-stage 插件、HTTP 触发契约、熔断降级、预算守卫 | |
 | 持仓分析全链路：Position CRUD + 卖出五段（sell-analysis/sell-conclusion）+ 前端 Editable Table/详情页 + 混合自动分析 | |
 | Analysis 页重写：任意股搜索分析 + 页内五段式结果 + 加自选（跳过重复分析）+ 刷新恢复 | |
 | 击球区提醒：收盘扫描 + 未读角标 | |
+| 投资笔记：CRUD + 文件夹树 + Tiptap 编辑阅读合一 + 图片粘贴上传 + 自动保存防竞态 + @ 引用聊天分析 | |
 | 生产部署：腾讯云 Docker Compose（含 dsh-engine；SMTP/westock/LLM 待配置） | |
-| 451 tests 全部通过 | |
+| 580 tests 全部通过 | |

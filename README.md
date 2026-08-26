@@ -1,6 +1,8 @@
 # Stock Monitor — AI 企业价值与安全边际分析平台
 
-基于 LangGraph + DeepSeek DSH 的 A 股投资分析系统。自动采集实时行情与财报数据，经 **DSH 五段式分析引擎**（定性 → 行业PE锚定 → 击球区 → 逆向清单 → 结论）输出企业价值评估与投资建议，支持持仓股卖出分析、任意股异步分析。内置 AI 聊天 Agent（SSE 对话 + 记忆注入）、击球区提醒与 L0-L3 投资记忆系统。
+基于 LangGraph + DeepSeek DSH 的 A 股投资分析系统。自动采集实时行情与财报数据，经 **DSH 五段式分析引擎**（定性 → 行业PE锚定 → 击球区 → 逆向清单 → 结论）输出企业价值评估与投资建议，支持持仓股卖出分析、任意股异步分析。内置 AI 聊天 Agent（SSE 对话 + 记忆注入 + @ 引用笔记分析）、投资笔记（Markdown 编辑/文件夹树/图片上传）、击球区提醒与 L0-L3 投资记忆系统。
+
+> 系统设计、架构决策与技术细节详见 [技术白皮书](docs/技术白皮书.md)。
 
 ## 技术栈
 
@@ -50,7 +52,9 @@ stock-monitor/
 │   │   ├── watchlist_svc.py # 自选服务 + 智能分类
 │   │   ├── portfolio_svc.py # 持仓服务
 │   │   ├── reminder_svc.py  # 击球区提醒
+│   │   ├── diary_svc.py     # 投资笔记 CRUD + 文件夹树
 │   │   ├── email_svc.py     # 邮箱验证码服务
+│   │   ├── chat_agent_loop.py # 聊天 Agent Loop（function calling 编排 + SSE）
 │   │   ├── auth_svc.py / config_svc.py / memory_svc.py / stock_data_svc.py
 │   ├── data/            # 数据层
 │   │   ├── westock_client.py # 多渠道数据门面（腾讯/东财/mock）
@@ -67,6 +71,7 @@ stock-monitor/
 │   │   ├── reminders.py     # 击球区提醒
 │   │   ├── auth.py          # 认证/验证码/密码重置
 │   │   ├── chat.py          # Chat 对话接口 (SSE)
+│   │   ├── diary.py         # 投资笔记 CRUD + 文件夹树 + 图片上传
 │   │   ├── config.py / deps.py
 │   ├── models/          # SQLAlchemy ORM（stock/watchlist/portfolio/reminder/diary/memory/user）
 │   ├── schemas/         # Pydantic Schema
@@ -75,7 +80,7 @@ stock-monitor/
 ├── dsh-engine/          # DSH SDK 宿主容器（sdk_host 8001 / calc_host 8002 / 会话清理）
 ├── .dsh/                # DSH 资产：7 方法论 skills + 6 plugins + agent-presets + invest-data
 ├── frontend/            # React + TypeScript（Dashboard/Watchlist/Portfolio/Analysis/Chat/...）
-├── tests/               # pytest (451 tests)
+├── tests/               # pytest (580 tests)
 ├── docs/                # 需求文档 / 投资框架 / DSH 迁移与设计
 ├── docker-compose.yml   # app + frontend + nginx + redis + dsh-engine
 └── requirements.txt
@@ -166,11 +171,18 @@ docker compose logs -f dsh-engine
 - 价值投资角色 System Prompt
 - 多轮会话 + 历史管理
 
-### 5. 投资日记（开发中）
+### 5. 投资笔记（已实现）
 
-- 结构化投资决策记录
-- Agent 行为点评与反馈
-- 当前进度：模型已建，前端为占位页，后端 CRUD API 待实现
+- Markdown 笔记：Tiptap 编辑/阅读合一，排版一致；表格/代码块/任务列表
+- 文件夹树管理（任意嵌套）+ 拖拽整理
+- 图片粘贴/拖放直传，markdown 引用落库
+- 1s 防抖自动保存（单飞防竞态 + 失败指数退避重试）
+- AI 分析走聊天 Agent：@ 引用笔记/文件夹注入全文，或右键跳转聊天
+
+### 6. 投资记忆系统（已实现）
+
+- L0 对话原文 → L1 事实偏好 → L2 策略模式 → L3 投资画像 蒸馏管道
+- 聊天检索注入 (L3画像 → L2策略 → L1事实)
 
 ## API 概览
 
@@ -207,9 +219,13 @@ docker compose logs -f dsh-engine
 | | `POST /api/auth/login` `login/send-code` `login/code` | 登录 |
 | | `POST /api/auth/password/send-code` `password/reset` | 重置密码 |
 | | `GET /api/auth/me` | 当前用户信息 |
-| Chat | `POST /api/chat/send` | 发送消息（非流式） |
+| Chat | `POST /api/chat/send` | 发送消息（非流式，支持 note_refs 引用笔记） |
 | | `GET /api/chat/stream` | SSE 流式对话 |
 | | `GET /api/chat/history` `DELETE /api/chat/history/{id}` | 历史会话 |
+| 笔记 | `GET / POST /api/diary` `GET / PUT / DELETE /api/diary/{id}` | 笔记 CRUD |
+| | `GET /api/diary/tree` | 文件夹树（含根笔记） |
+| | `POST /api/diary/folders` `PUT/DELETE /api/diary/folders/{id}` | 文件夹管理 |
+| | `POST /api/diary/images` `GET /api/diary/images/{filename}` | 图片上传 / 读取 |
 | 配置 | `GET / PUT /api/config/` | 用户配置 |
 | | `GET /api/config/llm-models` | LLM 模型列表 |
 
@@ -218,7 +234,7 @@ docker compose logs -f dsh-engine
 ### 运行测试
 
 ```bash
-pytest tests/ -v       # 451 tests
+pytest tests/ -v       # 580 tests
 ```
 
 ### DSH 分析引擎配置
