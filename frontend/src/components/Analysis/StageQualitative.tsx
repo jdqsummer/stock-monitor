@@ -1,5 +1,6 @@
 import { Card, List, Space, Tag } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
+import { status } from '@/theme';
 import { EvidencePanel } from './EvidencePanel';
 
 function Block({ title, text }: { title: string; text?: string }) {
@@ -37,7 +38,7 @@ export function StageQualitative({ snap }: { snap: WatchlistBoardRow }) {
             <List
               size="small"
               dataSource={op.profit_quality_warnings}
-              renderItem={(w: string) => <List.Item style={{ color: '#faad14' }}>{w}</List.Item>}
+              renderItem={(w: string) => <List.Item style={{ color: status.warning }}>{w}</List.Item>}
             />
           )}
         </div>

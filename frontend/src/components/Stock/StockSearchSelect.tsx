@@ -3,6 +3,7 @@ import { AutoComplete, Card, Descriptions, Spin, Tag } from 'antd';
 import type { StockQuote } from '@/types';
 import { watchlistApi } from '@/api/client';
 import { currencyOf, marketLabel } from '@/utils/market';
+import { market as marketColor } from '@/theme';
 
 interface Props {
   onSelect: (stock: StockQuote) => void;
@@ -10,7 +11,7 @@ interface Props {
 }
 
 // 涨红跌绿
-const changeColor = (v: number) => (v > 0 ? '#f5222d' : v < 0 ? '#389e0d' : '#888');
+const changeColor = (v: number) => (v > 0 ? marketColor.up : v < 0 ? marketColor.down : marketColor.flat);
 
 const formatCap = (v: number) => (v >= 10000 ? `${(v / 10000).toFixed(2)} 万亿` : `${v.toFixed(2)} 亿`);
 

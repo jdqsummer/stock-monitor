@@ -17,8 +17,8 @@ body {
   transition: background-color 0.2s, border-color 0.2s;
 }
 .editable-cell:hover {
-  background-color: rgba(64, 169, 255, 0.08);
-  border-bottom-color: #40a9ff;
+  background-color: rgba(77, 111, 254, 0.08);
+  border-bottom-color: #4D6EFE;
 }
 .editable-cell .editable-cell-icon {
   font-size: 12px;
@@ -35,6 +35,12 @@ body {
   white-space: nowrap;
   padding: 4px 0;
   font-size: 12px;
+}
+/* 错误/告警类消息（api_config/dsh_error/llm_error）：琥珀警示底 + 深琥珀字（AA 对比度） */
+.header-ticker.is-warning {
+  background: #FFF7E6;
+  color: #AD6800;
+  border-bottom: 1px solid #FFE58F;
 }
 .header-ticker-track {
   display: inline-block;

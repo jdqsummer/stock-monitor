@@ -12,6 +12,7 @@ import { TypingCursor } from './TypingCursor';
 import { ThinkingSpinner } from './ThinkingSpinner';
 import { Markdown } from './markdown';
 import { ds } from './theme';
+import { status } from '@/theme';
 
 export interface DisplayToolCall {
   name: string;
@@ -205,11 +206,11 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
             </div>
           )}
 
-          {/* 五段式分析失败提示（数据色红，不动） */}
+          {/* 五段式分析失败提示（错误语义，用全局错误红） */}
           {!isUser && msg.jobError && (
             <div style={{
               padding: '8px 12px', borderRadius: 8, background: '#fff1f0',
-              border: '1px solid #ffccc7', color: '#cf1322', fontSize: 13,
+              border: '1px solid #ffccc7', color: status.error, fontSize: 13,
             }}>
               ⚠️ {msg.jobError}
             </div>

@@ -1,11 +1,11 @@
 // frontend/src/pages/chat/theme.ts
-/** DeepSeek 浅色设计 token — 映射参考 deepseek-chat-replica.html 的 :root 变量 */
+/** DeepSeek 浅色设计 token — 映射参考 deepseek-chat-replica.html 的 :root 变量。
+ *  品牌色自全局 token（@/theme）取值，chat 专属的面板/文字/边框灰阶仍在此定义。 */
+import { brand } from '@/theme';
+
 export const ds = {
-  // Brand
-  primary: '#4D6EFE',
-  primaryHover: '#3D5EE0',
-  primarySoft: '#E8EEFF',
-  primarySelected: '#EEF2FF',
+  // Brand（单一来源：@/theme）
+  ...brand,
   gradientStart: '#4D6EFE',
   gradientEnd: '#7B5BFF',
 

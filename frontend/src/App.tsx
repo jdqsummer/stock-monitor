@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, App as AntdApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+import { brand } from '@/theme';
+import { ErrorBoundary } from '@/components/Common/ErrorBoundary';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
@@ -20,23 +22,34 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          colorPrimary: brand.primary,
+          colorInfo: brand.primary,
+          borderRadius: 8,
+        },
+      }}
+    >
       <AntdApp>
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
-              <Route index element={<Dashboard />} />
-              <Route path="watchlist" element={<Watchlist />} />
-              <Route path="stock/:code" element={<StockDetail />} />
-              <Route path="portfolio" element={<Portfolio />} />
-              <Route path="portfolio/:id" element={<PositionDetail />} />
-              <Route path="analysis" element={<Analysis />} />
-              <Route path="chat" element={<Chat />} />
-              <Route path="diary" element={<Diary />} />
-              <Route path="settings" element={<Settings />} />
-            </Route>
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
+                <Route index element={<Dashboard />} />
+                <Route path="watchlist" element={<Watchlist />} />
+                <Route path="stock/:code" element={<StockDetail />} />
+                <Route path="portfolio" element={<Portfolio />} />
+                <Route path="portfolio/:id" element={<PositionDetail />} />
+                <Route path="analysis" element={<Analysis />} />
+                <Route path="chat" element={<Chat />} />
+                <Route path="diary" element={<Diary />} />
+                <Route path="settings" element={<Settings />} />
+              </Route>
+            </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </AntdApp>
     </ConfigProvider>

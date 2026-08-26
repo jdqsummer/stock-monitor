@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
 import { Alert, Button, Divider, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
+import type { TagProps } from 'antd';
 import { Link } from 'react-router-dom';
 import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { analysisApi, configApi, watchlistApi } from '@/api/client';
+import { brandTagStyle } from '@/theme';
 import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
 import { currencyOf } from '@/utils/market';
 import type { LLMModelInfo, StockQuote, UserConfig, WatchlistItem } from '@/types';
 
-const SOURCE_TAG: Record<string, { color: string; text: string }> = {
-  'dsh-llm': { color: 'blue', text: 'DSH LLM' },
-  'rule-based': { color: 'orange', text: '纯规则' },
-  mock: { color: 'default', text: '测试数据' },
-  manual: { color: 'default', text: '手动' },
+// 来源标签：DSH LLM 用品牌软底（antd 预设 'blue' 是固定调色板蓝 #1677ff，与品牌主色冲突）
+const SOURCE_TAG: Record<string, { props: TagProps; text: string }> = {
+  'dsh-llm': { props: { style: brandTagStyle }, text: 'DSH LLM' },
+  'rule-based': { props: { color: 'orange' }, text: '纯规则' },
+  mock: { props: { color: 'default' }, text: '测试数据' },
+  manual: { props: { color: 'default' }, text: '手动' },
 };
 
 export function Watchlist() {
@@ -193,7 +196,7 @@ export function Watchlist() {
       render: (v: string | null) => {
         if (!v) return '-';
         const cfg = SOURCE_TAG[v];
-        return cfg ? <Tag color={cfg.color}>{cfg.text}</Tag> : <Tag>{v}</Tag>;
+        return cfg ? <Tag {...cfg.props}>{cfg.text}</Tag> : <Tag>{v}</Tag>;
       } },
     { title: '操作', key: 'action', width: 80,
       render: (_: unknown, record: WatchlistItem) => (

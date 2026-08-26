@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Alert, Button, Card, Divider, Form, Input, InputNumber, Select, Space, Switch, Tabs, Tag, Tooltip, message } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { configApi } from '@/api/client';
+import { brandTagStyle, status } from '@/theme';
 import type { LLMModelInfo, UserConfig } from '@/types';
 
 const VENDORS: {
@@ -89,11 +90,11 @@ export function Settings() {
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           <div>
             当前默认模型：{ready
-              ? <Tag color="blue">{models.find(m => m.model_id === defaultModel)?.display_name || defaultModel}</Tag>
+              ? <Tag style={brandTagStyle}>{models.find(m => m.model_id === defaultModel)?.display_name || defaultModel}</Tag>
               : '—'}
           </div>
           {ready && (llmReady
-            ? <div style={{ color: '#3f8600' }}>✅ {defaultProvider} API Key 已配置，LLM 深度分析可用</div>
+            ? <div style={{ color: status.success }}>✅ {defaultProvider} API Key 已配置，LLM 深度分析可用</div>
             : llmWarning && <Alert type="warning" showIcon message="未配置 LLM API Key，股票分析将降级为纯规则计算。"
                 description="请在下方「LLM 模型配置」为对应厂商填写 API Key。" />)}
         </Space>

@@ -23,9 +23,11 @@ export function HeaderTicker({ items, enabled }: Props) {
   const text = sorted
     .map(r => `【${r.title || categoryMeta(r.category).label}】${r.message}`)
     .join('　·　');
+  // 错误/告警类（categoryMeta 标 orange）优先：整条跑马灯切琥珀警示底，避免错误消息被"安全绿"包裹
+  const hasWarning = sorted.some(r => categoryMeta(r.category).color === 'orange');
 
   return (
-    <div className="header-ticker">
+    <div className={hasWarning ? 'header-ticker is-warning' : 'header-ticker'}>
       <div className="header-ticker-track">{text}</div>
     </div>
   );

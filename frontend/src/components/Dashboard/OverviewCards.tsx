@@ -1,9 +1,10 @@
 import { Row, Col, Card, Statistic } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import type { DashboardOverview } from '@/types';
+import { market } from '@/theme';
 
 export function OverviewCards({ data }: { data: DashboardOverview }) {
-  const plColor = data.total_pl >= 0 ? '#cf1322' : '#3f8600';
+  const plColor = data.total_pl >= 0 ? market.up : market.down;
 
   return (
     <Row gutter={16}>
@@ -27,7 +28,7 @@ export function OverviewCards({ data }: { data: DashboardOverview }) {
       </Col>
       <Col span={6}>
         <Card>
-          <Statistic title="当日盈亏" value={data.daily_pl} precision={2} suffix="元" valueStyle={{ color: data.daily_pl >= 0 ? '#cf1322' : '#3f8600' }} />
+          <Statistic title="当日盈亏" value={data.daily_pl} precision={2} suffix="元" valueStyle={{ color: data.daily_pl >= 0 ? market.up : market.down }} />
         </Card>
       </Col>
       <Col span={6}>

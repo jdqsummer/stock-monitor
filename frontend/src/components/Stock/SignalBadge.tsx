@@ -1,20 +1,21 @@
 import { Tag } from 'antd';
 import type { Signal } from '@/types';
+import { signal } from '@/theme';
 
 const SIGNAL_CONFIG: Record<Signal, { color: string; text: string; icon: string }> = {
-  green:  { color: '#52c41a', text: '击球区', icon: '🟢' },
-  yellow: { color: '#faad14', text: '观察区', icon: '🟡' },
-  red:    { color: '#ff4d4f', text: '高估区', icon: '🔴' },
-  none:   { color: '#bfbfbf', text: '未分析', icon: '⚪' },
-  unquantifiable: { color: '#bfbfbf', text: 'N/A', icon: '⚫' },
+  green:  { color: signal.green, text: '击球区', icon: '🟢' },
+  yellow: { color: signal.yellow, text: '观察区', icon: '🟡' },
+  red:    { color: signal.red, text: '高估区', icon: '🔴' },
+  none:   { color: signal.none, text: '未分析', icon: '⚪' },
+  unquantifiable: { color: signal.none, text: 'N/A', icon: '⚫' },
 };
 
 const SELL_CONFIG: Record<Signal, { color: string; text: string; icon: string }> = {
-  green:  { color: '#52c41a', text: '继续持有', icon: '🟢' },
-  yellow: { color: '#faad14', text: '接近卖出区', icon: '🟡' },
-  red:    { color: '#ff4d4f', text: '建议卖出', icon: '🔴' },
-  none:   { color: '#bfbfbf', text: '未分析', icon: '⚪' },
-  unquantifiable: { color: '#bfbfbf', text: 'N/A', icon: '⚫' },
+  green:  { color: signal.green, text: '继续持有', icon: '🟢' },
+  yellow: { color: signal.yellow, text: '接近卖出区', icon: '🟡' },
+  red:    { color: signal.red, text: '建议卖出', icon: '🔴' },
+  none:   { color: signal.none, text: '未分析', icon: '⚪' },
+  unquantifiable: { color: signal.none, text: 'N/A', icon: '⚫' },
 };
 
 export function SignalBadge({ signal, distancePct, sell }: {

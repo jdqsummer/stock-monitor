@@ -1,11 +1,12 @@
 import { Alert, Card, List } from 'antd';
 import type { WatchlistBoardRow } from '@/types';
+import { signal } from '@/theme';
 import { EvidencePanel } from './EvidencePanel';
 
 const RATING_COLOR: Record<string, string> = {
-  '🟢': '#52c41a',
-  '🟡': '#faad14',
-  '🔴': '#ff4d4f',
+  '🟢': signal.green,
+  '🟡': signal.yellow,
+  '🔴': signal.red,
 };
 
 export function StageConclusion({ snap }: { snap: WatchlistBoardRow }) {

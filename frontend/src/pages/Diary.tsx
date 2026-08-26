@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Empty, Modal, Spin, message as antMsg } from 'antd';
 import { FolderAddOutlined, FileAddOutlined } from '@ant-design/icons';
 import { diaryApi } from '@/api/client';
+import { status } from '@/theme';
 import type { DiaryEntry, DiaryFolderNode, DiaryTree } from '@/types';
 import { DiaryFileTree } from './diary/DiaryFileTree';
 import { DiaryEditor } from './diary/DiaryEditor';
@@ -324,8 +325,8 @@ export function Diary() {
               </span>
               {saveStatus === 'dirty' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>编辑中…</span>}
               {saveStatus === 'saving' && <span style={{ fontSize: 12, color: '#8A8A8A' }}>保存中…</span>}
-              {saveStatus === 'saved' && <span style={{ fontSize: 12, color: '#52c41a' }}>已保存</span>}
-              {saveStatus === 'error' && <span style={{ fontSize: 12, color: '#ff4d4f' }}>保存失败，自动重试</span>}
+              {saveStatus === 'saved' && <span style={{ fontSize: 12, color: status.success }}>已保存</span>}
+              {saveStatus === 'error' && <span style={{ fontSize: 12, color: status.error }}>保存失败，自动重试</span>}
             </div>
             <div style={{ padding: '16px 20px' }}>
               <DiaryEditor initialMarkdown={entry.content} onChange={handleDraftContentChange} />

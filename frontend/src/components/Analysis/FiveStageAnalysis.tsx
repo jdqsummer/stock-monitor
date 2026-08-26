@@ -1,5 +1,6 @@
 import { Card, Descriptions, Space, Tag } from 'antd';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
+import { status } from '@/theme';
 import type { WatchlistBoardRow } from '@/types';
 import { StageData } from './StageData';
 import { StageQualitative } from './StageQualitative';
@@ -31,7 +32,7 @@ function LegacyView({ snap }: { snap: WatchlistBoardRow }) {
       </Card>
       <Card title="结论与建议">
         {snap.unassessable_risk && (
-          <div style={{ color: '#ff4d4f', fontWeight: 600, marginBottom: 8 }}>⚠️ 安全边际无法评估，坚决放弃</div>
+          <div style={{ color: status.error, fontWeight: 600, marginBottom: 8 }}>⚠️ 安全边际无法评估，坚决放弃</div>
         )}
         {snap.conclusion && <p style={{ color: '#666', lineHeight: 1.8 }}>{snap.conclusion}</p>}
         <p style={{ fontSize: 16 }}>{snap.recommendation || '（未给出）'}</p>

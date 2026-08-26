@@ -10,6 +10,7 @@ import { EditableCell } from '@/components/Portfolio/EditableCell';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
 import { currencyOf } from '@/utils/market';
+import { market } from '@/theme';
 import type { LLMModelInfo, PositionInfo, StockQuote, UserConfig } from '@/types';
 
 export function Portfolio() {
@@ -151,15 +152,15 @@ export function Portfolio() {
       render: (v: number | null, r: PositionInfo) => v == null ? '-' : `${currencyOf(r.stock_code)}${v.toFixed(2)}` },
     { title: '当日盈亏', dataIndex: 'daily_pl', width: 100,
       render: (v: number | null, r: PositionInfo) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>{currencyOf(r.stock_code)}{v.toFixed(2)}</span>
+        <span style={{ color: v >= 0 ? market.up : market.down }}>{currencyOf(r.stock_code)}{v.toFixed(2)}</span>
       ) },
     { title: '盈亏金额', dataIndex: 'profit_loss', width: 100,
       render: (v: number | null, r: PositionInfo) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>{currencyOf(r.stock_code)}{v.toFixed(2)}</span>
+        <span style={{ color: v >= 0 ? market.up : market.down }}>{currencyOf(r.stock_code)}{v.toFixed(2)}</span>
       ) },
     { title: '盈亏比例', dataIndex: 'profit_loss_pct', width: 90,
       render: (v: number | null) => v == null ? '-' : (
-        <span style={{ color: v >= 0 ? '#cf1322' : '#3f8600' }}>{v.toFixed(2)}%</span>
+        <span style={{ color: v >= 0 ? market.up : market.down }}>{v.toFixed(2)}%</span>
       ) },
     { title: '持仓比例', dataIndex: 'position_ratio', width: 90,
       render: (v: number | null) => v == null ? '-' : `${(v * 100).toFixed(2)}%` },
