@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Badge, Button, List, Drawer, Tag } from 'antd';
+import { Badge, Button, Empty, List, Drawer, Tag } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import type { Reminder } from '@/types';
 import { categoryMeta } from '@/utils/messageCategories';
@@ -23,6 +23,7 @@ export function ReminderBell({ items, enabled, markAllRead }: Props) {
         extra={<Button size="small" onClick={() => markAllRead()}>全部已读</Button>}>
         <List
           dataSource={items}
+          locale={{ emptyText: <Empty description="暂无消息" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
           renderItem={r => (
             <List.Item>
               <List.Item.Meta

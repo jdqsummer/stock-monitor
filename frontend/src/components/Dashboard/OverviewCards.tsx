@@ -8,10 +8,10 @@ export function OverviewCards({ data }: { data: DashboardOverview }) {
 
   return (
     <Row gutter={16}>
-      <Col span={6}>
+      <Col xs={24} sm={12} xl={6}>
         <Card><Statistic title="总市值" value={data.total_market_value} precision={2} suffix="元" /></Card>
       </Col>
-      <Col span={6}>
+      <Col xs={24} sm={12} xl={6}>
         <Card>
           <Statistic
             title="总盈亏"
@@ -23,15 +23,15 @@ export function OverviewCards({ data }: { data: DashboardOverview }) {
           />
         </Card>
       </Col>
-      <Col span={6}>
+      <Col xs={24} sm={12} xl={6}>
         <Card><Statistic title="总盈亏率" value={data.total_pl_pct} precision={2} suffix="%" valueStyle={{ color: plColor }} /></Card>
       </Col>
-      <Col span={6}>
+      <Col xs={24} sm={12} xl={6}>
         <Card>
           <Statistic title="当日盈亏" value={data.daily_pl} precision={2} suffix="元" valueStyle={{ color: data.daily_pl >= 0 ? market.up : market.down }} />
         </Card>
       </Col>
-      <Col span={6}>
+      <Col xs={24} sm={12} xl={6}>
         <Card><Statistic title="持仓数量" value={data.position_count} suffix={` (${data.profit_count}盈/${data.loss_count}亏)`} /></Card>
       </Col>
     </Row>

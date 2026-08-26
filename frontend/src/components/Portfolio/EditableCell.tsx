@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { DatePicker, InputNumber } from 'antd';
 import type { InputNumberProps } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import { EditOutlined, LoadingOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 interface EditableCellProps {
@@ -27,13 +28,26 @@ export function EditableCell({ value, type, unit, onSave }: EditableCellProps) {
     }
   };
 
+  // 非编辑态：可点击/回车进入编辑；保存中降透明度并以旋转图标反馈
+  const startEdit = () => { if (saving) return; setDraft(value); setEditing(true); };
+  const displaySpan = (display: ReactNode) => (
+    <span
+      className="editable-cell"
+      role="button"
+      tabIndex={0}
+      onClick={startEdit}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEdit(); } }}
+      style={saving ? { opacity: 0.6 } : undefined}
+    >
+      {display}
+      {saving ? <LoadingOutlined spin className="editable-cell-icon" /> : <EditOutlined className="editable-cell-icon" />}
+    </span>
+  );
+
   if (type === 'date') {
     if (!editing) {
-      return (
-        <span className="editable-cell" onClick={() => { setDraft(value); setEditing(true); }}>
-          {value ? dayjs(String(value)).format('YYYY-MM-DD') : <span className="editable-cell-empty">点击编辑</span>}
-          <EditOutlined className="editable-cell-icon" />
-        </span>
+      return displaySpan(
+        value ? dayjs(String(value)).format('YYYY-MM-DD') : <span className="editable-cell-empty">点击编辑</span>,
       );
     }
     return (
@@ -51,11 +65,8 @@ export function EditableCell({ value, type, unit, onSave }: EditableCellProps) {
   }
 
   if (!editing) {
-    return (
-      <span className="editable-cell" onClick={() => { setDraft(value); setEditing(true); }}>
-        {value != null ? `${value}${unit ?? ''}` : <span className="editable-cell-empty">点击编辑</span>}
-        <EditOutlined className="editable-cell-icon" />
-      </span>
+    return displaySpan(
+      value != null ? `${value}${unit ?? ''}` : <span className="editable-cell-empty">点击编辑</span>,
     );
   }
   const numProps: InputNumberProps = {

@@ -33,7 +33,10 @@ export function ChatSidebar({ history, activeId, onSelect, onNewChat, onDelete, 
       <div
         key={item.id}
         className={active ? 'cc-item is-active' : 'cc-item'}
+        role="button"
+        tabIndex={0}
         onClick={() => onSelect(item)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(item); } }}
         style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', margin: '1px 0',
           borderRadius: 10, cursor: 'pointer', position: 'relative',
@@ -44,32 +47,38 @@ export function ChatSidebar({ history, activeId, onSelect, onNewChat, onDelete, 
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.summary || '新对话'}
         </span>
-        <span
+        <button
+          type="button"
           className={item.pinned ? 'cc-pin is-pinned' : 'cc-pin'}
           title={item.pinned ? '取消置顶' : '置顶'}
+          aria-label={item.pinned ? '取消置顶' : '置顶'}
           onClick={(e) => { e.stopPropagation(); onTogglePin(item); }}
           style={{
             width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             borderRadius: 4, transition: 'background 0.12s ease, color 0.12s ease', flexShrink: 0,
+            border: 'none', background: 'transparent', padding: 0, cursor: 'pointer',
           }}
         >
           <PinIcon pinned={!!item.pinned} />
-        </span>
+        </button>
         <Popconfirm
           title="确定删除？"
           onConfirm={(e) => { e?.stopPropagation(); onDelete(item.id); }}
           onCancel={(e) => e?.stopPropagation()}
         >
-          <span
+          <button
+            type="button"
             className="cc-more"
+            aria-label="会话操作"
             onClick={(e) => e.stopPropagation()}
             style={{
               width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: 4, transition: 'background 0.12s ease, color 0.12s ease', flexShrink: 0,
+              border: 'none', background: 'transparent', padding: 0, cursor: 'pointer',
             }}
           >
             <EllipsisIcon />
-          </span>
+          </button>
         </Popconfirm>
       </div>
     );

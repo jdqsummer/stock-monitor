@@ -7,6 +7,7 @@ import { PositionFiveStageAnalysis } from '@/components/Analysis/FiveStageAnalys
 import { Loading } from '@/components/Common/Loading';
 import { getErrorMessage } from '@/utils/error';
 import { currencyOf } from '@/utils/market';
+import { market } from '@/theme';
 import type { PositionDetail as PositionDetailType } from '@/types';
 
 export function PositionDetail() {
@@ -62,8 +63,12 @@ export function PositionDetail() {
           <Descriptions.Item label="成本价">{p.cost_price != null ? `${currencyOf(p.stock_code)}${p.cost_price.toFixed(2)}` : '-'}</Descriptions.Item>
           <Descriptions.Item label="现价">{p.current_price != null ? `${currencyOf(p.stock_code)}${p.current_price.toFixed(2)}` : '-'}</Descriptions.Item>
           <Descriptions.Item label="持有市值">{p.holding_value != null ? `${currencyOf(p.stock_code)}${p.holding_value.toFixed(2)}` : '-'}</Descriptions.Item>
-          <Descriptions.Item label="盈亏金额">{p.profit_loss != null ? `${currencyOf(p.stock_code)}${p.profit_loss.toFixed(2)}` : '-'}</Descriptions.Item>
-          <Descriptions.Item label="盈亏比例">{p.profit_loss_pct != null ? `${p.profit_loss_pct.toFixed(2)}%` : '-'}</Descriptions.Item>
+          <Descriptions.Item label="盈亏金额">{p.profit_loss != null
+            ? <span style={{ color: p.profit_loss >= 0 ? market.up : market.down }}>{currencyOf(p.stock_code)}{p.profit_loss.toFixed(2)}</span>
+            : '-'}</Descriptions.Item>
+          <Descriptions.Item label="盈亏比例">{p.profit_loss_pct != null
+            ? <span style={{ color: p.profit_loss_pct >= 0 ? market.up : market.down }}>{p.profit_loss_pct.toFixed(2)}%</span>
+            : '-'}</Descriptions.Item>
           <Descriptions.Item label="持仓比例">{p.position_ratio != null ? `${(p.position_ratio * 100).toFixed(2)}%` : '-'}</Descriptions.Item>
           <Descriptions.Item label="持有天数">{p.holding_days ?? '-'}天</Descriptions.Item>
         </Descriptions>

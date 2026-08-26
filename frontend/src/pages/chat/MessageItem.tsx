@@ -1,13 +1,14 @@
 /** DeepSeek 浅色风格单条消息：用户浅灰轻块 / 助手文本流 + 工具卡片 + 分析卡片 + hover 操作行 */
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Avatar, Button, Input, Modal, Spin, Tag } from 'antd';
+import { Avatar, Button, Input, Modal, Spin } from 'antd';
 import {
   CopyOutlined, DislikeFilled, DislikeOutlined, LikeFilled, LikeOutlined,
   ReloadOutlined, RobotOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import type { Signal, WatchlistBoardRow } from '@/types';
+import type { WatchlistBoardRow } from '@/types';
+import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { TypingCursor } from './TypingCursor';
 import { ThinkingSpinner } from './ThinkingSpinner';
 import { Markdown } from './markdown';
@@ -38,15 +39,6 @@ interface Props {
   isLast: boolean;
   canRegenerate: boolean;
   onRegenerate: (msg: DisplayMessage) => void;
-}
-
-function signalColor(signal?: Signal | null): string {
-  switch (signal) {
-    case 'green': return 'green';
-    case 'yellow': return 'gold';
-    case 'red': return 'red';
-    default: return 'default';
-  }
 }
 
 function toolLabel(name: string): string {
@@ -188,9 +180,8 @@ export function MessageItem({ msg, loading, isLast, canRegenerate, onRegenerate 
               padding: '10px 12px', borderRadius: 8, background: ds.bgSoft,
               border: `1px solid ${ds.borderLight}`,
             }}>
-              <Tag color={signalColor(msg.analysisResult.signal)}>
-                {msg.analysisResult.signal_label ?? msg.analysisResult.signal ?? '-'}
-              </Tag>
+              {/* 信号徽标与详情页同一组件，保证全站同一形态 */}
+              <SignalBadge signal={msg.analysisResult.signal ?? 'none'} distancePct={null} />
               <div style={{ color: ds.textPrimary, fontSize: 13, marginTop: 4 }}>
                 击球区：{msg.analysisResult.swing_price ?? '-'}　距击球区：{msg.analysisResult.distance_pct ?? '-'}%
               </div>

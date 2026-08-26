@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Tooltip, message as antMsg } from 'antd';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -16,6 +16,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from '@tiptap/markdown';
 import { diaryApi } from '@/api/client';
 import { border, surface } from '@/theme';
+import { Input, Modal } from 'antd';
 
 interface DiaryEditorProps {
   initialMarkdown: string;
@@ -46,6 +47,8 @@ function Tb({ title, active, onClick, children }: TbProps) {
 }
 
 export function DiaryEditor({ initialMarkdown, onChange }: DiaryEditorProps) {
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
   /** 上传图片并插入编辑器；失败不插入，仅提示 */
   const insertImage = async (file: File) => {
     try {
@@ -116,8 +119,16 @@ export function DiaryEditor({ initialMarkdown, onChange }: DiaryEditorProps) {
   const chain = () => editor.chain().focus();
 
   const setLink = () => {
-    const url = window.prompt('链接地址');
+    // 预填当前链接，便于编辑；清空确定 = 取消链接
+    setLinkUrl((editor.getAttributes('link').href as string) ?? '');
+    setLinkModalOpen(true);
+  };
+
+  const applyLink = () => {
+    const url = linkUrl.trim();
     if (url) editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    else editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    setLinkModalOpen(false);
   };
 
   const insertTable = () => {
@@ -168,6 +179,22 @@ export function DiaryEditor({ initialMarkdown, onChange }: DiaryEditorProps) {
       >
         <EditorContent editor={editor} />
       </div>
+      <Modal
+        title="插入链接"
+        open={linkModalOpen}
+        onOk={applyLink}
+        onCancel={() => setLinkModalOpen(false)}
+        okText="确定"
+        cancelText="取消"
+      >
+        <Input
+          autoFocus
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+          placeholder="https://..."
+          onPressEnter={applyLink}
+        />
+      </Modal>
     </div>
   );
 }

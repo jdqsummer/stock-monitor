@@ -216,7 +216,7 @@ export function Analysis() {
               <Button type="primary" icon={<PlusOutlined />} disabled={inWatchlist} loading={adding} onClick={handleAdd}>
                 {inWatchlist ? '已在自选股' : '加入自选股'}
               </Button>
-              {inWatchlist && <Button><Link to="/watchlist">去自选股查看</Link></Button>}
+              {inWatchlist && <Button onClick={() => navigate('/watchlist')}>去自选股查看</Button>}
               <Button onClick={() => navigate(`/stock/${snap.code}`)}>查看详情</Button>
             </Space>
           </Card>

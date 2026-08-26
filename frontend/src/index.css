@@ -22,19 +22,23 @@ body {
 }
 .editable-cell .editable-cell-icon {
   font-size: 12px;
-  color: #bbb;
+  color: #8A8A8A;
 }
 .editable-cell-empty {
-  color: #888;
+  color: #8A8A8A;
 }
 
 .header-ticker {
-  background: #22C55E;
+  background: #15803D;
   color: #fff;
   overflow: hidden;
   white-space: nowrap;
   padding: 4px 0;
   font-size: 12px;
+}
+/* 悬停暂停滚动，便于驻留阅读某条行情/提醒 */
+.header-ticker:hover .header-ticker-track {
+  animation-play-state: paused;
 }
 /* 错误/告警类消息（api_config/dsh_error/llm_error）：琥珀警示底 + 深琥珀字（AA 对比度） */
 .header-ticker.is-warning {
@@ -61,6 +65,11 @@ body {
 .cc-item.is-active:hover { background: #EEF2FF; }
 .cc-item.is-active .cc-more { color: #4D6EFE; }
 
+/* 键盘可达：会话项聚焦时高亮，并显形默认隐藏的置顶/更多按钮 */
+.cc-item:focus-visible { outline: 2px solid #4D6EFE; outline-offset: -2px; }
+.cc-item:focus-within .cc-more,
+.cc-item:focus-within .cc-pin { color: #8A8A8A; }
+
 /* Chat 侧栏（DeepSeek 浅色）：置顶按钮 hover/激活 */
 .cc-pin { color: transparent; }
 .cc-item:hover .cc-pin { color: #8A8A8A; }
@@ -83,7 +92,7 @@ body {
 .diary-tree .diary-node-title .diary-node-name {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.diary-tree .diary-node-title .diary-node-meta { color: #B5B5B5; font-size: 11px; }
+.diary-tree .diary-node-title .diary-node-meta { color: #8A8A8A; font-size: 11px; }
 .diary-tree .diary-rename-input {
   height: 22px; font-size: 13px; padding: 0 4px;
   border: 1px solid #4D6EFE; border-radius: 4px; outline: none;
@@ -113,7 +122,7 @@ body {
 .diary-reader ul.contains-task-list { list-style: none; padding-left: 4px; }
 .diary-reader ul.contains-task-list li { display: flex; align-items: flex-start; gap: 8px; }
 .diary-editor .tiptap p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder); float: left; color: #B5B5B5; pointer-events: none; height: 0;
+  content: attr(data-placeholder); float: left; color: #8A8A8A; pointer-events: none; height: 0;
 }
 .diary-toolbar-btn { height: 28px; min-width: 28px; padding: 0 6px; border-radius: 6px;
   display: inline-flex; align-items: center; justify-content: center;

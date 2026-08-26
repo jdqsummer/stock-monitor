@@ -118,7 +118,7 @@ export function ChatComposer({
           </button>
         </div>
       </div>
-      <div style={{ maxWidth: 760, margin: '8px auto 0', padding: '0 28px 18px', textAlign: 'center', fontSize: 12, color: ds.textTertiary }}>
+      <div style={{ maxWidth: 760, margin: '8px auto 0', padding: '0 28px 18px', textAlign: 'center', fontSize: 12, color: ds.textSecondary }}>
         <span>内容由 AI 生成，请仔细甄别</span>
       </div>
     </div>
