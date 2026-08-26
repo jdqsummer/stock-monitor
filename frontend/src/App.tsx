@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, App as AntdApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { brand } from '@/theme';
+import { syncAuthCookie } from '@/api/authCookie';
 import { ErrorBoundary } from '@/components/Common/ErrorBoundary';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { Login } from '@/pages/Login';
@@ -17,7 +18,11 @@ import { Settings } from '@/pages/Settings';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
-  return token ? <>{children}</> : <Navigate to="/login" />;
+  if (token) {
+    syncAuthCookie(); // 已登录但镜像 cookie 缺失/过期 → 补写（<img> 鉴权依赖）
+    return <>{children}</>;
+  }
+  return <Navigate to="/login" />;
 }
 
 export default function App() {

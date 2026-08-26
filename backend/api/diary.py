@@ -64,19 +64,27 @@ async def upload_diary_image(
     if len(data) > settings.DIARY_IMAGE_MAX_SIZE_MB * 1024 * 1024:
         raise HTTPException(status_code=400,
                             detail=f"图片超过 {settings.DIARY_IMAGE_MAX_SIZE_MB}MB 上限")
-    img_dir = Path(settings.DIARY_IMAGE_DIR)
+    # 每用户子目录存储：读取端点校验路径中的 user_id 归属（多用户互不可见）
+    img_dir = Path(settings.DIARY_IMAGE_DIR) / current_user.id
     img_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4().hex}.{ext}"
     (img_dir / filename).write_bytes(data)
-    return ApiResponse(data={"url": f"/api/diary/images/{filename}"})
+    return ApiResponse(data={"url": f"/api/diary/images/{current_user.id}/{filename}"})
 
 
-@router.get("/images/{filename}")
-async def get_diary_image(filename: str):
-    """公开读取已上传的笔记图片（<img> 无法携带 Authorization，故不鉴权）。"""
-    if Path(filename).name != filename:
+@router.get("/images/{user_id}/{filename}")
+async def get_diary_image(
+    user_id: str,
+    filename: str,
+    current_user: User = Depends(get_current_user),
+):
+    """读取笔记图片：登录态（header 或 cookie）+ 归属校验，非本人一律 404。"""
+    # 防路径穿越：两段都必须是纯名字
+    if Path(user_id).name != user_id or Path(filename).name != filename:
         raise HTTPException(status_code=404, detail="not found")
-    img_path = Path(settings.DIARY_IMAGE_DIR) / filename
+    if user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="not found")
+    img_path = Path(settings.DIARY_IMAGE_DIR) / user_id / filename
     if not img_path.is_file():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(img_path)

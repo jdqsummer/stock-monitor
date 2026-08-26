@@ -207,30 +207,6 @@ async def search_stock(keyword: str = Query(..., description="搜索关键词"))
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/report/{code}", response_model=AnalyzeResponse)
-async def get_report(
-    code: str,
-    industry: str = Query(default="", description="行业分类"),
-):
-    """
-    获取分析报告（Markdown 格式）。
-    """
-    try:
-        chain = create_analysis_chain()
-        report = await chain.analyze(code=code, industry=industry)
-        return {
-            "code": 0,
-            "data": {
-                "markdown": report.to_markdown(),
-                "summary": report.to_dict(),
-            },
-            "message": "ok",
-        }
-    except Exception as e:
-        logger.error(f"获取报告失败 {code}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/health")
 async def agent_health():
     """Agent 系统健康检查"""

@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
+import { clearAuthCookie } from '@/api/authCookie';
 import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryFolderNode, DiaryTree, DiaryRef, ToolCallEvent, ChatProfile } from '@/types';
 
 const client = axios.create({
@@ -25,6 +26,7 @@ client.interceptors.response.use(
     const url = error.config?.url || '';
     if (error.response?.status === 401 && !url.startsWith('/auth/')) {
       localStorage.removeItem('token');
+      clearAuthCookie();
       window.location.href = '/login';
     }
     return Promise.reject(error);

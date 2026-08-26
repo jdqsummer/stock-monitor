@@ -1,14 +1,22 @@
 # stock-monitor/backend/services/diary_svc.py
-"""投资笔记服务 — CRUD + 文件夹树 + 递归聚合"""
+"""投资笔记服务 — CRUD + 文件夹树 + 递归聚合 + 图片存量迁移"""
+import re
+import shutil
 import uuid
 from collections import defaultdict
+from pathlib import Path
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import settings
 from backend.models.diary import Diary, DiaryFolder
 
 _NOT_SET = object()  # 模块级：区分「未提供」与「显式置 None」
+
+# 旧版图片 URL：平铺根目录 /api/diary/images/{uuid4hex32}.{ext}（新版为
+# /api/diary/images/{user_id}/{hex}.{ext}，user_id 含连字符不会误命中）
+_LEGACY_IMG_RE = re.compile(r"/api/diary/images/([0-9a-f]{32})\.(png|jpeg|jpg|gif|webp)")
 
 
 class DiaryService:
@@ -201,3 +209,46 @@ class DiaryService:
             Diary.user_id == user_id,
             Diary.parent_folder_id.in_(to_collect)).order_by(Diary.created_at.asc()))
         return list(rows.scalars().all())
+
+
+async def migrate_legacy_diary_images(db: AsyncSession) -> dict:
+    """一次性迁移：旧版图片平铺在 DIARY_IMAGE_DIR 根目录且读取不鉴权；
+    新版按 {DIARY_IMAGE_DIR}/{user_id}/ 子目录存储并在读取时校验归属。
+
+    扫描全部笔记正文中的旧格式 URL：根目录存在对应文件则移入属主子目录并重写正文；
+    文件不存在（已删除）则不动正文，避免误改。孤儿文件（无任何正文引用，如上传后
+    未保存正文）无法归属 → 留在根目录，不再对外服务。幂等：二次执行零变更。
+    """
+    img_root = Path(settings.DIARY_IMAGE_DIR)
+    migrated_files = 0
+    rewritten_notes = 0
+    if not img_root.is_dir():
+        return {"migrated_files": 0, "rewritten_notes": 0}
+
+    rows = list((await db.execute(select(Diary))).scalars().all())
+    for note in rows:
+        if not note.content:
+            continue
+        hits = _LEGACY_IMG_RE.findall(note.content)
+        if not hits:
+            continue
+        new_content = note.content
+        changed = False
+        for fname, ext in hits:
+            src = img_root / f"{fname}.{ext}"
+            if not src.is_file():
+                continue
+            dst_dir = img_root / note.user_id
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dst_dir / src.name))
+            migrated_files += 1
+            changed = True
+        if changed:
+            new_content = _LEGACY_IMG_RE.sub(
+                lambda m: f"/api/diary/images/{note.user_id}/{m.group(1)}.{m.group(2)}",
+                note.content)
+            note.content = new_content
+            rewritten_notes += 1
+    if rewritten_notes:
+        await db.commit()
+    return {"migrated_files": migrated_files, "rewritten_notes": rewritten_notes}

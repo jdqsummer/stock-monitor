@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Button, message, Tabs } from 'antd';
 import { MailOutlined, LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { authApi } from '@/api/client';
+import { syncAuthCookie } from '@/api/authCookie';
 import { surface } from '@/theme';
 import { getErrorMessage } from '@/utils/error';
 import { ForgotPasswordModal } from '@/components/ForgotPasswordModal';
@@ -24,6 +25,7 @@ export function Login() {
       if (res.data.code === 0) {
         const token = (res.data.data as { access_token: string }).access_token;
         localStorage.setItem('token', token);
+        syncAuthCookie();
         message.success('登录成功，欢迎回来');
         navigate('/');
       }

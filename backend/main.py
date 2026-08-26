@@ -57,6 +57,15 @@ async def lifespan(app: FastAPI):
                       job_id="financials_refresh", name="财报数据刷新")
     scheduler.add_analysis_job(run_closing_tasks)           # 16:00 全局收盘任务
 
+    # 一次性迁移：旧版平铺根目录的笔记图片 → 按用户子目录（幂等，见 diary_svc）
+    from backend.db.database import async_session_factory
+    from backend.services.diary_svc import migrate_legacy_diary_images
+    async with async_session_factory() as session:
+        try:
+            await migrate_legacy_diary_images(session)
+        finally:
+            await session.close()
+
     await _reconcile_quote_and_auto(app)
     scheduler.start()
     # DataBridge MCP session manager（streamable-http 辅助通道）生命周期随 app 启停。

@@ -8,6 +8,7 @@ import { HeaderTicker } from './HeaderTicker';
 import { useUnreadMessages } from '@/hooks/useUnreadMessages';
 import { useAppStore } from '@/store';
 import { authApi } from '@/api/client';
+import { clearAuthCookie, syncAuthCookie } from '@/api/authCookie';
 
 const { Header, Sider, Content } = Layout;
 
@@ -17,16 +18,19 @@ export function AppLayout() {
   const { items, enabled, markAllRead } = useUnreadMessages();
 
   useEffect(() => {
+    syncAuthCookie(); // 刷新进入时重写镜像 cookie（防 max-age 过期后图片 401）
     authApi.getMe().then((res) => {
       setUser(res.data.data as never);
     }).catch(() => {
       localStorage.removeItem('token');
+      clearAuthCookie();
       navigate('/login');
     });
   }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    clearAuthCookie();
     navigate('/login');
   };
 
