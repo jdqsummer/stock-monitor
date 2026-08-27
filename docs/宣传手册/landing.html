@@ -93,6 +93,35 @@ a{color:var(--brand);text-decoration:none}
   .hero .sub{font-size:16px}
   .pain-grid{grid-template-columns:1fr}
 }
+
+/* 核心功能 */
+.feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:44px}
+.feature-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:28px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px}
+.feature-card h3{font-size:18px;display:flex;align-items:center;gap:10px}
+.feature-card .f-tag{font-size:12px;font-weight:600;color:var(--brand);background:var(--brand-soft);padding:2px 10px;border-radius:999px}
+.feature-card p{font-size:14px;color:var(--ink-2)}
+.feature-card.wide{grid-column:1/-1}
+.steps-list{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:8px}
+.steps-list li{font-size:13px;color:var(--ink);background:var(--bg-soft);border:1px solid var(--border);border-radius:999px;padding:5px 12px}
+.steps-list li b{color:var(--brand)}
+.shot-frame{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg);box-shadow:var(--shadow);position:relative}
+.shot-frame img{display:block;width:100%;height:auto}
+.shot-frame .shot-caption{position:absolute;left:12px;bottom:12px;font-size:12px;color:#fff;background:rgba(26,26,26,.66);padding:3px 10px;border-radius:999px}
+@media (max-width:768px){.feature-grid{grid-template-columns:1fr}.feature-card.wide{grid-column:auto}}
+
+/* 手绘 UI 示意（脱敏：演示数据） */
+.mock-ui{background:var(--bg-soft);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.mock-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 12px;font-size:13px}
+.mock-row .m-code{font-weight:600;color:var(--ink)}
+.mock-row .m-dist{color:var(--ink-3);font-variant-numeric:tabular-nums}
+.m-tag{font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px}
+.m-tag.g{color:#1d7a08;background:rgba(82,196,26,.14)}
+.m-tag.y{color:#ad6b00;background:rgba(250,173,20,.16)}
+.m-tag.r{color:#c13c3e;background:rgba(255,77,79,.13)}
+.mock-chat{gap:10px}
+.m-bubble{border-radius:10px;padding:9px 12px;font-size:13px;line-height:1.55;max-width:88%}
+.m-bubble.bot{background:var(--bg);border:1px solid var(--border);align-self:flex-start;color:var(--ink)}
+.m-bubble.user{background:var(--brand-soft);color:var(--ink);align-self:flex-end}
 </style>
 </head>
 <body>
@@ -136,6 +165,65 @@ a{color:var(--brand);text-decoration:none}
       <div class="pain-card reveal"><div class="p-emoji">⚖️</div><h3>没有纪律</h3><p>该买时犹豫、该卖时贪心，情绪主导决策，缺少一条铁律来约束自己。</p></div>
     </div>
     <div class="solve-box reveal"><strong>Stock Monitor 的解法：</strong>把一套成文的价值投资方法论（8 项原则 + 五段式分析 + 14 道逆向清单）工程化为可重复执行的 AI 流水线——让每一次判断都有方法、有依据、有纪律，帮您像机构投资者一样思考。</div>
+  </div>
+</section>
+<section class="section section-soft" id="features">
+  <div class="wrap">
+    <div class="center">
+      <span class="eyebrow reveal">核心功能</span>
+      <h2 class="reveal">从「看代码」到「看公司」</h2>
+      <p class="lead reveal">五段式分析 + 实时信号灯 + 持仓纪律，一站式覆盖选股、持有、卖出全流程。</p>
+    </div>
+    <div class="feature-grid">
+
+      <div class="feature-card wide reveal">
+        <h3>🔬 DSH 五段式分析 <span class="f-tag">AI 核心引擎</span></h3>
+        <p>DSH 分析引擎自动采集实时行情与近 8 期财报，注入只读上下文，按五段执行系统性分析——每一步都有方法，结论可溯源。</p>
+        <ul class="steps-list">
+          <li><b>① 定性</b>商业模式 / 护城河 / 经营质量</li>
+          <li><b>② PE 锚定</b>行业合理估值区间</li>
+          <li><b>③ 击球区</b>安全边际量化</li>
+          <li><b>④ 逆向清单</b>14 道证伪提问</li>
+          <li><b>⑤ 结论</b>先结论后建议</li>
+        </ul>
+        <div class="shot-frame reveal"><img src="screens/five-stage-analysis.png" alt="DSH 五段式分析结果页（示意截图）"><span class="shot-caption">五段式分析 · 真实产品界面</span></div>
+      </div>
+
+      <div class="feature-card reveal">
+        <h3>🟢🟡🔴 三色信号灯</h3>
+        <p>自选股实时安全边际监控看板：30 分钟行情刷新 + 16:00 收盘重算，信号一目了然。</p>
+        <div class="mock-ui">
+          <div class="mock-row"><span class="m-code">600519 贵州茅台</span><span class="m-tag g">🟢 击球区</span><span class="m-dist">距击球区 -8%</span></div>
+          <div class="mock-row"><span class="m-code">000858 五粮液</span><span class="m-tag y">🟡 观察区</span><span class="m-dist">距击球区 +18%</span></div>
+          <div class="mock-row"><span class="m-code">300750 宁德时代</span><span class="m-tag r">🔴 高估区</span><span class="m-dist">距击球区 +73%</span></div>
+        </div>
+      </div>
+
+      <div class="feature-card reveal">
+        <h3>💼 持仓卖出分析</h3>
+        <p>持仓股走 position 模式：4 大卖出原则 + 2 大规避陷阱，给出距卖出区信号——该持有还是该卖出，AI 帮你把纪律想清楚。</p>
+        <div class="mock-ui">
+          <div class="mock-row"><span class="m-code">00700 腾讯控股</span><span class="m-tag g">🟢 持有</span><span class="m-dist">距卖出区 -25%</span></div>
+          <div class="mock-row"><span class="m-code">000333 美的集团</span><span class="m-tag y">🟡 接近</span><span class="m-dist">距卖出区 -8%</span></div>
+          <div class="mock-row"><span class="m-code">601318 中国平安</span><span class="m-tag r">🔴 建议卖出</span><span class="m-dist">距卖出区 +12%</span></div>
+        </div>
+      </div>
+
+      <div class="feature-card reveal">
+        <h3>🤖 AI 投资小助手</h3>
+        <p>资深价值投资聊天机器人：SSE 流式对话、实时查询行情财报、L0→L3 记忆蒸馏——越聊越懂你的投资画像。</p>
+        <div class="mock-ui mock-chat">
+          <div class="m-bubble bot">贵州茅台当前快照：现价 ¥1,346，动态 PE ≈ 20.4，处于 🟡 观察区。商业模式与护城河已纳入五段分析，建议结合逆向清单评估安全边际。</div>
+          <div class="m-bubble user">帮我分析下宁德时代值不值得买？</div>
+        </div>
+      </div>
+
+      <div class="feature-card reveal">
+        <h3>📒 投资笔记 + 记忆</h3>
+        <p>Markdown 笔记 + 文件夹树，边写边存；@ 引用笔记即可让 AI 深度分析。你的每一次决策、复盘，都会蒸馏成越来越懂你的投资记忆。</p>
+      </div>
+
+    </div>
   </div>
 </section>
 <!-- @@SECTION@@ -->
