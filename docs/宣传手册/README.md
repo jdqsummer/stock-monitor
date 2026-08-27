@@ -16,11 +16,14 @@
 
 将 `landing.html` 与 `screens/` 放入 nginx 静态目录，作为独立路径 `/about` 提供：
 
-1. 服务器 `frontend_dist` 卷中新建 `about/` 目录，拷入两个文件
+1. 服务器 `frontend_dist` 卷中新建 `about/` 目录，拷入 `landing.html` 与 `screens/` 目录（即 `about/landing.html` + `about/screens/five-stage-analysis.png`）
 2. nginx location 添加：
    ```nginx
-   location = /about { try_files /about/landing.html =404; }
-   location /about/screens/ { alias /usr/share/nginx/html/about/screens/; }
+   location = /about { return 301 /about/; }
+   location /about/ {
+       alias /usr/share/nginx/html/about/;
+       index landing.html;
+   }
    ```
 3. `docker compose exec nginx nginx -s reload`
 

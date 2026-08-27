@@ -9,12 +9,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
   --brand:#4D6EFE;--brand-hover:#3D5EE0;--brand-soft:#E8EEFF;
-  --green:#52c41a;--yellow:#faad14;--red:#ff4d4f;
   --ink:#1A1A1A;--ink-2:#555;--ink-3:#8A8A8A;
   --bg:#fff;--bg-soft:#F5F7FA;--border:#ECECEC;
   --radius:16px;
   --shadow:0 8px 30px rgba(77,110,254,.10);
-  --shadow-lg:0 20px 50px rgba(77,110,254,.16);
 }
 html{scroll-behavior:smooth}
 body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg);line-height:1.65;-webkit-font-smoothing:antialiased}
@@ -47,9 +45,6 @@ a{color:var(--brand);text-decoration:none}
 /* 滚动入场 */
 .reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease}
 .reveal.in{opacity:1;transform:none}
-
-/* 卡片 */
-.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
 
 /* 页脚 */
 .site-footer{border-top:1px solid var(--border);padding:34px 0 44px;color:var(--ink-3);font-size:13px;text-align:center;line-height:2}
@@ -154,6 +149,7 @@ a{color:var(--brand);text-decoration:none}
   .checklist-note ul{grid-template-columns:1fr}
   .m-hide{display:none}
 }
+@media (prefers-reduced-motion: reduce){ .reveal{transition:none;transform:none;opacity:1} }
 </style>
 </head>
 <body>
@@ -218,7 +214,7 @@ a{color:var(--brand);text-decoration:none}
           <li><b>④ 逆向清单</b>14 道证伪提问</li>
           <li><b>⑤ 结论</b>先结论后建议</li>
         </ul>
-        <div class="shot-frame reveal"><img src="screens/five-stage-analysis.png" alt="DSH 五段式分析结果页（示意截图）"><span class="shot-caption">五段式分析 · 真实产品界面</span></div>
+        <div class="shot-frame reveal"><img src="screens/five-stage-analysis.png" alt="DSH 五段式分析结果页（真实产品截图）"><span class="shot-caption">五段式分析 · 真实产品界面</span></div>
       </div>
 
       <div class="feature-card reveal">
@@ -335,7 +331,6 @@ a{color:var(--brand);text-decoration:none}
     </div>
   </div>
 </section>
-<!-- @@SECTION@@ -->
 </main>
 <footer class="site-footer">
   <div class="wrap">
@@ -346,7 +341,7 @@ a{color:var(--brand);text-decoration:none}
 <script>
 (function(){
   var els = document.querySelectorAll('.reveal');
-  if(!('IntersectionObserver' in window)){els.forEach(function(e){e.classList.add('in')});return}
+  if(!('IntersectionObserver' in window)){[].forEach.call(els,function(e){e.classList.add('in')});return}
   var io = new IntersectionObserver(function(entries){
     entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target) } })
   }, {threshold:.12});
