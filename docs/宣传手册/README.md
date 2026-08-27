@@ -14,17 +14,10 @@
 
 ## 部署到生产（可选）
 
-将 `landing.html` 与 `screens/` 放入 nginx 静态目录，作为独立路径 `/about` 提供：
+作为独立路径 `/about` 提供，**持久 bind-mount**（不写进 `frontend_dist` 卷——前端容器重建时会 `cp` 覆盖该卷把文件冲掉）：
 
-1. 服务器 `frontend_dist` 卷中新建 `about/` 目录，拷入 `landing.html` 与 `screens/` 目录（即 `about/landing.html` + `about/screens/five-stage-analysis.png`）
-2. nginx location 添加：
-   ```nginx
-   location = /about { return 301 /about/; }
-   location /about/ {
-       alias /usr/share/nginx/html/about/;
-       index landing.html;
-   }
-   ```
-3. `docker compose exec nginx nginx -s reload`
+1. nginx.conf 已含 `/about` 路由（`location = /about` 301 + `location /about/` alias/index landing.html），随仓库提交
+2. docker-compose.yml 已给 nginx 服务加 bind-mount `./docs/宣传手册:/usr/share/nginx/html/about`，随仓库提交
+3. 服务器上确认 `docs/宣传手册/` 已含 `landing.html` 与 `screens/`（tarball 完整部署自带；存量服务器执行 `docker compose up -d nginx` 应用挂载）
 
 > 注意：落地页不替换产品 SPA 首页 `/`，避免影响现有用户入口。

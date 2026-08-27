@@ -61,6 +61,8 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
       - frontend_dist:/usr/share/nginx/html
+      # 宣传落地页：持久 bind-mount（非写进 frontend_dist 卷，否则前端容器重建 cp 会清掉）
+      - ./docs/宣传手册:/usr/share/nginx/html/about
     depends_on:
       app:
         condition: service_healthy
