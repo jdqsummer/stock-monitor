@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Monitor — 好价格下的好公司 · AI 价值投资分析平台</title>
+<meta name="description" content="AI 驱动的 A 股安全边际分析平台：DSH 五段式分析、三色信号灯、持仓卖出分析、AI 投资小助手。好价格下的好公司，从一次分析开始。">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --brand:#4D6EFE;--brand-hover:#3D5EE0;--brand-soft:#E8EEFF;
+  --green:#52c41a;--yellow:#faad14;--red:#ff4d4f;
+  --ink:#1A1A1A;--ink-2:#555;--ink-3:#8A8A8A;
+  --bg:#fff;--bg-soft:#F5F7FA;--border:#ECECEC;
+  --radius:16px;
+  --shadow:0 8px 30px rgba(77,110,254,.10);
+  --shadow-lg:0 20px 50px rgba(77,110,254,.16);
+}
+html{scroll-behavior:smooth}
+body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg);line-height:1.65;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 22px}
+a{color:var(--brand);text-decoration:none}
+
+/* 页头 */
+.site-header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+.site-header .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;color:var(--ink)}
+.brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--brand),#7B8EFF);display:grid;place-items:center;color:#fff;font-size:15px;font-weight:800}
+.nav{display:flex;align-items:center;gap:22px;font-size:14px;color:var(--ink-2)}
+.nav a:hover{color:var(--brand)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;font-weight:600;cursor:pointer;transition:.18s;border:none}
+.btn-primary{background:var(--brand);color:#fff;padding:10px 22px;font-size:15px}
+.btn-primary:hover{background:var(--brand-hover);transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:var(--ink-2);padding:9px 18px;font-size:14px;border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--brand);color:var(--brand)}
+.btn-lg{padding:14px 34px;font-size:16px;border-radius:12px}
+
+/* 区块通用 */
+.section{padding:76px 0}
+.section-soft{background:var(--bg-soft)}
+.eyebrow{display:inline-flex;align-items:center;gap:6px;color:var(--brand);font-weight:600;font-size:13px;letter-spacing:.04em;background:var(--brand-soft);padding:5px 12px;border-radius:999px;margin-bottom:14px}
+.section h2{font-size:30px;line-height:1.3;font-weight:700;margin-bottom:12px}
+.lead{color:var(--ink-2);font-size:16px;max-width:640px}
+.center{text-align:center}
+.center .lead{margin:0 auto}
+
+/* 滚动入场 */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+/* 卡片 */
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
+
+/* 页脚 */
+.site-footer{border-top:1px solid var(--border);padding:34px 0 44px;color:var(--ink-3);font-size:13px;text-align:center;line-height:2}
+.disclaimer{background:var(--bg-soft);border-radius:10px;padding:14px 18px;margin:0 auto 18px;max-width:820px;text-align:left;font-size:13px;color:var(--ink-3)}
+
+/* 响应式 */
+@media (max-width:768px){
+  .section{padding:56px 0}
+  .section h2{font-size:25px}
+  .nav .nav-links{display:none}
+  .btn-lg{padding:13px 26px;font-size:15px}
+}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand"><span class="logo">投</span>Stock Monitor</div>
+    <nav class="nav">
+      <span class="nav-links"><a href="#features">核心功能</a><a href="#method">投资方法论</a><a href="#data">数据能力</a><a href="#start">快速上手</a></span>
+      <a class="btn btn-primary" href="http://49.232.171.206" target="_blank" rel="noopener">立即使用</a>
+    </nav>
+  </div>
+</header>
+<main>
+<!-- @@SECTION@@ -->
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="disclaimer">免责声明：本平台所有分析输出仅供投资研究参考，不构成任何投资建议。股市有风险，投资需谨慎。据此操作，风险自担。</div>
+    <div>© 2026 Stock Monitor · AI 价值投资分析平台 · <a href="http://49.232.171.206" target="_blank" rel="noopener">访问产品</a></div>
+  </div>
+</footer>
+<script>
+/* @@JS@@ */
+</script>
+</body>
+</html>
