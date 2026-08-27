@@ -1,6 +1,7 @@
 # stock-monitor/backend/api/__init__.py
 from fastapi import APIRouter
 
+from backend.api.admin import router as admin_router
 from backend.api.analysis import router as analysis_router
 from backend.api.auth import router as auth_router
 from backend.api.chat import router as chat_router
@@ -21,3 +22,4 @@ api_router.include_router(diary_router)
 api_router.include_router(portfolio_router)
 api_router.include_router(watchlist_router)
 api_router.include_router(reminders_router)
+api_router.include_router(admin_router)

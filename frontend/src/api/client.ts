@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import { clearAuthCookie } from '@/api/authCookie';
-import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryFolderNode, DiaryTree, DiaryRef, ToolCallEvent, ChatProfile } from '@/types';
+import type { ApiResponse, TokenResponse, UserConfig, LLMModelInfo, ConversationItem, WatchlistItem, StockQuote, JobStatus, WatchlistBoardRow, Reminder, PositionInfo, PositionDetail, DiaryEntry, DiaryFolderNode, DiaryTree, DiaryRef, ToolCallEvent, ChatProfile, AdminUserInfo, PaginatedLogs, SystemLogEntry, LogLevel } from '@/types';
 
 const client = axios.create({
   baseURL: '/api',
@@ -28,6 +28,23 @@ client.interceptors.response.use(
       localStorage.removeItem('token');
       clearAuthCookie();
       window.location.href = '/login';
+    }
+    // 5xx / 网络错误 → 上报系统日志（仅当用户已登录，避免注册/登录页误报刷屏）
+    const status = error.response?.status;
+    const isServerError = (status && status >= 500) || (!status && !!error.message);
+    if (isServerError && localStorage.getItem('token') && !url.startsWith('/admin/logs')) {
+      // 异步上报，失败静默（不能因为上报把原始错误拖死）
+      const message = `${status || 'network'} ${error.config?.method?.toUpperCase() || ''} ${url}: ${
+        error.response?.data?.message || error.message || 'unknown'
+      }`;
+      adminApi.reportLog({
+        level: 'error',
+        message: message.slice(0, 2000),
+        source: url,
+        path: url,
+        method: error.config?.method?.toUpperCase(),
+        status_code: status ?? null,
+      }).catch(() => {});
     }
     return Promise.reject(error);
   },
@@ -158,6 +175,24 @@ export const remindersApi = {
   unread: () => client.get<ApiResponse<Reminder[]>>('/reminders/unread'),
   read: (id: string) => client.post<ApiResponse<{ id: string }>>(`/reminders/${id}/read`),
   readAll: () => client.post<ApiResponse<{ count: number }>>('/reminders/read-all'),
+};
+
+// 管理后台
+export const adminApi = {
+  listUsers: () => client.get<ApiResponse<AdminUserInfo[]>>('/admin/users'),
+  listLogs: (params: {
+    levels?: string; source?: string; email?: string;
+    start?: string; end?: string; offset?: number; limit?: number;
+  }) => client.get<ApiResponse<PaginatedLogs>>('/admin/logs', { params }),
+  reportLog: (payload: {
+    level: LogLevel;
+    message: string;
+    source?: string;
+    path?: string;
+    method?: string;
+    status_code?: number | null;
+    stack_trace?: string | null;
+  }) => client.post<ApiResponse>('/admin/logs', payload),
 };
 
 export default client;

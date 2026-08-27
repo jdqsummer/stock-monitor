@@ -8,9 +8,13 @@ import {
   MessageOutlined,
   BookOutlined,
   SettingOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons';
+import { useAppStore } from '@/store';
 
-const menuItems = [
+const ADMIN_EMAIL = '1140467720@qq.com';
+
+const baseMenuItems = [
   { key: '/', icon: <DashboardOutlined />, label: '仪表盘' },
   { key: '/watchlist', icon: <StarOutlined />, label: '自选股' },
   { key: '/portfolio', icon: <PieChartOutlined />, label: '持仓分析' },
@@ -23,12 +27,19 @@ const menuItems = [
 export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const user = useAppStore((s) => s.user);
+
+  // 管理后台：仅管理员邮箱可见（前端隐藏 + 后端 require_admin 双重保护）
+  const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const items = isAdmin
+    ? [...baseMenuItems, { key: '/admin', icon: <SafetyOutlined />, label: '管理后台' }]
+    : baseMenuItems;
 
   return (
     <Menu
       mode="inline"
       selectedKeys={[location.pathname]}
-      items={menuItems}
+      items={items}
       onClick={({ key }: { key: string }) => navigate(key)}
       style={{ height: '100%', borderRight: 0 }}
     />

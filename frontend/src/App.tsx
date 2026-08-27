@@ -15,6 +15,7 @@ import { Analysis } from '@/pages/Analysis';
 import { Chat } from '@/pages/Chat';
 import { Diary } from '@/pages/Diary';
 import { Settings } from '@/pages/Settings';
+import { Admin } from '@/pages/Admin';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
@@ -52,6 +53,7 @@ export default function App() {
                 <Route path="chat" element={<Chat />} />
                 <Route path="diary" element={<Diary />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="admin" element={<Admin />} />
               </Route>
             </Routes>
           </ErrorBoundary>

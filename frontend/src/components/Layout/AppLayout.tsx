@@ -14,7 +14,7 @@ const { Header, Sider, Content } = Layout;
 
 export function AppLayout() {
   const navigate = useNavigate();
-  const { user, setUser } = useAppStore();
+  const { user, setUser, setUserLoaded } = useAppStore();
   const { items, enabled, markAllRead } = useUnreadMessages();
 
   useEffect(() => {
@@ -25,6 +25,9 @@ export function AppLayout() {
       localStorage.removeItem('token');
       clearAuthCookie();
       navigate('/login');
+    }).finally(() => {
+      // M7：getMe 结束（含失败）才允许权限判断，避免刷新 /admin 时 user 仍为 null → 闪「无权限」
+      setUserLoaded(true);
     });
   }, []);
 

@@ -383,3 +383,36 @@ export interface ChatProfile {
   watchlist_count: number;
   diary_count: number;
 }
+
+// ── 管理后台 ──
+export interface AdminUserInfo {
+  id: string;
+  email: string;
+  email_verified: boolean;
+  created_at: string;
+  last_login_at: string | null;
+  is_admin: boolean;
+}
+
+export type LogLevel = 'debug' | 'info' | 'warning' | 'error' | 'critical';
+
+export interface SystemLogEntry {
+  id: string;
+  level: LogLevel;
+  source: string;
+  message: string;
+  stack_trace: string | null;
+  user_id: string | null;
+  email: string | null;
+  path: string | null;
+  method: string | null;
+  status_code: number | null;
+  created_at: string;
+}
+
+export interface PaginatedLogs {
+  items: SystemLogEntry[];
+  total: number;
+  offset: number;
+  limit: number;
+}

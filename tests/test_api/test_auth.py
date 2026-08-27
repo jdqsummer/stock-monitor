@@ -199,3 +199,32 @@ class TestAuth:
             "email": "reset4@example.com",
         })
         assert resp.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_login_writes_last_login_at(self, client, mock_redis, db_session):
+        """密码登录成功后应写 last_login_at（管理后台用）"""
+        from backend.models.user import User
+        from sqlalchemy import select
+
+        await _register_user(client, "lastlogin@example.com", "testpass123")
+
+        # 注册即视为首次登录，记录基线时间
+        row = (await db_session.execute(
+            select(User).where(User.email == "lastlogin@example.com")
+        )).scalar_one()
+        baseline = row.last_login_at
+        assert baseline is not None  # register 端点会写
+
+        # 再次登录应更新 last_login_at
+        import asyncio
+        await asyncio.sleep(0.01)  # 确保时间戳可分辨
+        resp = await client.post("/api/auth/login", json={
+            "email": "lastlogin@example.com", "password": "testpass123",
+        })
+        assert resp.status_code == 200
+
+        # 重新查询（同一 session 自动追踪更新，但 expire_on_commit=False 时需 refresh）
+        await db_session.refresh(row)
+        assert row.last_login_at is not None
+        # 二次登录时间应 >= 注册基线
+        assert row.last_login_at >= baseline

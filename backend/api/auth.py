@@ -51,6 +51,8 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册")
 
     user = await AuthService.register_user(db, req.email, req.password)
+    # 注册即视为首次登录（无验证码走不通，落地后即拿 token）
+    await AuthService.update_last_login(db, user)
     token = AuthService.create_access_token(user.id)
     return ApiResponse(data=TokenResponse(access_token=token), message="注册成功")
 
@@ -62,6 +64,8 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="邮箱或密码错误")
 
+    # 记录最后登录时间（管理后台用）
+    await AuthService.update_last_login(db, user)
     token = AuthService.create_access_token(user.id)
     return ApiResponse(data=TokenResponse(access_token=token))
 
@@ -89,6 +93,7 @@ async def login_by_code(req: LoginByCodeRequest, db: AsyncSession = Depends(get_
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该邮箱未注册，请先注册")
 
+    await AuthService.update_last_login(db, user)
     token = AuthService.create_access_token(user.id)
     return ApiResponse(data=TokenResponse(access_token=token), message="登录成功")
 

@@ -1,14 +1,18 @@
 # stock-monitor/backend/main.py
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api import api_router
 from backend.data.dsh_bridge import mcp as dsh_mcp
 from backend.data.scheduler import TaskScheduler
+from backend.services.log_handler import install as install_log_handler
 from backend.services.refresh_svc import (
     collect_auto_analysis_users, collect_quote_refresh_users,
     run_recompute_analysis, run_reminder_checks,
@@ -57,6 +61,11 @@ async def lifespan(app: FastAPI):
                       job_id="financials_refresh", name="财报数据刷新")
     scheduler.add_analysis_job(run_closing_tasks)           # 16:00 全局收盘任务
 
+    # 系统日志保留策略（I3）：每日 03:23 清理超过保留期的日志，防 system_logs 无限增长
+    from backend.services.log_svc import cleanup_expired_logs
+    scheduler.add_job(cleanup_expired_logs, CronTrigger(hour=3, minute=23),
+                      job_id="system_log_cleanup", name="系统日志清理")
+
     # 一次性迁移：旧版平铺根目录的笔记图片 → 按用户子目录（幂等，见 diary_svc）
     from backend.db.database import async_session_factory
     from backend.services.diary_svc import migrate_legacy_diary_images
@@ -65,6 +74,9 @@ async def lifespan(app: FastAPI):
             await migrate_legacy_diary_images(session)
         finally:
             await session.close()
+
+    # 管理后台：全局 logger → system_logs 自动入库
+    install_log_handler()
 
     await _reconcile_quote_and_auto(app)
     scheduler.start()
@@ -103,3 +115,40 @@ app.mount("/mcp/investdata", dsh_mcp.streamable_http_app())
 @app.get("/api/health")
 async def health_check():
     return {"code": 0, "data": {"status": "ok"}, "message": "ok"}
+
+
+# ── 全局异常处理：5xx 入 system_logs，但响应字段保持 FastAPI 默认契约（{"detail": ...}） ──
+
+import logging as _logging
+_app_logger = _logging.getLogger("backend.main")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """保留 FastAPI 默认响应形状 {"detail": ...}（业务测试与客户端都依赖该契约）；
+    仅在 status >= 500 时额外走 logger.critical 落库。
+    """
+    if exc.status_code >= 500:
+        _app_logger.critical(
+            f"HTTP {exc.status_code} {request.method} {request.url.path}: {exc.detail}",
+            extra={"path": request.url.path, "method": request.method, "status_code": exc.status_code},
+            exc_info=(type(exc), exc, exc.__traceback__),  # I1: 传栈，DbLogHandler 据此填 stack_trace 列
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc.detail)},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """未捕获异常 → critical 落库 + 500 响应（FastAPI 默认 detail 形状）。"""
+    _app_logger.critical(
+        f"Unhandled {type(exc).__name__} {request.method} {request.url.path}: {exc}",
+        extra={"path": request.url.path, "method": request.method, "status_code": 500},
+        exc_info=(type(exc), exc, exc.__traceback__),  # I1: 传栈，DbLogHandler 据此填 stack_trace 列
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "服务器内部错误"},
+    )

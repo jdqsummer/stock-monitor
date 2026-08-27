@@ -17,3 +17,5 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # 管理后台：登录成功后更新；从未登录为 None
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

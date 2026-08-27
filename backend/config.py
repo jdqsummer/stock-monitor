@@ -3,6 +3,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # 环境：production（默认）/ test（pytest 用）
+    # DbLogHandler.emit() 据此在测试期跳过自动写库，避免后台 task 干扰其它测试。
+    ENVIRONMENT: str = "production"
+
     # 数据库
     DATABASE_URL: str = "sqlite+aiosqlite:///./stock_monitor.db"
 
@@ -51,6 +55,12 @@ class Settings(BaseSettings):
     # 投资日记图片
     DIARY_IMAGE_DIR: str = "./uploads/diary"      # 图片存储目录
     DIARY_IMAGE_MAX_SIZE_MB: int = 10             # 单图大小上限（MB）
+
+    # 管理后台：单一管理员白名单（不在 DB 存角色表；硬编码最简匹配需求）
+    ADMIN_EMAIL: str = "1140467720@qq.com"
+
+    # 系统日志：DbLogHandler 采集级别（见 log_handler）+ 自动清理保留天数
+    SYSTEM_LOG_RETENTION_DAYS: int = 30
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

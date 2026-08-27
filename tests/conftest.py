@@ -1,5 +1,6 @@
 # stock-monitor/tests/conftest.py
 import asyncio
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -7,6 +8,11 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+# 测试环境标记：DbLogHandler.emit() 据此跳过 DB 写入，避免 lifespan 测试里挂载的
+# handler 产生后台 task 干扰其它 test。必须在 import backend.config（加载 settings）前设置。
+os.environ["ENVIRONMENT"] = "test"
+
+from backend.db import database as db_module
 from backend.db.base import Base
 from backend.db.database import get_db
 from backend.main import app
@@ -49,11 +55,20 @@ def event_loop():
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    # 创表前先确保所有 model 都已 import（Base.metadata 才会包含 system_logs）
+    from backend.models import system_log  # noqa: F401  → 注册 SystemLog
+    # 关键：把全局 db_module.async_session_factory 指向测试 engine，
+    # 否则 DbLogHandler（直接在模块 import 时就捕获的引用）会用真实 DB 写日志。
+    original_factory = db_module.async_session_factory
+    db_module.async_session_factory = test_async_session_factory
+    try:
+        async with test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield
+    finally:
+        async with test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        db_module.async_session_factory = original_factory
 
 
 @pytest_asyncio.fixture

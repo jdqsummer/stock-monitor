@@ -113,6 +113,20 @@ class AuthService:
         return None
 
     @staticmethod
+    async def update_last_login(db: AsyncSession, user: User) -> None:
+        """记录最后登录时间（管理后台用）。失败不回滚登录流程，仅记 warning。"""
+        from datetime import datetime, timezone
+        try:
+            user.last_login_at = datetime.now(timezone.utc)
+            await db.commit()
+            # 不 refresh：user 已经在 session identity map 内（expire_on_commit=False），
+            # 且 refresh 偶发与测试 dsh_bridge module fixture 启动 lifespan 后冲突。
+        except Exception as e:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(f"更新 last_login_at 失败: {e}")
+            await db.rollback()
+
+    @staticmethod
     async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
         result = await db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
