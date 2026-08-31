@@ -10,11 +10,11 @@ const VENDORS: {
   configured: string; models: string[];
 }[] = [
   { key: 'deepseek', short: 'DeepSeek', name: 'deepseek_api_key', label: 'DeepSeek API Key',
-    configured: 'deepseek_api_key_configured', models: ['deepseek-v4-flash', 'deepseek-v4-pro'] },
+    configured: 'deepseek_api_key_configured', models: ['deepseek:deepseek-v4-flash', 'deepseek:deepseek-v4-pro'] },
   { key: 'qwen', short: 'Qwen', name: 'qwen_api_key', label: '阿里云 Qwen API Key',
-    configured: 'qwen_api_key_configured', models: ['Qwen3.7-Max', 'Qwen3.8-Max'] },
+    configured: 'qwen_api_key_configured', models: ['qwen:Qwen3.7-Max', 'qwen:Qwen3.8-Max'] },
   { key: 'kimi', short: 'Kimi', name: 'kimi_api_key', label: 'Kimi API Key',
-    configured: 'kimi_api_key_configured', models: ['Kimi-K2.6', 'Kimi-K2.7'] },
+    configured: 'kimi_api_key_configured', models: ['kimi:Kimi-K2.6', 'kimi:Kimi-K2.7'] },
 ];
 
 export function Settings() {
@@ -26,7 +26,7 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState('deepseek');
 
   // live 跟随表单：默认模型、自动分析开关、提醒开关、邮件渠道、SMTP 主机
-  const defaultModel = Form.useWatch('llm_model', form) || 'deepseek-v4-flash';
+  const defaultModel = Form.useWatch('llm_model', form) || 'openrouter:minimax/minimax-m3:free';
   const autoEnabled = Form.useWatch('analysis_auto_enabled', form);
   const remindEnabled = Form.useWatch('notification_enabled', form);
   const emailEnabled = Form.useWatch('reminder_email_enabled', form);
@@ -62,7 +62,11 @@ export function Settings() {
 
   const ready = models.length > 0;
   const defaultProvider = models.find(m => m.model_id === defaultModel)?.provider;
-  const llmReady = !!(defaultProvider && configured[`${defaultProvider}_api_key_configured`]);
+  // OpenRouter 默认模型：key 来自服务器环境变量，视为始终就绪
+  const llmReady = !!(
+    defaultProvider === 'openrouter' ||
+    (defaultProvider && configured[`${defaultProvider}_api_key_configured`])
+  );
   const llmWarning = ready && configLoaded && !llmReady;
 
   const handleSave = async (values: UserConfig) => {
@@ -94,7 +98,7 @@ export function Settings() {
               : '-'}
           </div>
           {ready && (llmReady
-            ? <div style={{ color: status.success }}>✅ {defaultProvider} API Key 已配置，LLM 深度分析可用</div>
+            ? <div style={{ color: status.success }}>✅ {defaultProvider === 'openrouter' ? 'OpenRouter 默认配置' : `${defaultProvider} API Key 已配置`}，LLM 深度分析可用</div>
             : llmWarning && <Alert type="warning" showIcon message="未配置 LLM API Key，股票分析将降级为纯规则计算。"
                 description="请在下方「LLM 模型配置」为对应厂商填写 API Key。" />)}
         </Space>

@@ -130,7 +130,7 @@ export function Portfolio() {
   };
 
   const modelProvider = models.find(m => m.model_id === model)?.provider;
-  const modelKeyConfigured = modelProvider ? !!configured[`${modelProvider}_api_key_configured`] : false;
+  const modelKeyConfigured = modelProvider === 'openrouter' || (modelProvider ? !!configured[`${modelProvider}_api_key_configured`] : false);
 
   const columns: ColumnsType<PositionInfo> = [
     { title: '股票代码', dataIndex: 'stock_code', width: 100,

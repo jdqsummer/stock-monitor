@@ -66,6 +66,30 @@ class HttpDshRunner:
         if self._owns_client:
             await self._client.aclose()
 
+    @staticmethod
+    def _normalize_model(model: str) -> str:
+        """DSH 透传前的 model 规整。
+
+        DSH 容器内 dsh-llm-pi-ai 适配器（rc.6）通过 pi-ai 0.82.1 内置 openrouter provider
+        路由，路由注册名是 openrouter，model 字段是 catalog 里的裸 model id（无 openrouter: 前缀）。
+        后端存 openrouter:minimax/minimax-m3:free 风格 spec，必须剥前缀；
+        其他 provider spec（deepseek:...）DSH 暂不识别，回退 deepseek-v4-flash 兜底。
+        """
+        if not model:
+            return "deepseek-v4-flash"
+        prefix, _, bare = model.partition(":")
+        if prefix == "openrouter":
+            return bare or "minimax/minimax-m3:free"
+        # deepseek/qwen/kimi 等：当前 DSH 不支持，回退 deepseek-v4-flash 保证有真实 LLM
+        return "deepseek-v4-flash"
+
+    @staticmethod
+    def _is_deepseek_v4_pro(model: str) -> bool:
+        """判定 spec 是否为 DeepSeek V4 Pro（深度模式）。兼容裸 deepseek-v4-pro 与新 spec deepseek:deepseek-v4-pro。"""
+        if not model:
+            return False
+        return model in ("deepseek-v4-pro", "deepseek:deepseek-v4-pro")
+
     async def run_five_stage(
         self,
         *,
@@ -82,11 +106,11 @@ class HttpDshRunner:
             "code": code,
             "name": name,
             "context": context,
-            "model": model or "deepseek-v4-flash",
+            "model": self._normalize_model(model),
             "session_id": session_id,
             "pe_low_override": pe_low_override,
             "pe_high_override": pe_high_override,
-            "ralph_enabled": model == "deepseek-v4-pro",   # Q3：深度模式自动开启
+            "ralph_enabled": self._is_deepseek_v4_pro(model),   # Q3：深度模式自动开启
             "api_keys": api_keys or {},
         }
         resp = await self._client.post(f"{self._base_url}/trigger", json=payload)

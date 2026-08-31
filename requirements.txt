@@ -19,7 +19,7 @@ apscheduler==3.10.4
 openai==1.35.3
 anthropic==0.34.1
 # 腾讯 pip 镜像快照缺档：1.40.2~1.40.x 稳定版全缺（含曾用的 1.40.31）→ 升 1.41.28（同代、fresh dry-run 全 requirements 验证可装）
-litellm==1.41.28
+litellm==1.40.0.dev1
 
 # Agent framework
 langgraph==0.6.7

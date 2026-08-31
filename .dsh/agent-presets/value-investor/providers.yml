@@ -8,6 +8,10 @@
 # P1 只定契约占位；P3 完整落地：前端下拉可选模型 → Orchestrator 传 model 到
 # SDK DeepSeekHarness(model=...) → 会话结束从 DSH 会话事件 llm/* 回传真实路由模型
 # 写入 analysis_model（记录用户实际选择，非配置默认值）。
+#
+# 2026-08-31：增加 OpenRouter 免费档路由卡片（dsh-llm-pi-ai 通过 hand-declared route 支持），
+# 走 dsh-llm-pi-ai 适配器（pi-ai 0.82.1 内置 openai-completions 协议，OpenRouter 兼容）。
+# ID 命名约定：<provider-route>/<model-id>，与 pi-ai catalog 路由一致。
 providers:
   - id: deepseek-v4-flash
     description: 默认省成本模型（常规五段分析）
@@ -21,3 +25,9 @@ providers:
     description: 月之暗面长文本（厂商 API Key: kimi）
   - id: Kimi-K2.7
     description: 月之暗面长文本（厂商 API Key: kimi）
+  - id: openrouter/minimax/minimax-m2.7:free
+    description: OpenRouter 兜底（未配 deepseek/qwen/kimi 时使用，免费档，限流时降级）
+  - id: openrouter/minimax/minimax-m3:free
+    description: OpenRouter 默认（minimax M3 免费，限流时降级）
+  - id: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+    description: OpenRouter NVIDIA Nemotron 3 Ultra（550B MoE，免费）

@@ -43,12 +43,17 @@ MODEL_PROVIDER = {
     "Qwen3.8-Max": "qwen",
     "Kimi-K2.6": "kimi",
     "Kimi-K2.7": "kimi",
+    # OpenRouter 免费档（多供应商聚合；走 OpenAI 兼容 + OpenRouter 端点）
+    "minimax/minimax-m2.7:free": "openrouter",
+    "minimax/minimax-m3:free": "openrouter",
+    "nvidia/nemotron-3-ultra-550b-a55b:free": "openrouter",
 }
 
-# 厂商 → OpenAI 兼容 base_url（qwen/kimi）；deepseek 走原生 provider
+# 厂商 → OpenAI 兼容 base_url（qwen/kimi/openrouter）；deepseek 走原生 provider
 OPENAI_BASE = {
     "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "kimi": "https://api.moonshot.cn/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
 }
 
 # 厂商 → api_keys 字段名（snake_case，与后端 UserConfig / Task 9 生产者一致）
@@ -56,6 +61,7 @@ VENDOR_KEY_FIELD = {
     "deepseek": "deepseek_api_key",
     "qwen": "qwen_api_key",
     "kimi": "kimi_api_key",
+    "openrouter": "openrouter_api_key",   # 当前未启用（key 走 OPENROUTER_API_KEY env 直读，不入用户配置表）
 }
 
 

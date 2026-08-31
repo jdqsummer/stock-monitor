@@ -108,8 +108,16 @@ export function Login() {
                   <Input.Password prefix={<LockOutlined />} placeholder="密码" />
                 </Form.Item>
                 <Form.Item>
-                  <div style={{ textAlign: 'right' }}>
-                    <Button type="link" size="small" onClick={() => setForgotOpen(true)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <a
+                      href="/about/"
+                      style={{ color: '#4D6EFE', fontSize: 13, textDecoration: 'none' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                    >
+                      先了解产品
+                    </a>
+                    <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setForgotOpen(true)}>
                       忘记密码？
                     </Button>
                   </div>

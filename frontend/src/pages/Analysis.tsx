@@ -166,9 +166,9 @@ export function Analysis() {
     }
   };
 
-  // 所选模型的厂商 API Key 是否已配置（未配置 → 分析将规则降级）
+  // 所选模型的厂商 API Key 是否已配置（未配置 → 分析将规则降级；OpenRouter 默认走服务器侧 key）
   const modelProvider = models.find(m => m.model_id === model)?.provider;
-  const modelKeyConfigured = modelProvider ? !!configured[`${modelProvider}_api_key_configured`] : false;
+  const modelKeyConfigured = modelProvider === 'openrouter' || (modelProvider ? !!configured[`${modelProvider}_api_key_configured`] : false);
 
   return (
     <div>

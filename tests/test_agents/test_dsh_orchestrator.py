@@ -507,3 +507,33 @@ def test_build_context_injects_market_a_default():
              "net_profit_parent": 0.0, "net_profit_deducted": 0.0}
     ctx = build_context(state)
     assert ctx["market"] == "A"
+
+
+def test_normalize_model_openrouter_strips_prefix():
+    """openrouter:minimax/minimax-m3:free → minimax/minimax-m3:free（DSH 透传用）"""
+    from backend.agents.dsh_orchestrator import HttpDshRunner
+    assert HttpDshRunner._normalize_model("openrouter:minimax/minimax-m3:free") == "minimax/minimax-m3:free"
+    assert HttpDshRunner._normalize_model("openrouter:minimax/minimax-m2.7:free") == "minimax/minimax-m2.7:free"
+    assert HttpDshRunner._normalize_model("openrouter:nvidia/nemotron-3-ultra-550b-a55b:free") == "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+
+def test_normalize_model_empty_falls_back_to_deepseek():
+    """空 model → deepseek-v4-flash 兜底"""
+    from backend.agents.dsh_orchestrator import HttpDshRunner
+    assert HttpDshRunner._normalize_model("") == "deepseek-v4-flash"
+
+
+def test_normalize_model_other_provider_falls_back():
+    """非 openrouter provider spec → deepseek-v4-flash（DSH 暂只认 openrouter + deepseek 原生）"""
+    from backend.agents.dsh_orchestrator import HttpDshRunner
+    assert HttpDshRunner._normalize_model("qwen:Qwen3.7-Max") == "deepseek-v4-flash"
+    assert HttpDshRunner._normalize_model("deepseek:deepseek-v4-flash") == "deepseek-v4-flash"
+
+
+def test_is_deepseek_v4_pro_recognizes_both_specs():
+    """ralph 深度模式：兼容裸 + spec 两种形态"""
+    from backend.agents.dsh_orchestrator import HttpDshRunner
+    assert HttpDshRunner._is_deepseek_v4_pro("deepseek-v4-pro") is True
+    assert HttpDshRunner._is_deepseek_v4_pro("deepseek:deepseek-v4-pro") is True
+    assert HttpDshRunner._is_deepseek_v4_pro("openrouter:minimax/minimax-m3:free") is False
+    assert HttpDshRunner._is_deepseek_v4_pro("") is False

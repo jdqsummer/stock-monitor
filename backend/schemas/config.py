@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class UserConfig(BaseModel):
     """用户系统配置（key/凭据明文存储，GET 经 UserConfigView 脱敏）"""
-    llm_model: str = "deepseek-v4-flash"
+    llm_model: str = "openrouter:minimax/minimax-m3:free"
     data_refresh_interval_minutes: int = Field(default=30, ge=5, le=1440)
     analysis_schedule_afternoon: str = "16:00"
     analysis_auto_enabled: bool = False

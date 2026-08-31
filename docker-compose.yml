@@ -83,6 +83,7 @@ services:
         NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
         # 国内 pip 镜像（默认官方源，其他环境不受影响）
         PIP_INDEX_URL: https://mirrors.cloud.tencent.com/pypi/simple
+    env_file: .env
     environment:
       - DSH_ENGINE_PORT=8001
       # I4 确定性计算端点端口（calc_host.py 读此 env；sdk_host 8001 与其无冲突）
@@ -90,6 +91,8 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       - DSH_TOOLS_MODE=${DSH_TOOLS_MODE:-native}
+      # OpenRouter 默认免费模型（key 已在 .env 中，env_file 自动注入；MODEL_PROVIDER 路由在 sdk_host.py）
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       # S3 会话日志留存清理（entrypoint 后台循环，值可被 .env 覆盖）
       - DSH_SESSION_RETENTION_DAYS=${DSH_SESSION_RETENTION_DAYS:-90}
       - DSH_SESSION_MAX_COUNT=${DSH_SESSION_MAX_COUNT:-10000}

@@ -26,7 +26,7 @@ async def _register_and_login(client: AsyncClient, email: str) -> str:
 
 def _default_payload():
     return {
-        "llm_model": "deepseek-v4-flash",
+        "llm_model": "openrouter:minimax/minimax-m3:free",
         "data_refresh_interval_minutes": 30,
         "analysis_schedule_afternoon": "16:00",
         "analysis_auto_enabled": False,
@@ -45,7 +45,7 @@ class TestConfig:
         assert resp.status_code == 200
         data = resp.json()
         assert data["code"] == 0
-        assert data["data"]["llm_model"] == "deepseek-v4-flash"
+        assert data["data"]["llm_model"] == "openrouter:minimax/minimax-m3:free"
         assert data["data"]["analysis_concurrency"] == 3
         assert data["data"]["analysis_schedule_afternoon"] == "16:00"
         assert "llm_temperature" not in data["data"]
@@ -119,8 +119,9 @@ class TestConfig:
         assert resp.status_code == 200
         data = resp.json()
         models = data["data"]
-        assert len(models) == 6
+        assert len(models) == 9
         providers = {m["provider"] for m in models}
+        assert "openrouter" in providers
         assert "deepseek" in providers
         assert "qwen" in providers
         assert "kimi" in providers

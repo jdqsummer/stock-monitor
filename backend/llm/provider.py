@@ -32,6 +32,7 @@ class ProviderType(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     DEEPSEEK = "deepseek"
+    OPENROUTER = "openrouter"
     OLLAMA = "ollama"
     LITELLM = "litellm"
     MOCK = "mock"
@@ -320,6 +321,23 @@ class DeepSeekProvider(OpenAIProvider):
         super().__init__(config)
 
 
+# ── OpenRouter Provider（OpenAI 兼容 API，免费模型多供应商聚合） ──
+
+class OpenRouterProvider(OpenAIProvider):
+    """OpenRouter — OpenAI 兼容接口，统一 base_url 聚合多家免费/付费模型。
+
+    用于未配置其他 LLM Key 的用户兜底（系统默认 `minimax/minimax-m3:free`）。
+    Key 来自 OPENROUTER_API_KEY 环境变量（不入用户配置表，避免前端脱敏与多租户泄漏）。
+    """
+
+    DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+    def __init__(self, config: LLMConfig):
+        config.api_base = config.api_base or self.DEFAULT_BASE_URL
+        config.api_key = config.api_key or os.getenv("OPENROUTER_API_KEY", "")
+        super().__init__(config)
+
+
 # ── Ollama Provider（本地模型） ──
 
 class OllamaProvider(LLMProvider):
@@ -596,6 +614,7 @@ class LLMFactory:
         - "anthropic:claude-opus-4-8"  → Anthropic
         - "deepseek:deepseek-chat"      → DeepSeek V3
         - "deepseek:deepseek-reasoner"  → DeepSeek R1
+        - "openrouter:minimax/minimax-m3:free" → OpenRouter（系统默认免费模型兜底）
         - "ollama:qwen2.5:14b"         → Ollama 本地
         - "litellm:gemini/gemini-2.0-flash" → LiteLLM 网关
         - "mock" → 开发模拟
@@ -605,6 +624,7 @@ class LLMFactory:
         ProviderType.OPENAI: OpenAIProvider,
         ProviderType.ANTHROPIC: AnthropicProvider,
         ProviderType.DEEPSEEK: DeepSeekProvider,
+        ProviderType.OPENROUTER: OpenRouterProvider,
         ProviderType.OLLAMA: OllamaProvider,
         ProviderType.LITELLM: LiteLLMProvider,
         ProviderType.MOCK: MockLLMProvider,
