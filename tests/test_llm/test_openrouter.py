@@ -10,7 +10,7 @@ from backend.llm.provider import (
 )
 
 # 测试用模型 ID（spec 格式：provider:model_id）
-TEST_MODEL_ID = "minimax/minimax-m3:free"
+TEST_MODEL_ID = "minimax/minimax-m2.7:free"
 TEST_SPEC = f"openrouter:{TEST_MODEL_ID}"
 
 

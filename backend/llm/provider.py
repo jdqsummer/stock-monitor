@@ -326,7 +326,7 @@ class DeepSeekProvider(OpenAIProvider):
 class OpenRouterProvider(OpenAIProvider):
     """OpenRouter — OpenAI 兼容接口，统一 base_url 聚合多家免费/付费模型。
 
-    用于未配置其他 LLM Key 的用户兜底（系统默认 `minimax/minimax-m3:free`）。
+    用于未配置其他 LLM Key 的用户兜底（系统默认 `minimax/minimax-m2.7:free`）。
     Key 来自 OPENROUTER_API_KEY 环境变量（不入用户配置表，避免前端脱敏与多租户泄漏）。
     """
 
@@ -614,7 +614,7 @@ class LLMFactory:
         - "anthropic:claude-opus-4-8"  → Anthropic
         - "deepseek:deepseek-chat"      → DeepSeek V3
         - "deepseek:deepseek-reasoner"  → DeepSeek R1
-        - "openrouter:minimax/minimax-m3:free" → OpenRouter（系统默认免费模型兜底）
+        - "openrouter:minimax/minimax-m2.7:free" → OpenRouter（系统默认免费模型兜底）
         - "ollama:qwen2.5:14b"         → Ollama 本地
         - "litellm:gemini/gemini-2.0-flash" → LiteLLM 网关
         - "mock" → 开发模拟

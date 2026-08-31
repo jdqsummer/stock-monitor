@@ -26,7 +26,7 @@ async def _register_and_login(client: AsyncClient, email: str) -> str:
 
 def _default_payload():
     return {
-        "llm_model": "openrouter:minimax/minimax-m3:free",
+        "llm_model": "openrouter:minimax/minimax-m2.7:free",
         "data_refresh_interval_minutes": 30,
         "analysis_schedule_afternoon": "16:00",
         "analysis_auto_enabled": False,
@@ -45,7 +45,7 @@ class TestConfig:
         assert resp.status_code == 200
         data = resp.json()
         assert data["code"] == 0
-        assert data["data"]["llm_model"] == "openrouter:minimax/minimax-m3:free"
+        assert data["data"]["llm_model"] == "openrouter:minimax/minimax-m2.7:free"
         assert data["data"]["analysis_concurrency"] == 3
         assert data["data"]["analysis_schedule_afternoon"] == "16:00"
         assert "llm_temperature" not in data["data"]

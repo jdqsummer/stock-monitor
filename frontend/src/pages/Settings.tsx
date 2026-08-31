@@ -26,7 +26,7 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState('deepseek');
 
   // live 跟随表单：默认模型、自动分析开关、提醒开关、邮件渠道、SMTP 主机
-  const defaultModel = Form.useWatch('llm_model', form) || 'openrouter:minimax/minimax-m3:free';
+  const defaultModel = Form.useWatch('llm_model', form) || 'openrouter:minimax/minimax-m2.7:free';
   const autoEnabled = Form.useWatch('analysis_auto_enabled', form);
   const remindEnabled = Form.useWatch('notification_enabled', form);
   const emailEnabled = Form.useWatch('reminder_email_enabled', form);
@@ -101,6 +101,10 @@ export function Settings() {
             ? <div style={{ color: status.success }}>✅ {defaultProvider === 'openrouter' ? 'OpenRouter 默认配置' : `${defaultProvider} API Key 已配置`}，LLM 深度分析可用</div>
             : llmWarning && <Alert type="warning" showIcon message="未配置 LLM API Key，股票分析将降级为纯规则计算。"
                 description="请在下方「LLM 模型配置」为对应厂商填写 API Key。" />)}
+          {ready && defaultModel.includes(':free') && (
+            <Alert type="warning" showIcon style={{ marginBottom: 8 }}
+              message="免费模型存在限流和不稳定，且存在被关停风险！" />
+          )}
         </Space>
       </Card>
 

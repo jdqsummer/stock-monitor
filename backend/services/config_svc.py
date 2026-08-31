@@ -5,8 +5,8 @@ from backend.models.user import User
 from backend.schemas.config import LLMModelInfo, UserConfig, UserConfigView
 
 AVAILABLE_MODELS = [
-    LLMModelInfo(provider="openrouter", model_id="openrouter:minimax/minimax-m3:free", display_name="MiniMax M3 免费（系统默认）", description="OpenRouter 兜底（minimax/minimax-m3:free），零配置试用，限流时降级规则链"),
-    LLMModelInfo(provider="openrouter", model_id="openrouter:minimax/minimax-m2.7:free", display_name="MiniMax M2.7 免费", description="OpenRouter 备用（minimax/minimax-m2.7:free）"),
+    LLMModelInfo(provider="openrouter", model_id="openrouter:minimax/minimax-m2.7:free", display_name="MiniMax M2.7 免费（系统默认）", description="OpenRouter 兜底（minimax/minimax-m2.7:free），五段实测可跑通，零配置试用"),
+    LLMModelInfo(provider="openrouter", model_id="openrouter:minimax/minimax-m3:free", display_name="MiniMax M3 免费", description="OpenRouter 备用（minimax/minimax-m3:free），五段 schema 遵循度较低，可能降级"),
     LLMModelInfo(provider="openrouter", model_id="openrouter:nvidia/nemotron-3-ultra-550b-a55b:free", display_name="NVIDIA Nemotron 3 Ultra 免费", description="OpenRouter NVIDIA 550B MoE 免费档"),
     LLMModelInfo(provider="deepseek", model_id="deepseek:deepseek-v4-flash", display_name="DeepSeek V4 Flash", description="默认省成本模型（常规五段分析）"),
     LLMModelInfo(provider="deepseek", model_id="deepseek:deepseek-v4-pro", display_name="DeepSeek V4 Pro", description="深度分析（Ralph 自审）"),

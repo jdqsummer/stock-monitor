@@ -235,6 +235,10 @@ export function Watchlist() {
         <Alert type="warning" showIcon style={{ marginBottom: 12 }}
           message={<>{modelProvider} 未配置 API Key，分析将按规则降级执行。<Link to="/settings">去系统设置配置 LLM</Link></>} />
       )}
+      {model && model.includes(':free') && (
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }}
+          message="免费模型存在限流和不稳定，且存在被关停风险！" />
+      )}
 
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
         scroll={{ x: 1300 }}

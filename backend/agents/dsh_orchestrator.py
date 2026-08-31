@@ -72,14 +72,14 @@ class HttpDshRunner:
 
         DSH 容器内 dsh-llm-pi-ai 适配器（rc.6）通过 pi-ai 0.82.1 内置 openrouter provider
         路由，路由注册名是 openrouter，model 字段是 catalog 里的裸 model id（无 openrouter: 前缀）。
-        后端存 openrouter:minimax/minimax-m3:free 风格 spec，必须剥前缀；
+        后端存 openrouter:minimax/minimax-m2.7:free 风格 spec，必须剥前缀；
         其他 provider spec（deepseek:...）DSH 暂不识别，回退 deepseek-v4-flash 兜底。
         """
         if not model:
             return "deepseek-v4-flash"
         prefix, _, bare = model.partition(":")
         if prefix == "openrouter":
-            return bare or "minimax/minimax-m3:free"
+            return bare or "minimax/minimax-m2.7:free"
         # deepseek/qwen/kimi 等：当前 DSH 不支持，回退 deepseek-v4-flash 保证有真实 LLM
         return "deepseek-v4-flash"
 

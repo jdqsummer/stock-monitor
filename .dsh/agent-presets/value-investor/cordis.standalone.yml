@@ -40,8 +40,34 @@
     workspaceContext:
       maxBytes: 65536
 
-- id: llm-deepseek
-  name: '@deepseek-ai/dsh-llm-deepseek'
+# —— LLM 路由（dsh-llm-pi-ai 0.1.2-alpha.2 接管所有 LLM 路径）——
+# 旧 llm-deepseek 插件（rc.6）已废弃：pi-ai 内置 deepseek provider 提供相同能力。
+# 改用 dsh-llm-pi-ai (id: 'llm')：通过 pi-ai catalog 自动支持 deepseek/openai/anthropic/
+# openrouter/openai-codex/github-copilot/google-vertex 等多家 provider，DSH SDK 端
+# GenerateOptions.provider=route-name 即可路由。
+# 本次启用：deepseek（用 DEEPSEEK_API_KEY env）+ openrouter（用 OPENROUTER_API_KEY env）。
+# ⚠️ 前置依赖：dsh-engine/package.json 显式 pin dsh-attachment 等传递依赖到 0.1.2-alpha.2
+#（否则 dsh-mcp-client 缺 isImageAdmissionError export，runtime 插件树加载失败 → 卡死）。
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      deepseek:
+        apiKeyEnv: DEEPSEEK_API_KEY
+      openrouter:
+        apiKeyEnv: OPENROUTER_API_KEY
+        # runtime 内置 pi-ai catalog 无 :free 后缀模型 → 用 models 列表替换整个 openrouter catalog
+        #（models 替换 catalog；每条只需 id，api/baseURL 从 catalog provider 继承）
+        models:
+          - id: minimax/minimax-m3:free
+            contextWindow: 200000
+            maxTokens: 8192
+          - id: minimax/minimax-m2.7:free
+            contextWindow: 200000
+            maxTokens: 8192
+          - id: nvidia/nemotron-3-ultra-550b-a55b:free
+            contextWindow: 128000
+            maxTokens: 4096
 
 - id: sessions
   name: '@deepseek-ai/dsh-session-persistence-jsonl'
@@ -70,7 +96,7 @@
 - id: agent-default-model
   name: 'file:///app/node_modules/@deepseek-ai/dsh-agent-default-model/lib/index.js'
   config:
-    provider: deepseek-official
+    provider: deepseek
     model: deepseek-v4-flash
 
 # —— workflow + subagent 栈（invest-five-stage 的 workflowEngine 依赖；均在 snapshot 闭包）——

@@ -164,9 +164,12 @@ def _build_config(req: TriggerRequest):
     if key:
         env["LLM_API_KEY"] = key          # 兜底：兼容 SDK 通用 key 读取路径
     if vendor != "deepseek":
-        env["LLM_API_BASE"] = OPENAI_BASE[vendor]   # qwen/kimi OpenAI 兼容 base_url
+        env["LLM_API_BASE"] = OPENAI_BASE[vendor]   # qwen/kimi/openai 兼容 base_url
+    # provider 字段映射到 DSH runtime 的 LLM route 名：deepseek → llm-deepseek
+    # 自有 route；其他 → dsh-llm-pi-ai 的 catalog route（同 vendor 字符串）
+    # 例如 vendor="openrouter" → provider="openrouter"（dsh-llm-pi-ai 的 openrouter route）
     return DeepSeekHarnessConfig(
-        provider="deepseek-official" if vendor == "deepseek" else "openai",
+        provider="deepseek-official" if vendor == "deepseek" else vendor,
         model=req.model or "deepseek-v4-flash",
         cordis=os.getenv("DSH_CORDIS_CONFIG"),
         session_root=os.getenv("DSH_SESSION_ROOT"),
