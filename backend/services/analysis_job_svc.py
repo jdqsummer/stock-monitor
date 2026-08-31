@@ -193,7 +193,9 @@ class AnalysisJobService:
                         chain = self._chain or create_analysis_chain()
                         name = item.stock_name if item else ""
                         industry = item.industry if item else ""
-                        model = job.get("model", "")          # 每 job 的模型（submit 传入，I6）
+                        # 每 job 的模型（submit 传入，I6）；job 未指定时用用户配置的 llm_model
+                        #（含 Pydantic 默认 openrouter:minimax/minimax-m2.7:free，未配 key 用户兜底）
+                        model = job.get("model", "") or (cfg.get("llm_model") if cfg else "")
                         timeout = self._timeout_for()
                         # position 模式注入持仓上下文（仅 shares/cost_price/purchased_at 供分析；
                         # holding_value/holding_days 由展示层实时算，不在此注入）
