@@ -143,14 +143,15 @@ async def trigger(req: TriggerRequest):
 
 
 def _build_config(req: TriggerRequest):
-    """构造 DeepSeekHarnessConfig；按模型厂商注入对应 API Key（透传优先，env 兜底）。
+    """构造 DeepSeekHarnessConfig（v0.1.2-alpha.2 字段集）；按模型厂商注入对应 API Key（透传优先，env 兜底）。
 
-    env 注入：DSH_CORDIS_CONFIG（value-investor 组合）由 DeepSeekHarness(cordis=...) 或
-    DSH_CORDIS_CONFIG 环境变量承载（P0 T4：headless 默认 rosterless 不挂 preset）。
-
-    qwen/kimi 走 provider="openai" + env 注入 {VENDOR}_API_KEY / LLM_API_KEY /
-    LLM_API_BASE（= OPENAI_BASE[vendor]）。DeepSeekHarness SDK 是否原生支持 OpenAI
-    兼容 provider 仍需真实联调验证；契约层（字段/映射/注入）已落地。
+    升级要点（DSH 0.1.0-rc.6 → 0.1.2-alpha.2 BC #1：Python SDK Config 字段重塑）：
+    - rc.6 字段 `cordis` / `session_root` 在 v0.1.2-alpha.2 改为 `patches` (tuple) / `dsh_home`
+    - 新增必填语义字段 `dsh_home`（profile 自管 session 子目录，替代旧 session_root env 透传）
+    - 新增 `profile`（默认 "sdk"）+ `reasoning_effort`（V4-Pro 深度模式传 "max"）
+    - DSH_CORDIS_CONFIG 旧 env 名保留（值喂入 patches tuple 第 0 项，cordis yml 仍合法）
+    - DSH_SESSION_ROOT 旧 env 名保留（值喂入 dsh_home，profile 自管子目录）
+    - 详细调研见 scripts/dsh_p0/p5_audit_v0.1.2/01-config-fields.md
     """
     from deepseek_harness import DeepSeekHarnessConfig
     vendor = MODEL_PROVIDER.get(req.model or "", "deepseek")
@@ -162,11 +163,19 @@ def _build_config(req: TriggerRequest):
         env["LLM_API_KEY"] = key          # 兜底：兼容 SDK 通用 key 读取路径
     if vendor != "deepseek":
         env["LLM_API_BASE"] = OPENAI_BASE[vendor]   # qwen/kimi OpenAI 兼容 base_url
+    # v0.1.2-alpha.2 新字段映射
+    cordis_path = os.getenv("DSH_CORDIS_CONFIG")
+    patches = (cordis_path,) if cordis_path else ()
+    dsh_home = os.getenv("DSH_HOME") or (
+        os.getenv("DSH_SESSION_ROOT") and f"{os.getenv('DSH_SESSION_ROOT')}/.dsh-home"
+    )
     return DeepSeekHarnessConfig(
         provider="deepseek-official" if vendor == "deepseek" else "openai",
         model=req.model or "deepseek-v4-flash",
-        cordis=os.getenv("DSH_CORDIS_CONFIG"),
-        session_root=os.getenv("DSH_SESSION_ROOT"),
+        dsh_home=dsh_home,
+        patches=patches,
+        profile=os.getenv("DSH_PROFILE", "sdk"),
+        reasoning_effort="max" if req.ralph_enabled else None,
         env=env,
     )
 

@@ -42,9 +42,10 @@ RUN apt-get update \
 # backend/agents/__init__ 全量导入链（analysis_chain/constraints/data_agent/... → langgraph 等）
 COPY requirements.txt ./requirements.txt
 # deepseek-harness-sdk 提供 `deepseek_harness` 模块（sdk_host.py 的 import 目标），
-# 并透传依赖 deepseek-harness-runtime-bin（单文件 runtime exe 载体）。精确锁 rc.6。
+# 并透传依赖 deepseek-harness-runtime-bin（单文件 runtime exe 载体）。
+# 升级到 0.1.1rc1（PyPI 最高；上游 0.1.2 系列无 wheel），与 npm 0.1.2-alpha.2 形成跨主版本错配。
 RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt \
-    && /opt/venv/bin/pip install --no-cache-dir "deepseek-harness-sdk==0.1.0rc6"
+    && /opt/venv/bin/pip install --no-cache-dir "deepseek-harness-sdk==0.1.1rc1"
 
 # backend 包（sdk_host.py 复用 backend/agents/dsh_events 纯函数）
 COPY backend /app/backend

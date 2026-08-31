@@ -4,10 +4,10 @@
   "private": true,
   "engines": { "node": ">=22.15.0" },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-mcp-client": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-agent-default-model": "0.1.0-rc.6"
+    "@deepseek-ai/dsh": "0.1.2-alpha.2",
+    "@deepseek-ai/dsh-tools": "0.1.2-alpha.2",
+    "@deepseek-ai/dsh-mcp-client": "0.1.2-alpha.2",
+    "@deepseek-ai/dsh-agent-default-model": "0.1.2-alpha.2"
   },
   "scripts": {
     "start": "bash entrypoint.sh"
