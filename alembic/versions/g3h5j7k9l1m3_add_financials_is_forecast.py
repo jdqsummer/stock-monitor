@@ -11,7 +11,9 @@ import sqlalchemy as sa
 
 
 revision: str = 'g3h5j7k9l1m3'
-down_revision: Union[str, None] = 'f1a3b5c7d9e1'
+# 修复（2026-09-01）：原误设 down_revision='f1a3b5c7d9e1'，但该 revision 已有
+# 后继 a7b8c9d0e1f2，会形成分支导致 alembic upgrade head 失败。改为真正的 head。
+down_revision: Union[str, None] = 'a9b0c1d2e3f4'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
