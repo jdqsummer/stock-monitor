@@ -61,10 +61,14 @@ async def test_get_financials_reads_snapshot_table():
     """静态快照表有数据 → 直接映射返回（snapshot 源）"""
     db = MagicMock()
     record = FinancialRecord(code="600519", report_period="2026H1", revenue=922.78,
-                             net_profit_parent=445.17, net_profit_deducted=430.0)
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = [record]
-    db.execute = AsyncMock(return_value=result)
+                             net_profit_parent=445.17, net_profit_deducted=430.0,
+                             updated_at=datetime.now())  # 修复 1：陈旧检测需要非 None 的 updated_at
+    snap_result = MagicMock()
+    snap_result.scalars.return_value.all.return_value = [record]
+    # 修复 1：第二个 query 查 max(updated_at)；返回当前时间 → < 1h → 不陈旧 → source=snapshot
+    max_result = MagicMock()
+    max_result.scalar.return_value = datetime.now()
+    db.execute = AsyncMock(side_effect=[snap_result, max_result])
 
     out = await get_financials_tool(db, {"code": "600519"})
 
@@ -79,9 +83,10 @@ async def test_get_financials_reads_snapshot_table():
 async def test_get_financials_live_fallback_when_table_empty():
     """静态快照表无数据 → 实时兜底（live 源）"""
     db = MagicMock()
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = []
-    db.execute = AsyncMock(return_value=result)
+    empty_result = MagicMock()
+    empty_result.scalars.return_value.all.return_value = []
+    # 修复 1：A 表空 → 跳过陈旧检测 → 直接走"完全无数据兜底"
+    db.execute = AsyncMock(return_value=empty_result)
     report = FinancialReport(code="600519", name="贵州茅台", report_period="2026H1",
                              revenue=922.78, net_profit_parent=445.17,
                              net_profit_deducted=430.0)
@@ -99,9 +104,9 @@ async def test_get_financials_live_fallback_when_table_empty():
 async def test_get_financials_live_fallback_error_returns_empty():
     """静态表空 + 实时兜底异常 → 空列表不崩溃（live-fallback-none 源）"""
     db = MagicMock()
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = []
-    db.execute = AsyncMock(return_value=result)
+    empty_result = MagicMock()
+    empty_result.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(return_value=empty_result)
 
     with patch("backend.services.chat_tools._client.fetch_financials",
                AsyncMock(side_effect=Exception("数据源不可用"))):
@@ -116,3 +121,101 @@ async def test_execute_tool_unknown_raises():
     db = MagicMock()
     with pytest.raises(ValueError):
         await execute_tool(db, "u1", "no_such_tool", {})
+
+
+# ── 修复 1：chat 财报陈旧检测 + Redis 限流实时兜底 ──
+
+@pytest.mark.asyncio
+async def test_get_financials_stale_triggers_live_refresh():
+    """A 表 > 1h 陈旧 + 获取到锁 → 实时拉取并覆盖（live-refreshed 源）"""
+    from datetime import timedelta
+    from backend.services.chat_tools import _financial_lock_cache
+
+    db = MagicMock()
+    record = FinancialRecord(
+        code="600519", report_period="2026H1", revenue=922.78,
+        net_profit_parent=445.17, net_profit_deducted=430.0,
+        updated_at=datetime.now() - timedelta(hours=2),  # 2h 前 → 陈旧
+    )
+    fresh_record = FinancialRecord(
+        code="600519", report_period="2026H1", revenue=950.0,
+        net_profit_parent=460.0, net_profit_deducted=445.0,
+        updated_at=datetime.now(),
+    )
+    # _read_snapshot 第一次 + 第二次（实时拉完再读）
+    snap_old = MagicMock()
+    snap_old.scalars.return_value.all.return_value = [record]
+    max_old = MagicMock()
+    max_old.scalar.return_value = record.updated_at  # 2h 前
+    # 实时拉取后 _upsert_financial 内部查 + 新 _read_snapshot
+    upsert_lookup = MagicMock()
+    upsert_lookup.scalar_one_or_none.return_value = record  # 已存在，update 分支
+    snap_new = MagicMock()
+    snap_new.scalars.return_value.all.return_value = [fresh_record]
+    db.execute = AsyncMock(side_effect=[snap_old, max_old, upsert_lookup, snap_new])
+    db.commit = AsyncMock()
+
+    report = FinancialReport(code="600519", name="贵州茅台", report_period="2026H1",
+                             revenue=950.0, net_profit_parent=460.0,
+                             net_profit_deducted=445.0, is_official=True)
+
+    with patch.object(_financial_lock_cache, "try_acquire_lock", AsyncMock(return_value=True)), \
+         patch("backend.services.chat_tools._client.fetch_financials",
+               AsyncMock(return_value=[report])):
+        out = await get_financials_tool(db, {"code": "600519"})
+
+    assert out["source"] == "live-refreshed"
+    assert out["financials"][0]["revenue"] == 950.0  # 新数据
+
+
+@pytest.mark.asyncio
+async def test_get_financials_stale_locked_skips_refresh():
+    """A 表陈旧但锁被持有 → 跳过实时拉取，用 A 表（snapshot-locked 源）"""
+    from datetime import timedelta
+    from backend.services.chat_tools import _financial_lock_cache
+
+    db = MagicMock()
+    record = FinancialRecord(
+        code="600519", report_period="2026H1", revenue=922.78,
+        net_profit_parent=445.17, net_profit_deducted=430.0,
+        updated_at=datetime.now() - timedelta(hours=2),
+    )
+    snap = MagicMock()
+    snap.scalars.return_value.all.return_value = [record]
+    max_q = MagicMock()
+    max_q.scalar.return_value = record.updated_at
+    db.execute = AsyncMock(side_effect=[snap, max_q])
+
+    with patch.object(_financial_lock_cache, "try_acquire_lock", AsyncMock(return_value=False)), \
+         patch("backend.services.chat_tools._client.fetch_financials") as mock_fetch:
+        out = await get_financials_tool(db, {"code": "600519"})
+
+    assert out["source"] == "snapshot-locked"
+    mock_fetch.assert_not_called()  # 锁住 → 不调 Provider
+
+
+@pytest.mark.asyncio
+async def test_get_financials_stale_live_failure_keeps_snapshot():
+    """实时拉取失败（异常）→ 保留 A 表旧数据（snapshot 源，不让聊天失败）"""
+    from datetime import timedelta
+    from backend.services.chat_tools import _financial_lock_cache
+
+    db = MagicMock()
+    record = FinancialRecord(
+        code="600519", report_period="2026H1", revenue=922.78,
+        net_profit_parent=445.17, net_profit_deducted=430.0,
+        updated_at=datetime.now() - timedelta(hours=2),
+    )
+    snap = MagicMock()
+    snap.scalars.return_value.all.return_value = [record]
+    max_q = MagicMock()
+    max_q.scalar.return_value = record.updated_at
+    db.execute = AsyncMock(side_effect=[snap, max_q])
+
+    with patch.object(_financial_lock_cache, "try_acquire_lock", AsyncMock(return_value=True)), \
+         patch("backend.services.chat_tools._client.fetch_financials",
+               AsyncMock(side_effect=Exception("东财 503"))):
+        out = await get_financials_tool(db, {"code": "600519"})
+
+    assert out["source"] == "snapshot"  # 回退
+    assert out["financials"][0]["revenue"] == 922.78

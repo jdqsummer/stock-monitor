@@ -85,6 +85,22 @@ class CacheService:
             logger.warning(f"Redis INVALIDATE 失败: {e}")
             return 0
 
+    async def try_acquire_lock(self, key: str, ttl: int) -> bool:
+        """原子尝试获取分布式锁（SET NX EX）。
+
+        用途：跨进程防重入（如 chat 工具实时拉财报防打爆东财接口）。
+        Redis 不可用时降级：直接返回 True（不限流，宁可被打爆也不误判业务失败）。
+        """
+        await self._ensure_redis()
+        if not self._available:
+            return True
+        try:
+            result = await self._redis.set(key, "1", ex=ttl, nx=True)
+            return bool(result)
+        except Exception as e:
+            logger.warning(f"Redis SETNX 失败（降级不限流）: {e}")
+            return True
+
     async def close(self):
         if self._redis:
             await self._redis.close()

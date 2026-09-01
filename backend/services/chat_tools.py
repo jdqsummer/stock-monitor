@@ -3,26 +3,37 @@
 
 工具数据全部从快照读取（A 表行情 + B 表分析快照），不实时请求 westock。
 run_five_stage → analysis_job_service.submit 异步提交（不阻塞聊天，SSE 侧轮询 job 推 analysis_done）。
+
+修复 1（P0-1, 2026-09-01）：get_financials_tool 加 1h 陈旧检测；陈旧时通过 Redis 分布式锁
+（5min TTL）防并发打爆东财接口；实时拉取覆盖 A 表。
 """
 import logging
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.data.cache import CacheService
 from backend.data.westock_client import WestockClient
 from backend.models.stock import AnalysisSnapshot, FinancialRecord, Industry, StockSnapshot
 from backend.services.analysis_job_svc import analysis_job_service
+from backend.services.refresh_svc import RefreshService
 from backend.services.stock_data_svc import StockDataService
 
 logger = logging.getLogger(__name__)
 
 _client = WestockClient()
+_financial_lock_cache = CacheService()  # Redis 不可用时降级不限流
 
 # 行业 PE 锚点兜底（Industry 表无数据时使用；与 .dsh anchor-industry-pe 参考一致）
 _INDUSTRY_PE_FALLBACK = {
     "白酒": "20-35", "银行": "5-10", "半导体": "25-45", "光伏": "12-22",
     "软件": "25-50", "医药": "20-40", "保险": "8-15", "家电": "10-20",
 }
+
+# 修复 1：A 表 > 1h 视为陈旧，触发实时兜底；锁 5min 防打爆接口
+_FINANCIAL_STALENESS = timedelta(hours=1)
+_FINANCIAL_LIVE_LOCK_TTL = 300
 
 
 TOOL_SCHEMAS: list[dict] = [
@@ -123,22 +134,64 @@ async def get_stock_snapshot_tool(db: AsyncSession, args: dict) -> dict:
 
 
 async def get_financials_tool(db: AsyncSession, args: dict) -> dict:
+    """获取个股近 8 期财报：营收/归母/扣非。
+
+    修复 1 数据源优先级：
+    1. A 表 FinancialRecord（最新快照）
+    2. 若 A 表数据 >1h 陈旧 → 实时拉取并覆盖（受 Redis 分布式锁防并发）
+    3. 实时失败 → 回退 A 表（避免聊天失败）
+    4. A 表完全无数据 → 实时兜底（与原逻辑一致）
+    """
     code = args["code"]
-    rows = (await db.execute(
-        select(FinancialRecord).where(FinancialRecord.code == code)
-        .order_by(FinancialRecord.report_period.desc()).limit(8)
-    )).scalars().all()
-    rows_out = [
-        {"period": r.report_period, "revenue": r.revenue,
-         "net_profit_parent": r.net_profit_parent,
-         "net_profit_deducted": r.net_profit_deducted}
-        for r in rows
-    ]
-    source = "snapshot"
+
+    async def _read_snapshot() -> tuple[list[dict], str]:
+        rows = (await db.execute(
+            select(FinancialRecord).where(FinancialRecord.code == code)
+            .order_by(FinancialRecord.report_period.desc()).limit(8)
+        )).scalars().all()
+        rows_out = [
+            {"period": r.report_period, "revenue": r.revenue,
+             "net_profit_parent": r.net_profit_parent,
+             "net_profit_deducted": r.net_profit_deducted}
+            for r in rows
+        ]
+        return rows_out, "snapshot"
+
+    rows_out, source = await _read_snapshot()
+
+    # ── 修复 1：陈旧检测 ──
+    is_stale = False
+    if rows_out:
+        latest_updated = (await db.execute(
+            select(func.max(FinancialRecord.updated_at)).where(FinancialRecord.code == code)
+        )).scalar()
+        if latest_updated and (datetime.now() - latest_updated) > _FINANCIAL_STALENESS:
+            is_stale = True
+
+    # ── 修复 1：实时兜底（陈旧 + 获取到锁）──
+    if is_stale:
+        lock_key = f"financial_live_lock:{code}"
+        if await _financial_lock_cache.try_acquire_lock(lock_key, _FINANCIAL_LIVE_LOCK_TTL):
+            try:
+                reports = await _client.fetch_financials(code)
+                if reports:
+                    for fin in reports:
+                        await RefreshService._upsert_financial(db, fin)
+                    await db.commit()
+                    rows_out, source = await _read_snapshot()
+                    source = "live-refreshed"
+                    logger.info(f"chat 工具实时拉取 {code} 完成，{len(rows_out)} 期")
+            except Exception as e:
+                logger.info(f"chat 工具实时拉取 {code} 失败，回退 A 表: {e}")
+                # source 仍为 "snapshot"（rows_out 不变）
+        else:
+            # 锁被其他进程持有 → 跳过实时拉取，用 A 表
+            source = "snapshot-locked"
+
+    # ── 完全无数据兜底（与原逻辑一致）──
     if not rows_out:
-        # 静态快照表无数据 → 实时兜底（与 get_quote_for_code 的 A 表优先+实时兜底一致）
         try:
-            reports = await _client.fetch_financials(code)   # list[FinancialReport]，无数据抛 ProviderError
+            reports = await _client.fetch_financials(code)
             rows_out = [
                 {"period": r.report_period, "revenue": r.revenue,
                  "net_profit_parent": r.net_profit_parent,
@@ -150,6 +203,7 @@ async def get_financials_tool(db: AsyncSession, args: dict) -> dict:
             logger.info(f"财报实时兜底不可用: {code}（静态表无数据）: {e}")
             rows_out = []
             source = "live-fallback-none"
+
     return {"code": code, "financials": rows_out, "source": source}
 
 
