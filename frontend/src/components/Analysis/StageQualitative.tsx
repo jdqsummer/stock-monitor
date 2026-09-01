@@ -13,7 +13,11 @@ function Block({ title, text }: { title: string; text?: string }) {
 }
 
 export function StageQualitative({ snap }: { snap: WatchlistBoardRow }) {
-  const stage = snap.stage_results?.analyze_qualitative;
+  // 防御 fallback：position 模式 result 落到 `stage_results_sell`，但早期 save_snapshot
+  // 漏写 `stage_results` 时定性段会空；后端已修，这里兜底是历史快照兼容。
+  const stage =
+    snap.stage_results?.analyze_qualitative
+    ?? snap.stage_results_sell?.analyze_qualitative;
   const op = stage?.operating_quality;
   // 经营质量子块存在两种输出 schema：常规 {title,text} 与专用 handler {title,growth_quality,rationale}。
   // 正文统一取 text || rationale，避免 rationale 中的完整结论被误显示为"（未评估）"。

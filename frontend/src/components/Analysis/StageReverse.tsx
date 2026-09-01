@@ -11,7 +11,13 @@ const CONCLUSION_LABELS = [
 ] as const;
 
 export function StageReverse({ snap }: { snap: WatchlistBoardRow }) {
-  const rev = snap.reverse_analysis;
+  // 防御 fallback：position 模式 result 落在 `stage_results_sell.run_reverse_checklist`，
+  // save_snapshot 已展平到 `reverse_analysis`；旧快照可能没展平，从 stage_results_sell
+  // 兜底一份与 reverse_analysis 字段合并视图。
+  const revFromSell = snap.stage_results_sell?.run_reverse_checklist;
+  const rev = snap.reverse_analysis
+    ? (revFromSell ? { ...revFromSell, ...snap.reverse_analysis } : snap.reverse_analysis)
+    : revFromSell;
   return (
     <Card title="3. 逆向分析">
       {rev ? (

@@ -190,7 +190,8 @@ async def test_save_snapshot_writes_sell_group(db_session):
 
 
 def _position_report() -> AnalysisReport:
-    """持仓(position)模式报告：sell 组有值，watchlist 组为空（与 DSH position 结果一致）。"""
+    """持仓(position)模式报告：sell 组有值，公共段（公司定性/逆向/结论/建议）也有值，
+    watchlist 专属字段（pe/swing/signal/distance_pct）为空（与 DSH position 结果一致）。"""
     return AnalysisReport(
         code="600519", name="贵州茅台", data_date="2026-08-16",
         analysis_mode="position",
@@ -199,7 +200,35 @@ def _position_report() -> AnalysisReport:
         sell_price_low=76.0, sell_price_high=98.0,
         sell_distance_pct=38.2, sell_signal="red", sell_action="sell",
         sell_analysis={"principles": {"price_crazy": {"triggered": True}}},
-        stage_results_sell={"sell_analysis": {"sell_action": "sell"}},
+        # 公共段：position 模式 DSH 也产出 analyze_qualitative + run_reverse_checklist
+        moat_assessment="品牌+渠道护城河强，定价权突出",
+        risk_factors=["宏观消费下行", "渠道库存压力"],
+        conclusion="持仓结论：估值高估，分批卖出",
+        recommendation="卖出-坚决：当前估值已透支未来两年增长",
+        checklist_results={"Q1": "估值高估", "Q14": "基本面无瑕疵"},
+        checklist_veto=False,
+        checklist_summary="基本面未证伪但估值显著高估，触发卖出原则 3",
+        # stage_results 整块：与 stage_results_sell 同源（含 4 段）
+        stage_results={
+            "analyze_qualitative": {"moat_assessment": {"title": "护城河",
+                                                       "text": "品牌+渠道护城河强"}},
+            "run_reverse_checklist": {"major_risks": ["宏观消费下行"],
+                                      "checklist_veto": False,
+                                      "overall_assessment": "基本面无瑕疵"},
+            "sell_analysis": {"principles": {"price_crazy": {"triggered": True}}},
+            "sell_conclusion": {"conclusion": "估值高估，分批卖出",
+                                "recommendation": "卖出-坚决"},
+        },
+        stage_results_sell={
+            "analyze_qualitative": {"moat_assessment": {"title": "护城河",
+                                                       "text": "品牌+渠道护城河强"}},
+            "run_reverse_checklist": {"major_risks": ["宏观消费下行"],
+                                      "checklist_veto": False,
+                                      "overall_assessment": "基本面无瑕疵"},
+            "sell_analysis": {"principles": {"price_crazy": {"triggered": True}}},
+            "sell_conclusion": {"conclusion": "估值高估，分批卖出",
+                                "recommendation": "卖出-坚决"},
+        },
     )
 
 
@@ -222,26 +251,87 @@ def _watchlist_report() -> AnalysisReport:
 
 @pytest.mark.asyncio
 async def test_position_analysis_does_not_overwrite_watchlist_fields(db_session):
-    """持仓(position)分析不得覆盖自选(watchlist)分析结果 — 同一 (user, code) 行双组独立保存。"""
+    """持仓(position)分析不得覆盖自选(watchlist)分析结果 — 同一 (user, code) 行双组独立保存。
+
+    公共段（公司定性 / 逆向 / 结论 / 建议 / checklist）两模式共享，position 模式会写入；
+    watchlist 专属字段（pe/swing/signal/distance_pct）position 不动。"""
     # 先做自选分析（watchlist 组有值）
     await SnapshotService.save_snapshot(db_session, "u1", _watchlist_report())
-    # 再做持仓分析（position 组有值，watchlist 组为空）
+    # 再做持仓分析（position 组 + 公共段有值，watchlist 专属为空）
     snap = await SnapshotService.save_snapshot(db_session, "u1", _position_report())
 
-    # watchlist 组保留自选分析结果，不被 position 清空
+    # watchlist 专属字段保留自选分析结果，不被 position 清空
     assert snap.swing_price_high == 2456
     assert snap.signal == "green"
     assert snap.signal_label == "击球区"
-    assert snap.recommendation == "可分批建仓"
-    assert snap.conclusion == "买入逻辑成立"
     assert snap.distance_pct == -38.9
-    assert json.loads(snap.stage_results)["anchor_industry_pe"]["pe_low"] == 20
     # sell 组为持仓分析结果
     assert snap.sell_signal == "red"
     assert snap.sell_action == "sell"
     assert snap.sell_pe_high == 35.0
     # analysis_mode 记录最近一次模式
     assert snap.analysis_mode == "position"
+    # 公共段：position 模式会覆盖（结论/建议/定性/逆向/checklist 均为持仓视角）
+    assert snap.conclusion == "持仓结论：估值高估，分批卖出"
+    assert snap.recommendation == "卖出-坚决：当前估值已透支未来两年增长"
+    assert snap.moat_assessment == "品牌+渠道护城河强，定价权突出"
+    assert json.loads(snap.risk_factors) == ["宏观消费下行", "渠道库存压力"]
+    assert json.loads(snap.stage_results)["analyze_qualitative"]["moat_assessment"]["text"] == "品牌+渠道护城河强"
+    assert json.loads(snap.stage_results)["run_reverse_checklist"]["major_risks"] == ["宏观消费下行"]
+
+
+@pytest.mark.asyncio
+async def test_position_analysis_writes_common_sections(db_session):
+    """position 模式 DSH 产出 analyze_qualitative + run_reverse_checklist + sell_analysis +
+    sell_conclusion。前端 StageQualitative/StageReverse 一致从 `stage_results` 列读，因此
+    position 模式必须把公共段（公司定性/逆向/结论/建议/checklist）落到 stage_results 与
+    共享列（moat_assessment/risk_factors/conclusion/recommendation/checklist_*），否则
+    持仓详情页定性/逆向段渲染为空（v1 修 bug 时漏写，2026-08-31）。"""
+    snap = await SnapshotService.save_snapshot(db_session, "u-pos", _position_report())
+
+    # stage_results 整块必须非空（含 analyze_qualitative + run_reverse_checklist）
+    sr = json.loads(snap.stage_results)
+    assert "analyze_qualitative" in sr
+    assert "run_reverse_checklist" in sr
+    assert sr["analyze_qualitative"]["moat_assessment"]["text"] == "品牌+渠道护城河强"
+    assert sr["run_reverse_checklist"]["major_risks"] == ["宏观消费下行"]
+
+    # 共享列
+    assert snap.moat_assessment == "品牌+渠道护城河强，定价权突出"
+    assert json.loads(snap.risk_factors) == ["宏观消费下行", "渠道库存压力"]
+    assert snap.conclusion == "持仓结论：估值高估，分批卖出"
+    assert snap.recommendation == "卖出-坚决：当前估值已透支未来两年增长"
+    assert snap.checklist_veto is False
+    assert snap.checklist_summary == "基本面未证伪但估值显著高估，触发卖出原则 3"
+    assert json.loads(snap.checklist_results) == {"Q1": "估值高估", "Q14": "基本面无瑕疵"}
+
+    # sell 组 + stage_results_sell 与之前一致
+    assert snap.sell_signal == "red"
+    assert snap.sell_action == "sell"
+    assert snap.analysis_mode == "position"
+
+
+@pytest.mark.asyncio
+async def test_position_analysis_preserves_watchlist_specific_fields(db_session):
+    """position 模式不覆盖 watchlist 专属字段：pe_low/pe_high/swing_*/signal/distance_pct/
+    profit_method/annual_profit_* —— 防止「先 watchlist 后 position」清空自选安全边际。"""
+    # 先做自选分析（所有 watchlist 字段都有值）
+    await SnapshotService.save_snapshot(db_session, "u-wp", _watchlist_report())
+    # 再做持仓分析
+    snap = await SnapshotService.save_snapshot(db_session, "u-wp", _position_report())
+
+    # watchlist 专属字段保留（不能被 position 清空）
+    assert snap.pe_low == 20
+    assert snap.pe_high == 35
+    assert snap.swing_market_cap_low == 13760
+    assert snap.swing_market_cap_high == 29470
+    assert snap.swing_price_low == 1147
+    assert snap.swing_price_high == 2456
+    assert snap.signal == "green"           # 保留自选 signal
+    assert snap.signal_label == "击球区"
+    assert snap.distance_pct == -38.9
+    # 但 position 模式的 sell 组覆盖（这个是 position 专属）
+    assert snap.sell_signal == "red"        # position signal 不影响 watchlist signal
 
 
 @pytest.mark.asyncio

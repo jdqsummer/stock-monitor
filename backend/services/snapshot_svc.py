@@ -59,7 +59,14 @@ class SnapshotService:
             existing.data_date = date.today()
 
         if is_position:
-            # ── 持仓模式：只写 sell 组，保留 watchlist 组旧值（不覆盖自选分析结果）──
+            # ── 持仓模式：写 sell 组 + 公共段（公司定性/逆向清单/结论/建议） ──
+            # DSH position 分支产出 4 段（analyze_qualitative / run_reverse_checklist /
+            # sell_analysis / sell_conclusion），前两段是「公司层」的定性+逆向——
+            # 与 watchlist 模式共享。前端 StageQualitative/StageReverse 一直从
+            # `stage_results` 列读；position 模式下 DSH result 落到 `stage_results_sell`，
+            # 这里同步把 `stage_results` 也写一份（共用同一 result），否则定性/逆向段
+            # 永远空。**不**覆盖 watchlist 专属的 pe_low/pe_high/swing_*/signal/
+            # distance_pct——那些是自选分析的领域。
             existing.sell_pe_low = report.sell_pe_low
             existing.sell_pe_high = report.sell_pe_high
             existing.sell_pe_rationale = report.sell_pe_rationale or None
@@ -77,6 +84,24 @@ class SnapshotService:
                 json.dumps(report.stage_results_sell, ensure_ascii=False)
                 if report.stage_results_sell else None
             )
+            # 公共段：公司定性 + 逆向清单 + 结论/建议（与 sell 组一并落地）
+            # 注意：`stage_results` 整块是 analyze_qualitative/run_reverse_checklist/
+            # sell_analysis/sell_conclusion，与 stage_results_sell 是同一份 result。
+            existing.stage_results = (
+                json.dumps(report.stage_results, ensure_ascii=False) if report.stage_results else None
+            )
+            existing.moat_assessment = report.moat_assessment or None
+            existing.risk_factors = (
+                json.dumps(report.risk_factors, ensure_ascii=False) if report.risk_factors else None
+            )
+            existing.checklist_results = (
+                json.dumps(report.checklist_results, ensure_ascii=False)
+                if report.checklist_results else None
+            )
+            existing.checklist_veto = report.checklist_veto
+            existing.checklist_summary = report.checklist_summary or None
+            existing.conclusion = report.conclusion or None
+            existing.recommendation = report.recommendation or None
         else:
             # ── 自选/降级模式：只写 watchlist 组，保留 sell 组旧值（不覆盖持仓分析结果）──
             existing.annual_profit_low = report.annual_profit_low
