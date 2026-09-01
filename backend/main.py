@@ -57,7 +57,9 @@ async def lifespan(app: FastAPI):
     app.state.reconcile_all = _reconcile_quote_and_auto     # config 保存触发
 
     from backend.services.refresh_svc import run_financials_refresh
-    scheduler.add_job(run_financials_refresh, IntervalTrigger(minutes=30),
+    # 修复 2（P0-2, 2026-09-01）：财报刷新频率 30min → 5min，减少财报发布高峰期滞后；
+    # 范围由 collect_all_relevant_codes 扩展为自选∪持仓∪7天内分析过（见 refresh_svc）。
+    scheduler.add_job(run_financials_refresh, IntervalTrigger(minutes=5),
                       job_id="financials_refresh", name="财报数据刷新")
     scheduler.add_analysis_job(run_closing_tasks)           # 16:00 全局收盘任务
 

@@ -237,3 +237,84 @@ async def test_auto_analysis_mixed_mode(db_session):
     watchlist, positions = await collect_auto_analysis_codes(db_session, user.id)
     assert "600519" in positions and "600519" in watchlist
     assert "000858" in watchlist and "000858" not in positions
+
+
+# ── 修复 2：collect_all_relevant_codes 扩展刷新范围 ──
+
+@pytest.mark.asyncio
+async def test_collect_all_relevant_codes_includes_positions(db_session):
+    """collect_all_relevant_codes 应包含持仓股（即使不在自选）"""
+    from backend.models.portfolio import Position
+    from backend.models.stock import AnalysisSnapshot
+    from datetime import datetime, timedelta
+    from backend.services.refresh_svc import RefreshService
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="茅台"))
+    db_session.add(Position(user_id="u1", stock_code="000858", stock_name="五粮液"))
+    # 7 天前分析过的股票（AnalysisSnapshot 无 stock_name 字段）
+    db_session.add(AnalysisSnapshot(
+        user_id="u1", stock_code="300750",
+        analysis_completed_at=datetime.now() - timedelta(days=3),
+    ))
+    await db_session.commit()
+
+    codes = await RefreshService.collect_all_relevant_codes(db_session)
+    assert set(codes) == {"600519", "000858", "300750"}
+
+
+@pytest.mark.asyncio
+async def test_collect_all_relevant_codes_dedup(db_session):
+    """三源重复股票应去重"""
+    from backend.models.portfolio import Position
+    from backend.services.refresh_svc import RefreshService
+
+    db_session.add(WatchlistItem(user_id="u1", stock_code="600519", stock_name="茅台"))
+    db_session.add(Position(user_id="u1", stock_code="600519", stock_name="茅台"))
+    await db_session.commit()
+
+    codes = await RefreshService.collect_all_relevant_codes(db_session)
+    assert codes == ["600519"]
+
+
+# ── 修复 4：新财报触发重算 B 表 ──
+
+@pytest.mark.asyncio
+async def test_trigger_recompute_submits_jobs_for_affected_users(db_session):
+    """识别到新财报 + 有持有用户 → 提交 analysis_job(source=financial_update)"""
+    from backend.models.user import User
+    from backend.services.refresh_svc import RefreshService
+    from unittest.mock import patch, MagicMock
+
+    user = User(email="r1@example.com", password_hash="x",
+                config={"llm_model": "deepseek:deepseek-chat"})
+    db_session.add(user)
+    await db_session.commit()  # 先 flush User 拿到 id
+    user_id = user.id
+    db_session.add(WatchlistItem(user_id=user_id, stock_code="600519", stock_name="茅台"))
+    await db_session.commit()
+
+    with patch("backend.services.refresh_svc.analysis_job_service") as mock_svc:
+        await RefreshService._trigger_recompute_for_new_financials(
+            db_session, {"600519": ["2025H1"]}
+        )
+
+    assert mock_svc.submit.call_count == 1
+    args, kwargs = mock_svc.submit.call_args
+    assert args[0] == user_id
+    assert args[1] == ["600519"]
+    assert kwargs["source"] == "financial_update"
+    assert kwargs["model"] == "deepseek:deepseek-chat"
+
+
+@pytest.mark.asyncio
+async def test_trigger_recompute_no_users_noop(db_session):
+    """无任何用户持有该股 → 不提交 job"""
+    from backend.services.refresh_svc import RefreshService
+    from unittest.mock import patch
+
+    with patch("backend.services.refresh_svc.analysis_job_service") as mock_svc:
+        await RefreshService._trigger_recompute_for_new_financials(
+            db_session, {"600519": ["2025H1"]}
+        )
+
+    mock_svc.submit.assert_not_called()
