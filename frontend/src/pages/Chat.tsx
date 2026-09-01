@@ -42,8 +42,34 @@ export function Chat() {
         const ms = modelsRes.data?.data ?? [];
         if (!cancelled) setModels(ms);
         const cfgModel = cfgRes.data?.data?.llm_model;
-        const match = ms.find((m) => m.model_id === cfgModel);
-        if (!cancelled) setChatModel((prev) => prev || (match ? `${match.provider}:${match.model_id}` : ''));
+        // 归一化：localStorage/config 里可能存了旧值（裸 id / 双前缀 / 三前缀），用 models 列表反向匹配正确 spec
+        const stored = localStorage.getItem('chat_model') || '';
+        const normalize = (raw: string): string => {
+          if (!raw) return '';
+          // 1. 已在列表中 → 直接用
+          const hit = ms.find((m) => m.model_id === raw);
+          if (hit) return hit.model_id;
+          // 2. 旧 bug：前端 `${provider}:${model_id}` 拼出双/三前缀（model_id 已含前缀）
+          //    循环剥首段直到命中列表里的 spec 或剥空
+          let cur = raw;
+          while (cur.includes(':')) {
+            const idx = cur.indexOf(':');
+            const stripped = cur.slice(idx + 1);
+            if (!stripped || stripped === cur) break;
+            const hit2 = ms.find((m) => m.model_id === stripped);
+            if (hit2) return hit2.model_id;
+            cur = stripped;
+          }
+          // 3. 旧 spec（裸 id 如 deepseek-v4-flash / minimax/minimax-m2.7:free）→ 按 model_id 后缀匹配
+          const hit3 = ms.find((m) => m.model_id.endsWith(`:${raw}`));
+          if (hit3) return hit3.model_id;
+          return '';   // 列表里查不到，回退空（用户下次手动选）
+        };
+        const normalizedStored = normalize(stored);
+        const normalizedCfg = cfgModel ? ms.find((m) => m.model_id === cfgModel)?.model_id || '' : '';
+        const final = normalizedStored || normalizedCfg;
+        if (final) localStorage.setItem('chat_model', final);
+        if (!cancelled) setChatModel((prev) => final || prev);
       } catch {
         // 保持默认
       }

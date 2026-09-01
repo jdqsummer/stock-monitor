@@ -32,9 +32,10 @@ export function ChatComposer({
   value, onChange, onSend, loading, disabled,
   models, model, onModelChange, mentionOptions, onPickRef,
 }: Props) {
-  const current = models.find((m) => `${m.provider}:${m.model_id}` === model);
+  // LLMModelInfo.model_id 已是完整 spec（provider:model_id），直接当下拉 value
+  const current = models.find((m) => m.model_id === model);
   const menuItems: MenuProps['items'] = models.map((m) => ({
-    key: `${m.provider}:${m.model_id}`,
+    key: m.model_id,
     label: m.display_name,
   }));
 
