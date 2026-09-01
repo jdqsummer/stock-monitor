@@ -163,6 +163,7 @@ class RefreshService:
         row.net_profit_deducted = fin.net_profit_deducted
         row.roe = fin.roe
         row.is_official = fin.is_official
+        row.is_forecast = fin.is_forecast  # 修复 3：预告字段同步
         row.updated_at = datetime.now()
         return row
 

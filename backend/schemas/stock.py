@@ -42,6 +42,9 @@ class FinancialReport(BaseModel):
     net_profit_deducted: float | None = None # 扣非净利润（亿元）
     roe: float | None = None              # ROE %
     is_official: bool = False             # 是否正式财报（vs 预告）
+    # 修复 3（2026-09-01）：是否业绩预告（与 is_official 互斥）；预告数据由
+    # 东财 RPT_PUBLIC_OP_PREDICT 接口提供（暂未接入，当前全部走正式财报）
+    is_forecast: bool = False
 
 
 # ── 公司新闻 ──

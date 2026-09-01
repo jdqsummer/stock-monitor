@@ -63,6 +63,8 @@ class FinancialRecord(Base):
     net_profit_deducted: Mapped[float | None] = mapped_column(Float, nullable=True)
     roe: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_official: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 修复 3（2026-09-01）：is_forecast 与 is_official 互斥；业绩预告 vs 正式财报
+    is_forecast: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

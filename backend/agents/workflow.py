@@ -201,6 +201,9 @@ async def check_profit_quality_node(state: AnalysisState) -> dict:
     if financials:
         latest = financials[0]
         net_profit_parent = latest.net_profit_parent or 0
+        # 修复 3（2026-09-01）：预告期数据明确警示（与扣非缺失警示并列）
+        if getattr(latest, "is_forecast", False):
+            warnings.append("当前使用业绩预告数据，待正式财报发布后重新分析")
         # 区分「扣非缺失（None）」与「真亏损（0/负）」：
         # 缺失但归母有效 → 回退归母口径并警示，避免被误判亏损而跳过量化分析
         if latest.net_profit_deducted is None:

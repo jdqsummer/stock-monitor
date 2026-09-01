@@ -775,3 +775,22 @@ async def test_rule_based_veto_survives_node4():
     node4 = await cross_check_and_output_node({**state, **node3})
     assert "conclusion" not in node4       # node4 不覆盖已有结论
     assert node3["final_rating"] == "🔴"
+
+
+# ── 修复 3：is_forecast 利润质量检查 ──
+
+@pytest.mark.asyncio
+async def test_check_profit_quality_warns_on_forecast():
+    """预告期数据应在 warnings 中给出明确提示"""
+    from backend.agents.workflow import check_profit_quality_node
+    from backend.schemas.stock import FinancialReport
+
+    state = {
+        "financials": [
+            FinancialReport(code="600519", name="贵州茅台", report_period="2025H1",
+                           net_profit_parent=50.0, net_profit_deducted=48.0,
+                           is_forecast=True, is_official=False),
+        ],
+    }
+    updates = await check_profit_quality_node(state)
+    assert any("预告" in w for w in updates["profit_quality_warnings"])
