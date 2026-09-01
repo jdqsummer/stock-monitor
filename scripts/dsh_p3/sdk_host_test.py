@@ -137,6 +137,62 @@ def test_trigger_request_accepts_api_keys():
     assert req.api_keys == {"kimi_api_key": "sk-k1"}
 
 
+def test_health_ok_when_cordis_and_llm_key_present(monkeypatch):
+    """DSH 必备 env（DSH_CORDIS_CONFIG + LLM key）就绪 → /health 200 ok。"""
+    monkeypatch.setenv("DSH_CORDIS_CONFIG", "/app/.dsh/agent-presets/value-investor/cordis.standalone.yml")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-1")
+    # 清掉其他 LLM key 确保走 deepseek 分支
+    for k in ("OPENROUTER_API_KEY", "QWEN_API_KEY", "KIMI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    client = TestClient(sdk_host.app)
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["cordis_ready"] is True
+    assert body["has_llm_key"] is True
+
+
+def test_health_ok_with_openrouter_key(monkeypatch):
+    """OpenRouter key 单独存在时也应返回 ok（不一定需要 deepseek key）。"""
+    monkeypatch.setenv("DSH_CORDIS_CONFIG", "/app/.dsh/agent-presets/value-investor/cordis.standalone.yml")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-1")
+    client = TestClient(sdk_host.app)
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["has_llm_key"] is True
+
+
+def test_health_503_when_cordis_missing(monkeypatch):
+    """缺 DSH_CORDIS_CONFIG → 503 degraded（DSH 插件树无法激活）。"""
+    monkeypatch.delenv("DSH_CORDIS_CONFIG", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-1")
+    client = TestClient(sdk_host.app)
+    resp = client.get("/health")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["cordis_ready"] is False
+    assert body["has_llm_key"] is True
+
+
+def test_health_503_when_no_llm_key(monkeypatch):
+    """缺任何 LLM key → 503 degraded（DSH runtime 无 LLM 可调）。"""
+    monkeypatch.setenv("DSH_CORDIS_CONFIG", "/app/.dsh/agent-presets/value-investor/cordis.standalone.yml")
+    for k in ("DEEPSEEK_API_KEY", "OPENROUTER_API_KEY", "QWEN_API_KEY", "KIMI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    client = TestClient(sdk_host.app)
+    resp = client.get("/health")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["cordis_ready"] is True
+    assert body["has_llm_key"] is False
+
+
 class _Result:
     def __init__(self, events):
         self.events = events

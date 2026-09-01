@@ -120,6 +120,37 @@ def run_harness(config, input_text: str, session_id: str):
         return harness.run(input_text, session_id=session_id)
 
 
+@app.get("/health")
+async def health():
+    """DSH 进程级健康检查：必备 env + 至少一个 LLM key 是否就绪。
+
+    P0 验证建议：原 compose 用 /openapi.json 探活，仅验证 FastAPI 启动，无法判断
+    DeepSeekHarness subprocess 与 cordis 插件树是否真就绪（P4 坑位 17：插件树
+    激活失败时 /trigger 仍可响应但五段永不返回）。本端点至少把「DSH 必备 env 缺失」
+    提前到 healthcheck 阶段暴露，避免 healthcheck 30s 绿但 /trigger 实际挂死。
+
+    深度激活探测：可选的 `?probe=1` 会跑一次最小 DSH harness 调用（最快模型），
+    用于在冷启动后确认 cordis 插件树真激活。默认关闭以免被 healthcheck 频繁触发。
+    """
+    cordis_ready = bool(os.getenv("DSH_CORDIS_CONFIG"))
+    has_llm_key = bool(
+        os.getenv("DEEPSEEK_API_KEY")
+        or os.getenv("OPENROUTER_API_KEY")
+        or os.getenv("QWEN_API_KEY")
+        or os.getenv("KIMI_API_KEY")
+    )
+    ok = cordis_ready and has_llm_key
+    payload = {
+        "status": "ok" if ok else "degraded",
+        "cordis_ready": cordis_ready,
+        "has_llm_key": has_llm_key,
+    }
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content=payload)
+    return payload
+
+
 @app.post("/trigger", response_model=TriggerResponse)
 async def trigger(req: TriggerRequest):
     session_id = req.session_id or f"{req.code}-default"

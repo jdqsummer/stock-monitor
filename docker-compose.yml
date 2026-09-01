@@ -105,8 +105,9 @@ services:
       - ./.dsh/skills:/app/.dsh/skills:ro
       - ./.dsh/plugins:/app/.dsh/plugins:ro
     healthcheck:
-      # sdk_host.py 仅暴露 POST /trigger，无 /health；用 FastAPI 自动生成的 /openapi.json 探活
-      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8001/openapi.json')"]
+      # /health：校验 DSH 必备 env（DSH_CORDIS_CONFIG + 至少一个 LLM key）就绪
+      # 比 /openapi.json 更早暴露 cordis 插件树激活失败（P4 坑位 17 根因）
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8001/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
