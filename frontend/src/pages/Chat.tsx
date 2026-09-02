@@ -3,6 +3,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { Button, Divider, Drawer, Space, Spin, Tag, Typography, message as antMsg } from 'antd';
 import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
 import { chatApi, configApi, diaryApi } from '@/api/client';
+import { getStoredModel, resolveModel, setStoredModel } from '@/utils/modelPref';
 import type { ChatProfile, ConversationItem, LLMModelInfo, WatchlistBoardRow, DiaryRef, DiaryFolderNode } from '@/types';
 import { useSearchParams } from 'react-router-dom';
 import { ChatComposer } from './chat/ChatComposer';
@@ -24,7 +25,7 @@ export function Chat() {
   const [profile, setProfile] = useState<ChatProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [models, setModels] = useState<LLMModelInfo[]>([]);
-  const [chatModel, setChatModel] = useState<string>(() => localStorage.getItem('chat_model') || '');
+  const [chatModel, setChatModel] = useState<string>(() => getStoredModel('chat'));
 
   // @ 引用状态与数据源
   const [searchParams] = useSearchParams();
@@ -33,42 +34,16 @@ export function Chat() {
   const [mentionOptions, setMentionOptions] = useState<import('./chat/ChatComposer').MentionOption[]>([]);
   useEffect(() => { refsRef.current = refs; }, [refs]);
 
-  // 加载可用模型；无本地选择时默认取配置 llm_model（provider:model_id）
+  // 加载可用模型；localStorage 优先（resolveModel 内部归一化旧值），无则回退系统设置 llm_model
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const [cfgRes, modelsRes] = await Promise.all([configApi.get(), configApi.getLLMModels()]);
-        const ms = modelsRes.data?.data ?? [];
+        const ms = (modelsRes.data?.data || []) as LLMModelInfo[];
         if (!cancelled) setModels(ms);
-        const cfgModel = cfgRes.data?.data?.llm_model;
-        // 归一化：localStorage/config 里可能存了旧值（裸 id / 双前缀 / 三前缀），用 models 列表反向匹配正确 spec
-        const stored = localStorage.getItem('chat_model') || '';
-        const normalize = (raw: string): string => {
-          if (!raw) return '';
-          // 1. 已在列表中 → 直接用
-          const hit = ms.find((m) => m.model_id === raw);
-          if (hit) return hit.model_id;
-          // 2. 旧 bug：前端 `${provider}:${model_id}` 拼出双/三前缀（model_id 已含前缀）
-          //    循环剥首段直到命中列表里的 spec 或剥空
-          let cur = raw;
-          while (cur.includes(':')) {
-            const idx = cur.indexOf(':');
-            const stripped = cur.slice(idx + 1);
-            if (!stripped || stripped === cur) break;
-            const hit2 = ms.find((m) => m.model_id === stripped);
-            if (hit2) return hit2.model_id;
-            cur = stripped;
-          }
-          // 3. 旧 spec（裸 id 如 deepseek-v4-flash / minimax/minimax-m2.7:free）→ 按 model_id 后缀匹配
-          const hit3 = ms.find((m) => m.model_id.endsWith(`:${raw}`));
-          if (hit3) return hit3.model_id;
-          return '';   // 列表里查不到，回退空（用户下次手动选）
-        };
-        const normalizedStored = normalize(stored);
-        const normalizedCfg = cfgModel ? ms.find((m) => m.model_id === cfgModel)?.model_id || '' : '';
-        const final = normalizedStored || normalizedCfg;
-        if (final) localStorage.setItem('chat_model', final);
+        const cfgModel = cfgRes.data?.data?.llm_model || '';
+        const final = resolveModel('chat', cfgModel, ms);
         if (!cancelled) setChatModel((prev) => final || prev);
       } catch {
         // 保持默认
@@ -79,7 +54,7 @@ export function Chat() {
 
   const handleModelChange = (spec: string) => {
     setChatModel(spec);
-    localStorage.setItem('chat_model', spec);
+    setStoredModel('chat', spec);
   };
 
   const handleTogglePin = async (conv: ConversationItem) => {

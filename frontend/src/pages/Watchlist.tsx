@@ -11,6 +11,7 @@ import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
 import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
 import { currencyOf } from '@/utils/market';
+import { resolveModel, setStoredModel } from '@/utils/modelPref';
 import type { LLMModelInfo, StockQuote, UserConfig, WatchlistItem } from '@/types';
 
 // 来源标签：DSH LLM 用品牌软底（antd 预设 'blue' 是固定调色板蓝 #1677ff，与品牌主色冲突）
@@ -30,7 +31,7 @@ export function Watchlist() {
 
   // 自选分析：行勾选 + 模型选择 + 进度（从原仪表盘 SignalBoard 迁移）
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
-  const [model, setModel] = useState<string>('deepseek-v4-flash');
+  const [model, setModel] = useState<string>('');  // 由 useEffect 异步填（localStorage 优先 → 系统设置兜底）
   const [models, setModels] = useState<LLMModelInfo[]>([]);
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -53,20 +54,20 @@ export function Watchlist() {
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
-  // 模型下拉：6 模型 + 默认取用户配置 llm_model（当次选择仅本次生效）
+  // 模型下拉：localStorage 选择持久化（resolveModel 内部归一化旧值），无则回退系统设置 llm_model
   useEffect(() => {
-    configApi.get().then(res => {
-      const d = res.data.data as UserConfig;
-      if (d.llm_model) setModel(d.llm_model);
+    Promise.all([configApi.get(), configApi.getLLMModels()]).then(([cfgRes, modelsRes]) => {
+      const d = cfgRes.data.data as UserConfig;
+      const ms = (modelsRes.data.data || []) as LLMModelInfo[];
+      setModels(ms);
       setConfigured({
         deepseek_api_key_configured: !!d.deepseek_api_key_configured,
         qwen_api_key_configured: !!d.qwen_api_key_configured,
         kimi_api_key_configured: !!d.kimi_api_key_configured,
       });
+      const final = resolveModel('watchlist', d.llm_model || '', ms);
+      if (final) setModel(final);
       setConfigLoaded(true);
-    }).catch(() => {});
-    configApi.getLLMModels().then(res => {
-      setModels((res.data.data || []) as LLMModelInfo[]);
     }).catch(() => {});
   }, []);
 
@@ -242,9 +243,13 @@ export function Watchlist() {
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>添加自选股</Button>
         <Button icon={<ThunderboltOutlined />} onClick={handleAutoClassify} loading={loading}>智能一键分类</Button>
         <Divider type="vertical" />
-        <Select value={model} onChange={setModel} style={{ width: 200 }}
-          options={models.length ? models.map(m => ({ value: m.model_id, label: m.display_name }))
-            : [{ value: 'deepseek-v4-flash', label: 'V4-Flash（省成本·默认）' }]} />
+        <Select
+          value={model || undefined}
+          onChange={(v) => { setModel(v); setStoredModel('watchlist', v); }}
+          style={{ width: 200 }}
+          placeholder={models.length ? '选择模型' : '加载中...'}
+          options={models.map(m => ({ value: m.model_id, label: m.display_name }))}
+        />
         <Button type="primary" disabled={selectedKeys.length === 0 || analyzing}
           loading={analyzing} onClick={handleAnalyze}>
           {analyzing ? progress || '分析中...' : `立即分析${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}

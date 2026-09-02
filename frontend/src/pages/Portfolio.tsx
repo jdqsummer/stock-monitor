@@ -11,6 +11,7 @@ import { SignalBadge } from '@/components/Stock/SignalBadge';
 import { getErrorMessage } from '@/utils/error';
 import { currencyOf } from '@/utils/market';
 import { market, text } from '@/theme';
+import { resolveModel, setStoredModel } from '@/utils/modelPref';
 import type { LLMModelInfo, PositionInfo, StockQuote, UserConfig } from '@/types';
 
 export function Portfolio() {
@@ -22,7 +23,7 @@ export function Portfolio() {
 
   // 持仓分析：行勾选 + 模型 + 进度（source=portfolio 作用域）
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
-  const [model, setModel] = useState<string>('deepseek-v4-flash');
+  const [model, setModel] = useState<string>('');  // 由 useEffect 异步填（localStorage 优先 → 系统设置兜底）
   const [models, setModels] = useState<LLMModelInfo[]>([]);
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -44,18 +45,21 @@ export function Portfolio() {
   }, []);
 
   useEffect(() => { fetchList(); }, [fetchList]);
+  // 模型下拉：localStorage 选择持久化，无则回退系统设置 llm_model
   useEffect(() => {
-    configApi.get().then(res => {
-      const d = res.data.data as UserConfig;
-      if (d.llm_model) setModel(d.llm_model);
+    Promise.all([configApi.get(), configApi.getLLMModels()]).then(([cfgRes, modelsRes]) => {
+      const d = cfgRes.data.data as UserConfig;
+      const ms = (modelsRes.data.data || []) as LLMModelInfo[];
+      setModels(ms);
       setConfigured({
         deepseek_api_key_configured: !!d.deepseek_api_key_configured,
         qwen_api_key_configured: !!d.qwen_api_key_configured,
         kimi_api_key_configured: !!d.kimi_api_key_configured,
       });
+      const final = resolveModel('portfolio', d.llm_model || '', ms);
+      if (final) setModel(final);
       setConfigLoaded(true);
     }).catch(() => {});
-    configApi.getLLMModels().then(res => setModels((res.data.data || []) as LLMModelInfo[])).catch(() => {});
   }, []);
 
   const startPolling = useCallback((jobId: string) => {
@@ -213,9 +217,13 @@ export function Portfolio() {
       <Space style={{ marginBottom: 16 }} wrap>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>添加持仓股</Button>
         <Divider type="vertical" />
-        <Select value={model} onChange={setModel} style={{ width: 200 }}
-          options={models.length ? models.map(m => ({ value: m.model_id, label: m.display_name }))
-            : [{ value: 'deepseek-v4-flash', label: 'V4-Flash（省成本·默认）' }]} />
+        <Select
+          value={model || undefined}
+          onChange={(v) => { setModel(v); setStoredModel('portfolio', v); }}
+          style={{ width: 200 }}
+          placeholder={models.length ? '选择模型' : '加载中...'}
+          options={models.map(m => ({ value: m.model_id, label: m.display_name }))}
+        />
         <Button type="primary" disabled={selectedKeys.length === 0 || analyzing}
           loading={analyzing} onClick={handleAnalyze}>
           {analyzing ? progress || '分析中...' : `分析持仓${selectedKeys.length ? `（${selectedKeys.length}）` : ''}`}

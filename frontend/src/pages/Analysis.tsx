@@ -9,6 +9,7 @@ import { analysisApi, configApi, watchlistApi } from '@/api/client';
 import { getErrorMessage } from '@/utils/error';
 import { brandTagStyle, text } from '@/theme';
 import { DegradedAlert } from '@/components/Common/DegradedAlert';
+import { resolveModel, setStoredModel } from '@/utils/modelPref';
 import type { LLMModelInfo, StockQuote, UserConfig, WatchlistBoardRow } from '@/types';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -22,8 +23,8 @@ export function Analysis() {
   const navigate = useNavigate();
   const [stock, setStock] = useState<StockQuote | null>(null);
 
-  // 模型选择（复用 Watchlist 页模式：默认取用户配置，当次选择仅本次生效）
-  const [model, setModel] = useState<string>('deepseek-v4-flash');
+  // 模型选择（localStorage 持久化，无则回退系统设置 llm_model）
+  const [model, setModel] = useState<string>('');  // 由 useEffect 异步填
   const [models, setModels] = useState<LLMModelInfo[]>([]);
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
 
@@ -36,19 +37,19 @@ export function Analysis() {
   const [adding, setAdding] = useState(false);
   const pollTimer = useRef<number | null>(null);
 
-  // 模型配置加载
+  // 模型配置加载：localStorage 优先 → 系统设置兜底
   useEffect(() => {
-    configApi.get().then(res => {
-      const d = res.data.data as UserConfig;
-      if (d.llm_model) setModel(d.llm_model);
+    Promise.all([configApi.get(), configApi.getLLMModels()]).then(([cfgRes, modelsRes]) => {
+      const d = cfgRes.data.data as UserConfig;
+      const ms = (modelsRes.data.data || []) as LLMModelInfo[];
+      setModels(ms);
       setConfigured({
         deepseek_api_key_configured: !!d.deepseek_api_key_configured,
         qwen_api_key_configured: !!d.qwen_api_key_configured,
         kimi_api_key_configured: !!d.kimi_api_key_configured,
       });
-    }).catch(() => {});
-    configApi.getLLMModels().then(res => {
-      setModels((res.data.data || []) as LLMModelInfo[]);
+      const final = resolveModel('analysis', d.llm_model || '', ms);
+      if (final) setModel(final);
     }).catch(() => {});
   }, []);
 
@@ -178,9 +179,13 @@ export function Analysis() {
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <StockSearchSelect onSelect={handleSelectStock} onClear={() => setStock(null)} />
             <Space wrap>
-              <Select value={model} onChange={setModel} style={{ width: 200 }}
-                options={models.length ? models.map(m => ({ value: m.model_id, label: m.display_name }))
-                  : [{ value: 'deepseek-v4-flash', label: 'V4-Flash（省成本·默认）' }]} />
+              <Select
+                value={model || undefined}
+                onChange={(v) => { setModel(v); setStoredModel('analysis', v); }}
+                style={{ width: 200 }}
+                placeholder={models.length ? '选择模型' : '加载中...'}
+                options={models.map(m => ({ value: m.model_id, label: m.display_name }))}
+              />
               <Button type="primary" disabled={!stock || analyzing} loading={analyzing} onClick={handleAnalyze}>
                 {analyzing ? progress || '分析中...' : '开始分析'}
               </Button>
