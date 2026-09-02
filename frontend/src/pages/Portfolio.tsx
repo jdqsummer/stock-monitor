@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
-import { Alert, Button, Divider, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
+import { Alert, Button, Divider, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import { Link } from 'react-router-dom';
-import { PlusOutlined } from '@ant-design/icons';
+import { LoadingOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { configApi, portfolioApi } from '@/api/client';
 import { StockSearchSelect } from '@/components/Stock/StockSearchSelect';
@@ -28,6 +28,9 @@ export function Portfolio() {
   const [configLoaded, setConfigLoaded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState('');
+  // 持仓分析进行中股票代码集合（来自后端 job.status.running_codes），
+  // 用于表格"分析状态"列实时打标；终止态清空。
+  const [runningCodes, setRunningCodes] = useState<Set<string>>(new Set());
   const pollTimer = useRef<number | null>(null);
 
   const fetchList = useCallback(async () => {
@@ -60,10 +63,15 @@ export function Portfolio() {
     pollTimer.current = window.setInterval(async () => {
       try {
         const st = (await portfolioApi.status(jobId)).data.data;
-        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        // 同步进行中股票代码集合到 state（驱动表格"分析中"列打标）
+        const runningList = (st.running_codes || []) as string[];
+        setRunningCodes(new Set(runningList));
+        // 进度提示尾部拼接正在分析的股票代码（多并发时一并展示）
+        const tail = runningList.length ? ` | 正在分析：${runningList.join(', ')}` : '';
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）${tail}`);
         if (st.done + st.failed + st.skipped >= st.total) {
           if (pollTimer.current) window.clearInterval(pollTimer.current);
-          pollTimer.current = null; setAnalyzing(false); setProgress('');
+          pollTimer.current = null; setAnalyzing(false); setProgress(''); setRunningCodes(new Set());
           // 部分失败不再一律报成功：按结果分级提示（对齐 Analysis 页口径）
           if (st.done === 0 && st.failed > 0) message.error(`持仓分析失败（${st.failed} 只）`);
           else if (st.failed > 0) message.warning(`持仓分析完成：${st.done} 成功，${st.failed} 失败${st.skipped ? `，${st.skipped} 跳过` : ''}`);
@@ -79,7 +87,11 @@ export function Portfolio() {
       try {
         const st = (await portfolioApi.active()).data.data;
         setAnalyzing(true);
-        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        // 恢复时把后端已记录的 running_codes 写入 state（避免表格"分析中"列空白）
+        setRunningCodes(new Set((st.running_codes || []) as string[]));
+        const runningList = (st.running_codes || []) as string[];
+        const tail = runningList.length ? ` | 正在分析：${runningList.join(', ')}` : '';
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）${tail}`);
         startPolling(st.job_id);
       } catch { /* 无进行中任务 */ }
     })();
@@ -177,6 +189,13 @@ export function Portfolio() {
     { title: '距卖出区', dataIndex: 'sell_distance_pct', width: 150,
       render: (v: number | null, r: PositionInfo) =>
         v != null && r.sell_signal ? <SignalBadge signal={r.sell_signal} distancePct={v} sell /> : '-' },
+    { title: '分析状态', key: 'analyzing', width: 100,
+      render: (_: unknown, r: PositionInfo) => {
+        if (runningCodes.has(r.stock_code)) {
+          return <Tag color="processing" icon={<LoadingOutlined />}>分析中</Tag>;
+        }
+        return <span style={{ color: '#999' }}>-</span>;
+      } },
     { title: '操作', key: 'action', width: 90,
       render: (_: unknown, r: PositionInfo) => (
         <Space size={0}>
@@ -213,7 +232,7 @@ export function Portfolio() {
       )}
 
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
-        scroll={{ x: 1500 }}
+        scroll={{ x: 1600 }}
         rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }}
         pagination={{ pageSize: 20 }} />
 
