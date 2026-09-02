@@ -110,6 +110,8 @@ export interface JobStatus {
   skipped: number;
   running: number;
   results: Record<string, string>;
+  // 进行中股票代码列表（自选分析页表格"分析中"列打标用）
+  running_codes?: string[];
 }
 
 // ── 持仓 ──

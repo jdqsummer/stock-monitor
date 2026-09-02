@@ -3,7 +3,7 @@ import type { Key } from 'react';
 import { Alert, Button, Divider, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import type { TagProps } from 'antd';
 import { Link } from 'react-router-dom';
-import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { LoadingOutlined, PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { analysisApi, configApi, watchlistApi } from '@/api/client';
 import { brandTagStyle } from '@/theme';
@@ -36,6 +36,9 @@ export function Watchlist() {
   const [configLoaded, setConfigLoaded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState('');
+  // 自选分析进行中股票代码集合（来自后端 job.status.running_codes），
+  // 用于表格"分析状态"列实时打标；终止态清空。
+  const [runningCodes, setRunningCodes] = useState<Set<string>>(new Set());
   const pollTimer = useRef<number | null>(null);
 
   const fetchList = useCallback(async () => {
@@ -73,12 +76,18 @@ export function Watchlist() {
     pollTimer.current = window.setInterval(async () => {
       try {
         const st = (await analysisApi.watchlistStatus(jobId)).data.data;
-        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        // 同步进行中股票代码集合到 state（驱动表格"分析中"列打标）
+        const runningList = (st.running_codes || []) as string[];
+        setRunningCodes(new Set(runningList));
+        // 进度提示尾部拼接正在分析的股票代码（多并发时一并展示）
+        const tail = runningList.length ? ` | 正在分析：${runningList.join(', ')}` : '';
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）${tail}`);
         if (st.done + st.failed + st.skipped >= st.total) {
           if (pollTimer.current) window.clearInterval(pollTimer.current);
           pollTimer.current = null;
           setAnalyzing(false);
           setProgress('');
+          setRunningCodes(new Set());
           // 部分失败不再一律报成功：按结果分级提示（对齐 Analysis 页口径）
           if (st.done === 0 && st.failed > 0) message.error(`分析失败（${st.failed} 只）`);
           else if (st.failed > 0) message.warning(`分析完成：${st.done} 成功，${st.failed} 失败${st.skipped ? `，${st.skipped} 跳过` : ''}`);
@@ -97,7 +106,11 @@ export function Watchlist() {
       try {
         const st = (await analysisApi.watchlistActive()).data.data;
         setAnalyzing(true);
-        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）`);
+        // 恢复时把后端已记录的 running_codes 写入 state（避免表格"分析中"列空白）
+        setRunningCodes(new Set((st.running_codes || []) as string[]));
+        const runningList = (st.running_codes || []) as string[];
+        const tail = runningList.length ? ` | 正在分析：${runningList.join(', ')}` : '';
+        setProgress(`分析中 ${st.done}/${st.total}（失败 ${st.failed}，跳过 ${st.skipped}）${tail}`);
         startPolling(st.job_id);
       } catch {
         /* 无进行中任务，忽略 */
@@ -201,6 +214,13 @@ export function Watchlist() {
           {record.unassessable_risk && <Tag color="red">风险否决</Tag>}
         </Space>
       ) },
+    { title: '分析状态', key: 'analyzing', width: 100,
+      render: (_: unknown, record: WatchlistItem) => {
+        if (runningCodes.has(record.stock_code)) {
+          return <Tag color="processing" icon={<LoadingOutlined />}>分析中</Tag>;
+        }
+        return <span style={{ color: '#999' }}>-</span>;
+      } },
     { title: '分析类型', dataIndex: 'analysis_source', width: 110,
       render: (v: string | null) => {
         if (!v) return '-';
@@ -241,7 +261,7 @@ export function Watchlist() {
       )}
 
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading} size="small"
-        scroll={{ x: 1300 }}
+        scroll={{ x: 1400 }}
         rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }}
         pagination={{ pageSize: 20 }} />
 

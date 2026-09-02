@@ -89,6 +89,8 @@ class AnalysisJobService:
             "failed": sum(1 for s in codes.values() if s == STATUS_FAILED),
             "skipped": sum(1 for s in codes.values() if s == STATUS_SKIPPED),
             "running": sum(1 for s in codes.values() if s == STATUS_RUNNING),
+            # 进行中股票代码列表（自选分析页表格"分析中"行标识用）
+            "running_codes": [code for code, s in codes.items() if s == STATUS_RUNNING],
             "results": dict(codes),
         }
 
