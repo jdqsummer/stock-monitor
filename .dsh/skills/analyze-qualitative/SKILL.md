@@ -46,7 +46,7 @@ consumes: [financials, current_price, total_market_cap, total_shares, pe_dynamic
 
 本阶段注入以下 state 字段（`depends_on`，各子块共用）：
 
-- `financials`：近 8 期财报明细（报告期 / 营收 / 归母 / 扣非）
+- `financials`：近 8 期最新财报明细（报告期 / 营收 / 归母 / 扣非）
 - `current_price`：当前股价
 - `total_market_cap` / `total_shares`：总市值 / 总股本
 - `pe_dynamic`：动态市盈率

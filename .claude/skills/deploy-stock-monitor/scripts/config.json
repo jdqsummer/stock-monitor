@@ -1,0 +1,23 @@
+{
+  "host": "49.232.171.206",
+  "user": "ubuntu",
+  "password": "Da@7712025",
+  "server_repo_dir": "/home/ubuntu/stock-monitor",
+  "local_repo_dir": "D:/project/github/stock-monitor",
+  "tar_excludes": [
+    ".git",
+    ".env",
+    "*.db",
+    "*.sqlite3",
+    "__pycache__",
+    ".pytest_cache",
+    ".playwright-mcp",
+    "node_modules",
+    "venv",
+    ".venv",
+    ".claude"
+  ],
+  "env_extra": {
+    "DATA_PROVIDER_PRIORITY": "tencent,eastmoney,mock"
+  }
+}
