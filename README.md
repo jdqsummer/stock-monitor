@@ -88,6 +88,10 @@ stock-monitor/
 
 ## 快速开始
 
+### 访问地址
+- 已部署环境体验: http://www.ai-first.site/
+- 产品了解: http://www.ai-first.site/about/
+
 ### 环境要求
 - Python 3.11+
 - Node.js 20+
